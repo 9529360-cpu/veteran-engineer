@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Local runtime / operator state
+.veteran-engineer/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Test / coverage / temporary output
+coverage/
+.tmp/
+tmp/
+.cache/
+*.log
+npm-debug.log*
+
+# Generated distribution artifacts
+/dist/
+/*.zip
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
