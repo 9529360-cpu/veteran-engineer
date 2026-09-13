@@ -34,6 +34,7 @@ test('local-json doctor treats PostgreSQL driver as optional capability', async 
 
 test('PostgreSQL selection trims whitespace, requires exact loadable driver, and does not leak connection secrets', async () => {
   const runtimeRoot = await tempDir('veteran-installer-capability-postgres-');
+  const validRuntimeRoot = await tempDir('veteran-installer-capability-postgres-valid-');
   const env = {
     VETERAN_ENGINEER_STATE_BACKEND: ' postgres ',
     VETERAN_ENGINEER_POSTGRES_URL: 'postgresql://user:supersecret@example.invalid/db',
@@ -66,8 +67,8 @@ test('PostgreSQL selection trims whitespace, requires exact loadable driver, and
     assert.equal(invalid.driver.ready, false);
     assert.equal(invalid.driver.errorCode, 'POSTGRES_DRIVER_INVALID');
 
-    await installFakePg(runtimeRoot, '8.23.0');
-    const exact = await inspectPostgresStateCapability({ runtimeRoot, env });
+    await installFakePg(validRuntimeRoot, '8.23.0');
+    const exact = await inspectPostgresStateCapability({ runtimeRoot: validRuntimeRoot, env });
     assert.equal(exact.ok, true);
     assert.equal(exact.config.poolMax, 7);
     assert.equal(exact.driver.exact, true);
@@ -76,6 +77,7 @@ test('PostgreSQL selection trims whitespace, requires exact loadable driver, and
     assert.equal(JSON.stringify(exact).includes('supersecret'), false);
   } finally {
     await cleanup(runtimeRoot);
+    await cleanup(validRuntimeRoot);
   }
 });
 
