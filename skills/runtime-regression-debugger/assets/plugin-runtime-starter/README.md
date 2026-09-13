@@ -13,7 +13,12 @@ The current mainline preserves an exact **34-tool MCP surface** and the pinned o
 - `@modelcontextprotocol/core@2.0.0`
 - `zod@4.2.0`
 
-The current GitHub CI gate runs `npm ci --include=optional` followed by `npm run check` on Node 20. After the Mission finalize and confined-container-worker milestones, the suite is **45 tests / 45 PASS / 0 SKIP / 0 FAIL** with the exact SDK graph installed. Static validation also verifies the 34-tool surface, modern `2026-07-28` protocol, legacy `2025-11-25` protocol, SDK graph, and lockfile integrity.
+GitHub CI runs two ordered gates on Node 20 after installing the exact optional SDK graph:
+
+1. `npm run check`: **46 tests / 46 PASS / 0 SKIP / 0 FAIL**;
+2. a real Docker engine-backed container-worker smoke through the actual `WorkerAdapter` path.
+
+Static validation verifies 54 syntax files, the exact 34-tool surface, modern `2026-07-28` protocol, legacy `2025-11-25` protocol, SDK graph, and lockfile integrity. The Docker gate resolves a test image to a RepoDigest before Veteran sees it and proves worktree access, packet access, rootfs/Git-metadata/network isolation, cancellation cleanup, and timeout cleanup against a real engine.
 
 ## Safety and authority
 
@@ -58,10 +63,12 @@ Veteran also supports a built-in `container` worker type at the WorkerAdapter bo
 - pids, memory, and CPU are bounded;
 - `/tmp` is a bounded `noexec,nosuid` tmpfs;
 - only the isolated task worktree is mounted writable;
-- the task worktree `.git` control file and the task packet are mounted read-only;
+- the task worktree `.git` control file and task packet are mounted read-only;
 - environment forwarding is allowlist-only and engine-control variables are rejected;
 - no arbitrary engine flags or extra mounts are exposed;
 - cancel, timeout, and engine-client exit trigger best-effort named-container cleanup.
+
+Real-engine validation exposed an ownership boundary that contract-only tests could not prove: a host-created `0600` task packet is unreadable to an unrelated image-default UID. Veteran therefore defaults confined containers to the host process numeric UID:GID when available, preserving the packet's private mode and avoiding root-owned worktree output. An explicit operator `user` remains authoritative when configured.
 
 The existing runtime-owned HEAD, write-scope, symlink-containment, commit, and serial-integration checks remain authoritative after container execution. `custom-unconfined` workers still require explicit operator opt-in and remain blocked for high/critical/broad-write tasks.
 
@@ -106,6 +113,12 @@ npm ci --include=optional
 npm run check
 ```
 
+Run the real Docker worker proof on an engine-capable host with a digest-pinned image:
+
+```bash
+VETERAN_CONTAINER_SMOKE_IMAGE='registry/image@sha256:<digest>' npm run test:container-smoke
+```
+
 Run protocol checks directly:
 
 ```bash
@@ -118,4 +131,4 @@ The official-SDK commands are only evidence when the exact pinned packages and l
 
 ## Version policy
 
-The protocol, Mission finalize/merge-proposal, and confined-container-worker milestones are implemented on the `0.3.0` development line. The version is intentionally not bumped automatically; versioning/release remains a separate product decision.
+The protocol, Mission finalize/merge-proposal, confined-container-worker, and real engine-backed container proof milestones are implemented on the `0.3.0` development line. The version is intentionally not bumped automatically; versioning/release remains a separate product decision.
