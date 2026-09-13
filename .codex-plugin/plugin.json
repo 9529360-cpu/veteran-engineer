@@ -1,0 +1,23 @@
+{
+  "name": "veteran-engineer",
+  "version": "0.3.0",
+  "description": "Cross-host Veteran Engineer engineering control plane and policy skill.",
+  "author": {
+    "name": "Veteran Engineer Project"
+  },
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Veteran Engineer",
+    "shortDescription": "Cross-host engineering control plane",
+    "longDescription": "Durable project missions, guarded worker execution, validation, review, evidence, and governed engineering experience across supported hosts.",
+    "developerName": "Veteran Engineer Project",
+    "category": "Developer Tools",
+    "capabilities": ["Interactive", "Write"],
+    "defaultPrompt": [
+      "Take over this repository and finish the requested engineering change.",
+      "Debug this regression and validate the real root cause.",
+      "Plan and execute this multi-step repository mission safely."
+    ]
+  }
+}
