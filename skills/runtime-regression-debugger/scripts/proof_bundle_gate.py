@@ -5,7 +5,7 @@ This script validates metadata only; it cannot determine whether the underlying
 observation is truthful or semantically sufficient.
 """
 from __future__ import annotations
-import argparse, datetime as dt, json, pathlib, sys
+import argparse, datetime as dt, json, math, pathlib, sys
 
 LEVELS = {
     "implemented": 0,
@@ -36,8 +36,8 @@ def main() -> int:
         change_identity = str(data.get("change_identity", "")).strip()
         claims = data.get("claims")
         evidence = data.get("evidence")
-        if not change_identity or not isinstance(claims, list) or not isinstance(evidence, list):
-            raise ValueError("require change_identity plus claims/evidence lists")
+        if not change_identity or not isinstance(claims, list) or not claims or not isinstance(evidence, list):
+            raise ValueError("require change_identity plus a non-empty claims list and an evidence list")
         now = parse_time(a.now) if a.now else dt.datetime.now(dt.timezone.utc)
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -64,7 +64,9 @@ def main() -> int:
         if max_age is not None:
             try:
                 age_limit = float(max_age)
-                if not observed:
+                if not math.isfinite(age_limit) or age_limit < 0:
+                    problems.append("invalid_freshness")
+                elif not observed:
                     problems.append("freshness_unverifiable")
                 else:
                     age_hours = (now - parse_time(observed)).total_seconds() / 3600

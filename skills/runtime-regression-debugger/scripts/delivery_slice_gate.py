@@ -93,6 +93,8 @@ def main() -> int:
         elif status == "not_applicable":
             if not nonempty(row.get("reason")):
                 gaps.append(f"{prefix} not_applicable but missing reason")
+        else:
+            gaps.append(f"{prefix} is not closed: {status}")
 
     companions = payload.get("companions", [])
     if not isinstance(companions, list):
@@ -115,9 +117,9 @@ def main() -> int:
             gaps.append(f"{prefix} status must be one of {sorted(ALLOWED_STATUS)}")
             continue
         if applicable:
-            if status == "not_applicable":
-                gaps.append(f"{prefix} marked applicable but status is not_applicable")
-            if status == "done" and not evidence_ok(row.get("evidence")):
+            if status != "done":
+                gaps.append(f"{prefix} applicable but status is {status!r}")
+            elif not evidence_ok(row.get("evidence")):
                 gaps.append(f"{prefix} done but missing evidence")
         else:
             if status != "not_applicable":

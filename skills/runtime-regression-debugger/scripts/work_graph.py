@@ -54,10 +54,14 @@ def norm_path(value: str) -> str:
     value = value.replace("\\", "/").strip()
     if not value:
         raise RuntimeError("write paths must not be empty")
+    if value.startswith("/") or (len(value) >= 2 and value[0].isalpha() and value[1] == ":"):
+        raise RuntimeError("write paths must be repository-relative")
     value = posixpath.normpath(value)
     if value == ".":
         raise RuntimeError("write paths must not normalize to '.'")
-    return value.lstrip("./")
+    if value == ".." or value.startswith("../"):
+        raise RuntimeError("write paths must stay within repository")
+    return value
 
 
 def normalize_tasks(data: dict) -> dict[str, dict]:
