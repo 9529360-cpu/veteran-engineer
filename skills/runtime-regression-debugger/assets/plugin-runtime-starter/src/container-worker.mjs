@@ -33,11 +33,11 @@ function containerName({ packetPath, mission, task }) {
 export function validateContainerWorkerConfig(config) {
   const engine = String(config?.engine || 'docker');
   if (!ENGINES.has(engine)) {
-    const error = new Error(`Container worker engine must be one of: ${([...ENGINES].join(', ')}`);
+    const error = new Error(`Container worker engine must be one of: ${[...ENGINES].join(', ')}`);
     error.code = 'CONTAINER_WORKER_ENGINE_BLOCKED';
     throw error;
   }
-  if (!EIGEST_IMAGE.test(String(config?.image || ''))) {
+  if (!DIGEST_IMAGE.test(String(config?.image || ''))) {
     const error = new Error('Container worker image must be pinned to an explicit sha256 digest');
     error.code = 'CONTAINER_WORKER_IMAGE_UNPINNED';
     throw error;
