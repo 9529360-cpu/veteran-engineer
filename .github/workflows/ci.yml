@@ -34,3 +34,37 @@ jobs:
 
       - name: Run full validation
         run: npm run check
+
+  container-smoke:
+    name: Docker worker smoke
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+
+      - name: Verify Docker engine
+        run: docker version
+
+      - name: Resolve digest-pinned test image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull node:20-alpine
+          IMAGE="$(docker image inspect node:20-alpine --format '{{index .RepoDigests 0}}')"
+          case "$IMAGE" in
+            *@sha256:*) ;;
+            *) echo "Failed to resolve digest-pinned image" >&2; exit 1 ;;
+          esac
+          echo "Using $IMAGE"
+          echo "VETERAN_CONTAINER_SMOKE_IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
+      - name: Run real container worker smoke
+        run: npm run test:container-smoke
