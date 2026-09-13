@@ -44,11 +44,30 @@ test('container worker invocation is fail-closed and host-isolated by default', 
   assert.ok(invocation.args.includes('type=bind,source=/tmp/artifacts/task.json,target=/veteran/task.json,readonly'));
   assert.ok(invocation.args.includes('VETERAN_TASK_PACKET=/veteran/task.json'));
   assert.ok(invocation.args.includes('WORKER_TOKEN'));
+  if (typeof process.getuid === 'function' && typeof process.getgid === 'function') {
+    const expectedUser = `${process.getuid()}:${process.getgid()}`;
+    const userIndex = invocation.args.indexOf('--user');
+    assert.equal(invocation.args[userIndex + 1], expectedUser);
+    assert.equal(invocation.container.user, expectedUser);
+  }
   assert.equal(invocation.args.at(-3), digestImage);
   assert.deepEqual(invocation.args.slice(-2), ['node', '/opt/worker.mjs']);
 
   const routed = buildWorkerInvocation({ config, worktreePath: '/tmp/task-worktree', packetPath: '/tmp/artifacts/task.json', task, mission });
   assert.deepEqual(routed, invocation);
+});
+
+test('container worker preserves explicit operator user override', () => {
+  const invocation = buildContainerInvocation({
+    config: { type: 'container', image: digestImage, containerCommand: ['worker'], user: '1234:5678' },
+    worktreePath: '/tmp/task-worktree',
+    packetPath: '/tmp/task.json',
+    task,
+    mission
+  });
+  const userIndex = invocation.args.indexOf('--user');
+  assert.equal(invocation.args[userIndex + 1], '1234:5678');
+  assert.equal(invocation.container.user, '1234:5678');
 });
 
 test('container worker refuses mutable images, unknown engines, and unsafe path encoding', () => {
