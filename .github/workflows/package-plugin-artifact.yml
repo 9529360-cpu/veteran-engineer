@@ -89,6 +89,34 @@ jobs:
           grep -q "refuses symbolic link" dist/symlink-test.stderr
           rm -f "$LINK_PATH" dist/should-not-exist.zip dist/symlink-test.stdout dist/symlink-test.stderr
 
+          if [ "$PROFILE" = "web" ]; then
+            printf '%s\n' '{"app":"approved-ci-reference"}' > dist/app.json
+            python3 skills/runtime-regression-debugger/scripts/export_plugin_bundle.py \
+              skills/runtime-regression-debugger \
+              --profile web \
+              --app-manifest dist/app.json \
+              --output dist/web-with-app-positive.zip
+            python3 - <<'PY'
+          import zipfile
+          with zipfile.ZipFile('dist/web-with-app-positive.zip') as archive:
+              assert 'veteran-engineer/.app.json' in archive.namelist()
+          PY
+
+            ln -s app.json dist/app-link.json
+            if python3 skills/runtime-regression-debugger/scripts/export_plugin_bundle.py \
+              skills/runtime-regression-debugger \
+              --profile web \
+              --app-manifest dist/app-link.json \
+              --output dist/web-with-app-symlink.zip \
+              >dist/app-symlink.stdout 2>dist/app-symlink.stderr; then
+              echo "Exporter unexpectedly followed a symbolic-link app manifest" >&2
+              exit 1
+            fi
+            grep -q "refuses symbolic link app manifest" dist/app-symlink.stderr
+            rm -f dist/app.json dist/app-link.json dist/web-with-app-positive.zip \
+              dist/web-with-app-symlink.zip dist/app-symlink.stdout dist/app-symlink.stderr
+          fi
+
       - name: Verify archive boundary and checksum
         shell: bash
         env:
