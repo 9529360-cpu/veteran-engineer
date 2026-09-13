@@ -214,7 +214,7 @@ def main() -> int:
     if args.app_manifest and args.profile != "web":
         raise RuntimeError("--app-manifest is only valid with --profile web")
 
-    app_manifest = pathlib.Path(args.app_manifest).expanduser().resolve() if args.app_manifest else None
+    app_manifest = pathlib.Path(args.app_manifest).expanduser().absolute() if args.app_manifest else None
     output = pathlib.Path(args.output).expanduser().resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="veteran-engineer-plugin-") as temp_name:
