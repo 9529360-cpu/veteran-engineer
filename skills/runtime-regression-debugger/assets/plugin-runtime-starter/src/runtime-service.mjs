@@ -10,6 +10,14 @@ import { resolveSurfaceProfile } from './surface-capabilities.mjs';
 
 const defaultRuntimeRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
+function directRuntimeWorktreeName(worktreesDir, worktreePath) {
+  if (!worktreePath) return null;
+  const root = path.resolve(worktreesDir);
+  const resolved = path.resolve(String(worktreePath));
+  if (path.dirname(resolved) !== root) return null;
+  return path.basename(resolved);
+}
+
 export class RuntimeService {
   constructor({ store, experienceService, protocolMode = MCP_TRANSPORT_MODES.STANDALONE_FALLBACK, runtimeRoot = defaultRuntimeRoot, surfaceProfile = 'local-stdio' }) {
     this.store = store;
@@ -72,10 +80,14 @@ export class RuntimeService {
       if (!['completed', 'cancelled'].includes(mission.status)) referenced.add(`mission-${mission.id}`);
     }
     for (const task of Object.values(state.tasks || {})) {
-      if (!['done', 'cancelled', 'superseded'].includes(task.status)) referenced.add(`task-${task.missionId}-${task.id}`);
+      if (['done', 'cancelled', 'superseded'].includes(task.status)) continue;
+      for (const dispatch of task.dispatches || []) {
+        const name = directRuntimeWorktreeName(this.store.worktreesDir, dispatch.worktreePath);
+        if (name) referenced.add(name);
+      }
     }
     const entries = await fs.readdir(this.store.worktreesDir, { withFileTypes: true }).catch(() => []);
-    const orphans = entries.filter((entry) => entry.isDirectory() && ![...referenced].some((prefix) => entry.name.startsWith(prefix))).map((entry) => entry.name);
+    const orphans = entries.filter((entry) => entry.isDirectory() && !referenced.has(entry.name)).map((entry) => entry.name);
     const removed = [];
     if (apply) {
       for (const name of orphans) {
