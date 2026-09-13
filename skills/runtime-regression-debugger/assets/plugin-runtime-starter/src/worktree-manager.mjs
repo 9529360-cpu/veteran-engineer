@@ -7,6 +7,15 @@ function safeSegment(value) {
   return String(value).replace(/[^a-zA-Z0-9._-]+/g, '-').slice(0, 96);
 }
 
+function gitRefSegment(value) {
+  let segment = safeSegment(value)
+    .replace(/\.\.+/g, '-')
+    .replace(/^\.+/, '')
+    .replace(/\.+$/, '');
+  if (segment.endsWith('.lock')) segment = `${segment.slice(0, -5)}-lock`;
+  return segment || 'id';
+}
+
 export class WorktreeManager {
   constructor({ store }) {
     this.store = store;
@@ -21,11 +30,11 @@ export class WorktreeManager {
   }
 
   missionBranch(mission) {
-    return `veteran/mission/${safeSegment(mission.id)}`;
+    return `veteran/mission/${gitRefSegment(mission.id)}`;
   }
 
   taskBranch(mission, task, attempt) {
-    return `veteran/task/${safeSegment(mission.id)}/${safeSegment(task.id)}-${attempt}`;
+    return `veteran/task/${gitRefSegment(mission.id)}/${gitRefSegment(task.id)}-${attempt}`;
   }
 
   async ensureMissionWorktree(project, mission) {
