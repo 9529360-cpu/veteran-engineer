@@ -79,7 +79,9 @@ Dependent waves branch from the updated Mission integration head. Do not auto-me
 
 ## Persistence boundary
 
-The JSON store is a local-host control-plane store with cross-process file locking, atomic replacement, backup recovery, and an audit hash chain. It is suitable for multiple local Veteran processes that share the same filesystem and lock discipline. Before team/hosted deployment, network filesystems with weak lock semantics, or horizontally distributed writers, replace it with a transactional store while preserving the domain state transitions.
+Local JSON remains the default local-host control-plane store with cross-process file locking, atomic replacement, backup recovery, and an audit hash chain. The bundled runtime also includes an explicit PostgreSQL hosted backend behind the same base, transaction, and durable-outcome contracts. Do not branch Mission/MCP semantics on backend kind.
+
+For hosted or multi-instance writers, keep serialization at the database authority boundary, require opaque compare-and-commit revisions, commit state plus audit in one database transaction, and reconcile lost COMMIT acknowledgement by durable commit identity rather than blind retry. Prove concurrency with independently constructed backend instances/connection pools targeting the same durable identity. Read `references/hosted-state-backend-engineering.md` before changing these semantics.
 
 Store bounded summaries in state. Keep large logs, patches, traces, screenshots, and other artifacts in file/object storage and retain stable pointers.
 
@@ -101,16 +103,10 @@ Worker authorization remains narrower than release/production authorization. Nev
 
 Runtime failures may create candidate lessons, never automatically active rules. Current repository/runtime truth supersedes stored project memory.
 
-## Next evolution after V2
+## Current convergence and next evolution
 
-Prioritize only after the current checkpoint gates are honest:
+The bundled `0.3.0` starter already includes proof-fresh finalize proposals without automatic merge/push, confined container workers, layered state-backend contracts, Local JSON durability reconciliation, and an opt-in PostgreSQL hosted backend with real-engine and cross-instance concurrency evidence. Normal validation also enforces root/runtime-starter parity when the starter is embedded in the repository.
 
-1. preserve the now-validated pinned official-SDK `2026-07-28` gate, exact dependency graph, lockfile integrity, stateful call, and fallback negative coverage in every exported checkpoint;
-2. Mission finalize/rebase/merge proposal with separate explicit authorization and no automatic user-branch mutation;
-3. worker sandbox/container adapter for stronger filesystem/network/secrets isolation;
-4. review/approval cockpit UI where it materially improves evidence inspection and consequence approvals;
-5. transactional hosted state store before distributed/team writers;
-6. GitHub/CI/issue-system connectors behind bounded operator intents;
-7. throughput/change-failure/rework benchmark telemetry.
+Keep those gates stable before opening another feature wave. The next major step should be a deliberate product/release decision, such as a versioned release candidate, formal packaging of optional hosted capabilities, or a bounded new connector. Do not reopen a completed milestone merely because an old roadmap item still exists; refresh repository truth first.
 
 Do not add autonomous production mutation before the validation, recovery, approval, and release-authority model is proven.
