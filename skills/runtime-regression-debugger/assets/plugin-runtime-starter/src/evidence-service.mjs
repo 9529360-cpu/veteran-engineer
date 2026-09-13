@@ -11,6 +11,10 @@ function attachmentExtension(name) {
   return /^\.[a-z0-9]{1,12}$/.test(ext) ? ext : '.bin';
 }
 
+async function cleanupUncommittedFiles(paths) {
+  await Promise.allSettled(paths.map((full) => fs.rm(full, { force: true })));
+}
+
 export class EvidenceService {
   constructor({ store }) {
     this.store = store;
@@ -18,21 +22,18 @@ export class EvidenceService {
 
   async record({ projectId, missionId = null, taskId = null, type, summary, sourceIdentity = null, runtimeIdentity = null, artifact = null, attachments = [], metadata = {} }) {
     const id = randomId('evidence');
-    let artifactPointer = null;
-    let artifactHash = null;
-    if (artifact !== null && artifact !== undefined) {
-      const content = typeof artifact === 'string' ? artifact : `${JSON.stringify(artifact, null, 2)}\n`;
-      artifactHash = sha256(content);
-      const filename = `${id}.txt`;
-      const full = path.join(this.store.artifactsDir, filename);
-      await fs.writeFile(full, content, { mode: 0o600 });
-      artifactPointer = `artifacts/${filename}`;
-    }
-    const attachmentRecords = [];
     if (!Array.isArray(attachments)) throw new TypeError('evidence attachments must be an array');
     if (attachments.length > MAX_ATTACHMENTS) throw new RangeError(`evidence attachments may contain at most ${MAX_ATTACHMENTS} files`);
+
+    const artifactContent = artifact !== null && artifact !== undefined
+      ? (typeof artifact === 'string' ? artifact : `${JSON.stringify(artifact, null, 2)}\n`)
+      : null;
+    const artifactFilename = artifactContent !== null ? `${id}.txt` : null;
+    const artifactPointer = artifactFilename ? `artifacts/${artifactFilename}` : null;
+    const artifactHash = artifactContent !== null ? sha256(artifactContent) : null;
+
     let attachmentTotalBytes = 0;
-    const normalizedAttachments = attachments.map((item) => {
+    const normalizedAttachments = attachments.map((item, index) => {
       if (!item || typeof item !== 'object' || !item.name || (typeof item.content !== 'string' && !Buffer.isBuffer(item.content) && !(item.content instanceof Uint8Array))) {
         throw new TypeError('evidence attachment must provide name and string/binary content');
       }
@@ -40,20 +41,20 @@ export class EvidenceService {
       if (content.length > MAX_ATTACHMENT_BYTES) throw new RangeError(`evidence attachment exceeds ${MAX_ATTACHMENT_BYTES} bytes`);
       attachmentTotalBytes += content.length;
       if (attachmentTotalBytes > MAX_ATTACHMENT_TOTAL_BYTES) throw new RangeError(`evidence attachments exceed ${MAX_ATTACHMENT_TOTAL_BYTES} total bytes`);
-      return { item, content };
-    });
-    for (const [index, { item, content }] of normalizedAttachments.entries()) {
       const filename = `${id}-${String(index + 1).padStart(3, '0')}${attachmentExtension(item.name)}`;
-      const full = path.join(this.store.artifactsDir, filename);
-      await fs.writeFile(full, content, { mode: 0o600 });
-      attachmentRecords.push({
-        name: String(item.name).slice(0, 1000),
-        kind: item.kind ? String(item.kind).slice(0, 80) : 'evidence-attachment',
-        artifactPointer: `artifacts/${filename}`,
-        artifactHash: sha256(content),
-        bytes: content.length
-      });
-    }
+      return {
+        content,
+        filename,
+        record: {
+          name: String(item.name).slice(0, 1000),
+          kind: item.kind ? String(item.kind).slice(0, 80) : 'evidence-attachment',
+          artifactPointer: `artifacts/${filename}`,
+          artifactHash: sha256(content),
+          bytes: content.length
+        }
+      };
+    });
+    const attachmentRecords = normalizedAttachments.map((item) => item.record);
     const record = {
       id,
       projectId,
@@ -69,14 +70,31 @@ export class EvidenceService {
       metadata,
       createdAt: nowIso()
     };
-    await this.store.transaction('evidence_recorded', (state) => {
-      state.evidence[id] = record;
-      if (taskId && missionId) {
-        const task = state.tasks[`${missionId}:${taskId}`];
-        if (task && !task.evidenceIds.includes(id)) task.evidenceIds.push(id);
+
+    const createdFiles = [];
+    try {
+      if (artifactContent !== null) {
+        const full = path.join(this.store.artifactsDir, artifactFilename);
+        createdFiles.push(full);
+        await fs.writeFile(full, artifactContent, { mode: 0o600 });
       }
-    }, { evidenceId: id, type, projectId, missionId, taskId, attachmentCount: attachmentRecords.length });
-    return record;
+      for (const attachment of normalizedAttachments) {
+        const full = path.join(this.store.artifactsDir, attachment.filename);
+        createdFiles.push(full);
+        await fs.writeFile(full, attachment.content, { mode: 0o600 });
+      }
+      await this.store.transaction('evidence_recorded', (state) => {
+        state.evidence[id] = record;
+        if (taskId && missionId) {
+          const task = state.tasks[`${missionId}:${taskId}`];
+          if (task && !task.evidenceIds.includes(id)) task.evidenceIds.push(id);
+        }
+      }, { evidenceId: id, type, projectId, missionId, taskId, attachmentCount: attachmentRecords.length });
+      return record;
+    } catch (error) {
+      if (error?.stateCommitted !== true) await cleanupUncommittedFiles(createdFiles);
+      throw error;
+    }
   }
 
   async query({ projectId, missionId, taskId, type, ids, limit = 50 }) {
