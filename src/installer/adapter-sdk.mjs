@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -23,22 +24,57 @@ export function validateHostAdapter(adapter, source = '<built-in>') {
   return adapter;
 }
 
+function invalidExternalAdapter(source, cause) {
+  const sourceName = path.basename(source);
+  const digest = crypto.createHash('sha256').update(path.resolve(source)).digest('hex').slice(0, 16);
+  const failureCode = typeof cause?.code === 'string' && cause.code ? cause.code : 'HOST_ADAPTER_LOAD_FAILED';
+  const details = { source: sourceName, failureCode };
+  const fail = () => {
+    const error = new Error(`External host adapter ${sourceName} is invalid and cannot be invoked`);
+    error.code = 'HOST_ADAPTER_INVALID';
+    error.details = details;
+    throw error;
+  };
+  return validateHostAdapter({
+    apiVersion: HOST_ADAPTER_API_VERSION,
+    id: `invalid-external-${digest}`,
+    displayName: `Invalid external adapter (${sourceName})`,
+    surfaceProfile: 'local-stdio',
+    capabilities: { external: true, invalid: true, ...details },
+    async install() { return fail(); },
+    async status() { return { installed: false, error: 'HOST_ADAPTER_INVALID', ...details }; },
+    async doctor() { return { ok: false, error: 'HOST_ADAPTER_INVALID', checks: [{ name: 'adapter-valid', ok: false, ...details }] }; },
+    async uninstall() { return fail(); }
+  }, source);
+}
+
 export async function loadExternalAdapters(trustedDirs = []) {
   const adapters = [];
   for (const rawDir of trustedDirs) {
     const dir = path.resolve(rawDir);
     if (!(await pathExists(dir))) continue;
-    const entries = await fs.readdir(dir, { withFileTypes: true });
+    let entries;
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch (error) {
+      adapters.push(invalidExternalAdapter(dir, error));
+      continue;
+    }
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
       if (!entry.isFile() || !entry.name.endsWith('.mjs')) continue;
-      const module = await import(pathToFileURL(path.join(dir, entry.name)).href);
-      const adapter = validateHostAdapter(module.default || module.adapter, path.join(dir, entry.name));
-      if (path.basename(entry.name, '.mjs') !== adapter.id) {
-        const error = new Error(`External adapter filename must match id: ${entry.name} vs ${adapter.id}`);
-        error.code = 'HOST_ADAPTER_FILENAME_MISMATCH';
-        throw error;
+      const source = path.join(dir, entry.name);
+      try {
+        const module = await import(pathToFileURL(source).href);
+        const adapter = validateHostAdapter(module.default || module.adapter, source);
+        if (path.basename(entry.name, '.mjs') !== adapter.id) {
+          const error = new Error(`External adapter filename must match id: ${entry.name} vs ${adapter.id}`);
+          error.code = 'HOST_ADAPTER_FILENAME_MISMATCH';
+          throw error;
+        }
+        adapters.push(adapter);
+      } catch (error) {
+        adapters.push(invalidExternalAdapter(source, error));
       }
-      adapters.push(adapter);
     }
   }
   return adapters;
