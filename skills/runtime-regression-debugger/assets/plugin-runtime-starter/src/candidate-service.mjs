@@ -23,7 +23,7 @@ export class CandidateService {
     const missionWt = await this.worktreeManager.ensureMissionWorktree(project, mission);
     const missionHead = (await git(missionWt.path, ['rev-parse', 'HEAD'])).stdout.trim();
     if (live.head === mission.baseSourceIdentity.head) {
-      return { ok: true, sourceDrift: false, sourceHead: live.head, missionHead, candidateHead: missionHead, mergeTree: null };
+      return { ok: true, sourceDrift: false, sourceHead: live.head, sourceBranch: live.branch, missionHead, candidateHead: missionHead, mergeTree: null };
     }
     const merge = await git(project.repoPath, ['merge-tree', '--write-tree', live.head, missionHead], { allowFailure: true });
     const mergeTree = parseMergeTree(merge.stdout);
@@ -31,6 +31,7 @@ export class CandidateService {
       ok: merge.code === 0 && Boolean(mergeTree),
       sourceDrift: true,
       sourceHead: live.head,
+      sourceBranch: live.branch,
       missionHead,
       mergeTree,
       conflictOutput: merge.code === 0 ? null : `${merge.stdout}\n${merge.stderr}`.slice(0, 8000)
@@ -58,6 +59,7 @@ export class CandidateService {
       commitSha,
       ref,
       sourceHead: preflight.sourceHead,
+      sourceBranch: preflight.sourceBranch || null,
       missionHead: preflight.missionHead,
       sourceDrift: preflight.sourceDrift,
       reason,
@@ -74,6 +76,15 @@ export class CandidateService {
       state.runtime.candidates ||= {};
       state.runtime.candidates[candidateId] = candidate;
       const target = state.missions[missionId];
+      if (target.activeMergeProposalId) {
+        const prior = state.runtime.mergeProposals?.[target.activeMergeProposalId];
+        if (prior && prior.status === 'proposed') {
+          prior.status = 'superseded';
+          prior.supersededAt = nowIso();
+          prior.supersededByCandidateId = candidateId;
+        }
+        target.activeMergeProposalId = null;
+      }
       target.candidateIds.push(candidateId);
       target.activeCandidateId = candidateId;
       target.updatedAt = nowIso();
@@ -83,7 +94,7 @@ export class CandidateService {
         target.validation = { status: 'pending', evidenceIds: [], commitSha };
         target.review = { status: 'pending', evidenceIds: [], findings: [], commitSha };
         target.semanticReview = { status: 'pending', evidenceIds: [], findings: [], commitSha };
-        target.currentSourceIdentity = { ...target.currentSourceIdentity, head: preflight.sourceHead, dirty: false, dirtyPaths: [] };
+        target.currentSourceIdentity = { ...target.currentSourceIdentity, head: preflight.sourceHead, branch: preflight.sourceBranch || null, dirty: false, dirtyPaths: [] };
       } else {
         target.phase = 'candidate';
         target.status = 'candidate-ready';

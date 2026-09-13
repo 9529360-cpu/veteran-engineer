@@ -115,7 +115,7 @@ export class MissionService {
         timeoutMs: provider.timeoutMs || 180_000
       });
       let parsed = null;
-      try { parsed = JSON.parse(result.stdout); } catch { /* validated below */ }
+      try { parsed = JSON.parse(result.stdout); } catch { }
       if (result.code !== 0 || !Array.isArray(parsed?.tasks) || parsed.tasks.length === 0 || parsed.tasks.length > 64) {
         const error = new Error('Planner provider failed or returned an invalid task graph');
         error.code = 'PLANNER_PROVIDER_FAILED';
@@ -158,6 +158,8 @@ export class MissionService {
       semanticReview: { status: 'pending', evidenceIds: [], findings: [] },
       candidateIds: [],
       activeCandidateId: null,
+      mergeProposalIds: [],
+      activeMergeProposalId: null,
       interruption: null,
       planningExperience: {
         ids: experience.items.map((item) => item.id),
@@ -195,8 +197,9 @@ export class MissionService {
     const mission = state.missions[missionId];
     if (!mission) throw Object.assign(new Error(`Unknown mission: ${missionId}`), { code: 'MISSION_NOT_FOUND' });
     const tasks = Object.values(state.tasks).filter((task) => task.missionId === missionId).sort((a, b) => a.id.localeCompare(b.id));
-    const candidates = mission.candidateIds.map((id) => state.runtime.candidates?.[id]).filter(Boolean);
-    return { mission, tasks, candidates };
+    const candidates = (mission.candidateIds || []).map((id) => state.runtime.candidates?.[id]).filter(Boolean);
+    const mergeProposals = (mission.mergeProposalIds || []).map((id) => state.runtime.mergeProposals?.[id]).filter(Boolean);
+    return { mission, tasks, candidates, mergeProposals };
   }
 
   async readiness({ missionId }) {
@@ -204,20 +207,25 @@ export class MissionService {
     const project = await this.projectService.get(mission.projectId);
     const live = await sourceIdentity(project.repoPath);
     const blockers = [];
-    if (live.dirty && ['execution', 'candidate'].includes(mission.phase)) blockers.push({ code: 'DIRTY_SOURCE_BLOCKED', details: live.dirtyPaths });
+    if (live.dirty && ['execution', 'candidate', 'finalize'].includes(mission.phase)) blockers.push({ code: 'DIRTY_SOURCE_BLOCKED', details: live.dirtyPaths });
     if (mission.status === 'cancelled') blockers.push({ code: 'MISSION_CANCELLED' });
     if (mission.interruption?.requiresReconciliation) blockers.push({ code: 'RECONCILIATION_REQUIRED' });
     if (mission.phase === 'execution') {
       const failed = tasks.filter((task) => task.status === 'failed');
       if (failed.length) blockers.push({ code: 'FAILED_TASKS', taskIds: failed.map((task) => task.id) });
     }
+    if (mission.phase === 'finalize' && !mission.activeCandidateId) blockers.push({ code: 'CANDIDATE_REQUIRED' });
+    const operatorActionRequired = mission.phase === 'finalize' && mission.status === 'awaiting-operator-merge';
     return {
       missionId,
       ready: blockers.length === 0,
       phase: mission.phase,
       status: mission.status,
       liveSourceIdentity: live,
-      blockers
+      blockers,
+      operatorActionRequired,
+      nextAction: operatorActionRequired ? 'operator-merge' : null,
+      activeMergeProposalId: mission.activeMergeProposalId || null
     };
   }
 
