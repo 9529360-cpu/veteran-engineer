@@ -219,7 +219,7 @@ export class StateStore {
     const release = await this.acquireLock();
     try {
       const state = await this.read();
-      return this.#reconcileStateCommitAudit(state);
+      return await this.#reconcileStateCommitAudit(state);
     } finally {
       await release();
     }
