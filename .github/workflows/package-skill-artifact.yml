@@ -24,6 +24,8 @@ jobs:
           set -euo pipefail
           test -f skills/runtime-regression-debugger/SKILL.md
           test -f skills/runtime-regression-debugger/agents/openai.yaml
+          test -f skills/runtime-regression-debugger/assets/plugin-runtime-starter/.mcp.json
+          test -f skills/runtime-regression-debugger/assets/plugin-runtime-starter/.codex-plugin/plugin.json
           bytes=$(du -sb skills/runtime-regression-debugger | awk '{print $1}')
           test "$bytes" -lt 26214400
           echo "skill_bytes=$bytes"
@@ -35,4 +37,5 @@ jobs:
           name: runtime-regression-debugger-source
           path: skills/runtime-regression-debugger
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 1
