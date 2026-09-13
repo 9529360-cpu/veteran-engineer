@@ -100,14 +100,23 @@ export class ValidationService {
 
     let commitSha;
     let mission = null;
+    let validationMissionId = null;
     if (candidateId) {
       const state = await this.store.read();
       const candidate = state.runtime.candidates?.[candidateId];
-      if (!candidate || candidate.projectId !== projectId) throw Object.assign(new Error(`Unknown candidate ${candidateId}`), { code: 'CANDIDATE_NOT_FOUND' });
+      const candidateMission = candidate ? state.missions[candidate.missionId] : null;
+      if (!candidate || candidate.projectId !== projectId || !candidateMission || candidateMission.projectId !== projectId || (missionId && missionId !== candidate.missionId)) {
+        throw Object.assign(new Error(`Unknown candidate ${candidateId}`), { code: 'CANDIDATE_NOT_FOUND' });
+      }
       commitSha = candidate.commitSha;
-      mission = state.missions[candidate.missionId];
+      mission = candidateMission;
+      if (missionId) validationMissionId = candidate.missionId;
     } else if (missionId) {
       ({ mission } = await this.missionService.status({ missionId }));
+      if (mission.projectId !== projectId) {
+        throw Object.assign(new Error(`Unknown mission: ${missionId}`), { code: 'MISSION_NOT_FOUND' });
+      }
+      validationMissionId = mission.id;
       const missionWt = await this.worktreeManager.ensureMissionWorktree(project, mission);
       commitSha = (await git(missionWt.path, ['rev-parse', 'HEAD'])).stdout.trim();
     } else {
@@ -247,7 +256,7 @@ export class ValidationService {
     } : null;
     const evidence = await this.evidenceService.record({
       projectId,
-      missionId: mission?.id || missionId,
+      missionId: mission?.id || null,
       type: 'validation',
       summary: { capability: selected.name, passed, exitCode: result.code, commitSha, failureStage, service: serviceSummary, browser: browserSummary, observability: observabilitySummary, artifacts: artifactSummary },
       sourceIdentity: { head: commitSha },
@@ -255,15 +264,15 @@ export class ValidationService {
       attachments: artifactCollection.attachments,
       metadata: { candidateId }
     });
-    if (missionId) {
+    if (validationMissionId) {
       await this.store.transaction('mission_validation_recorded', (state) => {
-        const target = state.missions[missionId];
+        const target = state.missions[validationMissionId];
         target.validation.status = passed ? 'passed' : 'failed';
         target.validation.evidenceIds.push(evidence.id);
         target.validation.commitSha = commitSha;
         target.updatedAt = nowIso();
-        state.runtime.timeline.push({ type: 'validation_completed', missionId, at: nowIso(), passed, evidenceId: evidence.id, commitSha });
-      }, { missionId, passed, capability: selected.name, commitSha, failureStage });
+        state.runtime.timeline.push({ type: 'validation_completed', missionId: validationMissionId, at: nowIso(), passed, evidenceId: evidence.id, commitSha });
+      }, { missionId: validationMissionId, passed, capability: selected.name, commitSha, failureStage });
     }
     return { passed, capability: selected.name, commitSha, evidenceId: evidence.id, exitCode: result.code, failureStage, service: serviceSummary, browser: browserSummary, observability: observabilitySummary, artifacts: artifactSummary };
   }
