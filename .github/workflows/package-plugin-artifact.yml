@@ -1,0 +1,116 @@
+name: Package Plugin Artifact
+
+on:
+  pull_request:
+    paths:
+      - ".codex-plugin/**"
+      - ".mcp.json"
+      - "package.json"
+      - "mcp/**"
+      - "src/**"
+      - "tests/**"
+      - "skills/runtime-regression-debugger/**"
+      - ".github/workflows/package-plugin-artifact.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - ".codex-plugin/**"
+      - ".mcp.json"
+      - "package.json"
+      - "mcp/**"
+      - "src/**"
+      - "tests/**"
+      - "skills/runtime-regression-debugger/**"
+      - ".github/workflows/package-plugin-artifact.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package-plugin:
+    name: Export installable plugin bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Export plugin bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          python3 skills/runtime-regression-debugger/scripts/export_plugin_bundle.py \
+            skills/runtime-regression-debugger \
+            --output dist/veteran-engineer-plugin.zip
+
+      - name: Verify archive boundary and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import pathlib
+          import zipfile
+
+          bundle = pathlib.Path("dist/veteran-engineer-plugin.zip")
+          required = {
+              "veteran-engineer/.codex-plugin/plugin.json",
+              "veteran-engineer/.mcp.json",
+              "veteran-engineer/mcp/server.mjs",
+              "veteran-engineer/src/mcp-server.mjs",
+              "veteran-engineer/skills/runtime-regression-debugger/SKILL.md",
+              "veteran-engineer/skills/runtime-regression-debugger/agents/openai.yaml",
+          }
+          forbidden_parts = {".git", "node_modules", "__pycache__"}
+          nested_runtime_prefix = "veteran-engineer/skills/runtime-regression-debugger/assets/plugin-runtime-starter/"
+
+          with zipfile.ZipFile(bundle) as archive:
+              infos = archive.infolist()
+              names = [info.filename for info in infos if not info.is_dir()]
+              if not names:
+                  raise SystemExit("plugin archive is empty")
+              if len(names) != len(set(names)):
+                  raise SystemExit("plugin archive contains duplicate entries")
+              for name in names:
+                  member = pathlib.PurePosixPath(name)
+                  if member.is_absolute() or ".." in member.parts:
+                      raise SystemExit(f"unsafe archive member: {name}")
+                  if not member.parts or member.parts[0] != "veteran-engineer":
+                      raise SystemExit(f"archive member escaped plugin root: {name}")
+                  if any(part in forbidden_parts for part in member.parts):
+                      raise SystemExit(f"forbidden archive member: {name}")
+                  if name.startswith(nested_runtime_prefix):
+                      raise SystemExit(f"runtime starter duplicated inside bundled Skill: {name}")
+
+              missing = sorted(required.difference(names))
+              if missing:
+                  raise SystemExit("plugin archive missing required entries: " + ", ".join(missing))
+
+              uncompressed_bytes = sum(info.file_size for info in infos)
+              if uncompressed_bytes >= 25 * 1024 * 1024:
+                  raise SystemExit(f"plugin archive is unexpectedly large: {uncompressed_bytes} bytes uncompressed")
+
+          digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
+          checksum = pathlib.Path("dist/veteran-engineer-plugin.sha256")
+          checksum.write_text(f"{digest}  {bundle.name}\n", encoding="utf-8")
+          print(f"plugin_sha256={digest}")
+          print(f"plugin_bytes={bundle.stat().st_size}")
+          PY
+
+      - name: Upload plugin artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: veteran-engineer-plugin-${{ github.sha }}
+          path: |
+            dist/veteran-engineer-plugin.zip
+            dist/veteran-engineer-plugin.sha256
+          if-no-files-found: error
+          retention-days: 7
