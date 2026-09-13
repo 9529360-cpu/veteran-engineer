@@ -10,6 +10,7 @@ export class HandoffService {
 
   async export({ missionId }) {
     const { mission, tasks, candidates } = await this.missionService.status({ missionId });
+    const readiness = await this.missionService.readiness({ missionId });
     const state = await this.store.read();
     const project = state.projects[mission.projectId];
     const evidence = Object.values(state.evidence).filter((item) => item.missionId === missionId).map((item) => ({ id: item.id, type: item.type, summary: item.summary, sourceIdentity: item.sourceIdentity, createdAt: item.createdAt }));
@@ -24,7 +25,8 @@ export class HandoffService {
       evidence,
       activeExperiences: experiences,
       timeline: state.runtime.timeline.filter((item) => item.missionId === missionId),
-      nextSafeAction: mission.phase
+      readiness,
+      nextSafeAction: readiness.nextAction || (readiness.ready ? mission.phase : null)
     };
     const id = randomId('handoff');
     const filename = `${id}.json`;
