@@ -4,6 +4,7 @@ import { acquireRemoteRepository, normalizeRemoteRepositoryUrl, sanitizeStoredRe
 import { nowIso, randomId, sha256 } from './util.mjs';
 import { projectPolicy } from './operator-config.mjs';
 import { requireSurfaceCapability, resolveSurfaceProfile } from './surface-capabilities.mjs';
+import { inspectProjectEnvironment } from './project-environment.mjs';
 
 export class ProjectService {
   constructor({ store, operatorConfig = { defaults: {}, projects: {} }, managedProjectsRoot, surfaceProfile = 'local-stdio' }) {
@@ -58,6 +59,7 @@ export class ProjectService {
     }
 
     const identity = await sourceIdentity(repo);
+    const environmentProfile = await inspectProjectEnvironment(repo);
     const projectKey = sha256(repo).slice(0, 24);
     const policy = projectPolicy(this.operatorConfig, repo, remoteUrl);
     return this.store.transaction('project_opened', (state) => {
@@ -74,6 +76,7 @@ export class ProjectService {
           createdAt: nowIso(),
           updatedAt: nowIso(),
           sourceIdentity: identity,
+          environmentProfile,
           validationCapabilities: policy.validationCapabilities,
           workerPolicy: policy.workerPolicy,
           plannerProvider: policy.plannerProvider,
@@ -86,6 +89,7 @@ export class ProjectService {
       } else {
         project.updatedAt = nowIso();
         project.sourceIdentity = identity;
+        project.environmentProfile = environmentProfile;
         project.remoteUrl = remoteUrl || project.remoteUrl;
         project.sourceKind = sourceKind;
         project.managedCheckout = sourceKind === 'managed-remote';
@@ -98,7 +102,7 @@ export class ProjectService {
         project.requiredValidationCapabilities = policy.requiredValidationCapabilities;
       }
       return managedCheckout ? { ...project, checkout: managedCheckout } : project;
-    }, { repo, head: identity.head, dirty: identity.dirty, sourceKind, remoteUrl });
+    }, { repo, head: identity.head, dirty: identity.dirty, sourceKind, remoteUrl, environmentContract: environmentProfile.contract, runtimeFamilies: environmentProfile.runtimeFamilies });
   }
 
   async snapshot({ projectId }) {
@@ -106,12 +110,14 @@ export class ProjectService {
     const project = state.projects[projectId];
     if (!project) throw Object.assign(new Error(`Unknown project: ${projectId}`), { code: 'PROJECT_NOT_FOUND' });
     const identity = await sourceIdentity(project.repoPath);
+    const environmentProfile = await inspectProjectEnvironment(project.repoPath);
     const result = await this.store.transaction('project_snapshotted', (working) => {
       const target = working.projects[projectId];
       target.sourceIdentity = identity;
+      target.environmentProfile = environmentProfile;
       target.updatedAt = nowIso();
       return target;
-    }, { projectId, head: identity.head, dirty: identity.dirty });
+    }, { projectId, head: identity.head, dirty: identity.dirty, environmentContract: environmentProfile.contract, runtimeFamilies: environmentProfile.runtimeFamilies });
     return result;
   }
 
