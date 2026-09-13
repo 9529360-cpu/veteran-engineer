@@ -1,24 +1,34 @@
 #!/usr/bin/env node
 import { VeteranInstaller } from '../src/installer/index.mjs';
 
+function optionValue(argv, index, option) {
+  const value = argv[index + 1];
+  if (typeof value !== 'string' || value.length === 0 || value.startsWith('-')) {
+    const error = new Error(`${option} requires a value`);
+    error.code = 'CLI_ARGUMENT_VALUE_REQUIRED';
+    throw error;
+  }
+  return value;
+}
+
 function parse(argv) {
   const out = { command: argv[0] || 'help', host: null, json: false, purge: false, trustedAdapterDirs: [], options: {} };
   let i = 1;
   if (argv[i] && !argv[i].startsWith('-')) out.host = argv[i++];
   for (; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (arg === '--host') out.host = argv[++i];
+    if (arg === '--host') out.host = optionValue(argv, i++, arg);
     else if (arg === '--json') out.json = true;
     else if (arg === '--purge') out.purge = true;
-    else if (arg === '--home') out.home = argv[++i];
-    else if (arg === '--runtime-root') out.runtimeRoot = argv[++i];
-    else if (arg === '--state-root') out.runtimeStateRoot = argv[++i];
-    else if (arg === '--installer-root') out.installerRoot = argv[++i];
-    else if (arg === '--distribution-root') out.distributionRoot = argv[++i];
-    else if (arg === '--descriptor') out.options.descriptorPath = argv[++i];
-    else if (arg === '--surface-profile') out.options.surfaceProfile = argv[++i];
-    else if (arg === '--hermes-home') out.options.hermesHome = argv[++i];
-    else if (arg === '--trusted-adapter-dir') out.trustedAdapterDirs.push(argv[++i]);
+    else if (arg === '--home') out.home = optionValue(argv, i++, arg);
+    else if (arg === '--runtime-root') out.runtimeRoot = optionValue(argv, i++, arg);
+    else if (arg === '--state-root') out.runtimeStateRoot = optionValue(argv, i++, arg);
+    else if (arg === '--installer-root') out.installerRoot = optionValue(argv, i++, arg);
+    else if (arg === '--distribution-root') out.distributionRoot = optionValue(argv, i++, arg);
+    else if (arg === '--descriptor') out.options.descriptorPath = optionValue(argv, i++, arg);
+    else if (arg === '--surface-profile') out.options.surfaceProfile = optionValue(argv, i++, arg);
+    else if (arg === '--hermes-home') out.options.hermesHome = optionValue(argv, i++, arg);
+    else if (arg === '--trusted-adapter-dir') out.trustedAdapterDirs.push(optionValue(argv, i++, arg));
     else throw new Error(`Unknown argument: ${arg}`);
   }
   return out;
