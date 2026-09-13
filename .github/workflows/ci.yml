@@ -87,8 +87,11 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Install dependencies
+      - name: Install runtime dependencies
         run: npm ci --include=optional
+
+      - name: Install pinned PostgreSQL driver capability
+        run: npm install --no-save --package-lock=false pg@8.23.0
 
       - name: Start digest-pinned PostgreSQL
         shell: bash
