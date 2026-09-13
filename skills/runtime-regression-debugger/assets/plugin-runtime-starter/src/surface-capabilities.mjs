@@ -45,22 +45,32 @@ function cloneProfile(profile) {
   }));
 }
 
+function invalidContract(input) {
+  const error = new Error(`Surface profile objects must declare ${SURFACE_CAPABILITY_CONTRACT} and a profile id`);
+  error.code = 'SURFACE_CAPABILITY_CONTRACT_INVALID';
+  error.details = {
+    expectedContract: SURFACE_CAPABILITY_CONTRACT,
+    receivedContract: typeof input?.contract === 'string' ? input.contract : null,
+    receivedId: typeof input?.id === 'string' ? input.id : null
+  };
+  return error;
+}
+
 export function surfaceProfileNames() {
   return Object.keys(PROFILE_DEFINITIONS);
 }
 
 export function resolveSurfaceProfile(input = 'local-stdio') {
-  if (input && typeof input === 'object' && input.contract === SURFACE_CAPABILITY_CONTRACT && typeof input.id === 'string') {
-    const known = PROFILE_DEFINITIONS[input.id];
-    if (!known) {
-      const error = new Error(`Unknown Veteran Engineer surface profile: ${input.id}`);
-      error.code = 'SURFACE_PROFILE_UNSUPPORTED';
-      error.details = { requested: input.id, supported: surfaceProfileNames() };
-      throw error;
+  let id;
+  if (input && typeof input === 'object') {
+    if (input.contract !== SURFACE_CAPABILITY_CONTRACT || typeof input.id !== 'string' || !input.id.trim()) {
+      throw invalidContract(input);
     }
-    return cloneProfile(known);
+    id = input.id.trim();
+  } else {
+    id = typeof input === 'string' && input.trim() ? input.trim() : 'local-stdio';
   }
-  const id = typeof input === 'string' && input.trim() ? input.trim() : 'local-stdio';
+
   const profile = PROFILE_DEFINITIONS[id];
   if (!profile) {
     const error = new Error(`Unknown Veteran Engineer surface profile: ${id}`);
@@ -72,12 +82,7 @@ export function resolveSurfaceProfile(input = 'local-stdio') {
 }
 
 export function requireSurfaceCapability(profile, group, capability, message = null) {
-  const resolved = typeof profile === 'string' || !profile?.contract ? resolveSurfaceProfile(profile) : profile;
-  if (resolved.contract !== SURFACE_CAPABILITY_CONTRACT) {
-    const error = new Error(`Surface profile must declare ${SURFACE_CAPABILITY_CONTRACT}`);
-    error.code = 'SURFACE_CAPABILITY_CONTRACT_INVALID';
-    throw error;
-  }
+  const resolved = resolveSurfaceProfile(profile);
   if (resolved.capabilities?.[group]?.[capability] === true) return resolved;
   const error = new Error(message || `Surface ${resolved.id} does not provide ${group}.${capability}`);
   error.code = 'SURFACE_CAPABILITY_UNAVAILABLE';
