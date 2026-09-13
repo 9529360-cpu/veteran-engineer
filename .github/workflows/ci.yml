@@ -113,12 +113,22 @@ jobs:
 
           ready_streak=0
           for attempt in $(seq 1 45); do
-            if docker exec veteran-postgres \
-              psql -U veteran -d veteran -v ON_ERROR_STOP=1 -Atqc 'SELECT 1' \
-              2>/dev/null | grep -qx '1'; then
+            if node <<'NODE' >/dev/null 2>&1
+          const { Pool } = require('pg');
+          (async () => {
+            const pool = new Pool({ connectionString: process.env.VETERAN_TEST_POSTGRES_URL, max: 1 });
+            try {
+              const result = await pool.query('SELECT 1 AS ready');
+              if (result.rows?.[0]?.ready !== 1) process.exitCode = 1;
+            } finally {
+              await pool.end().catch(() => {});
+            }
+          })().catch(() => { process.exitCode = 1; });
+          NODE
+            then
               ready_streak=$((ready_streak + 1))
               if [ "$ready_streak" -ge 2 ]; then
-                echo "PostgreSQL accepted two consecutive SQL probes"
+                echo "PostgreSQL accepted two consecutive runner-to-database SQL probes"
                 exit 0
               fi
             else
@@ -127,7 +137,7 @@ jobs:
             sleep 1
           done
 
-          echo "PostgreSQL did not become stably SQL-ready" >&2
+          echo "PostgreSQL did not become stably reachable through the Node pg path" >&2
           docker ps -a --filter name=veteran-postgres >&2
           docker logs veteran-postgres >&2
           exit 1
