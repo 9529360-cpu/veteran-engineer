@@ -42,6 +42,10 @@ JS_TECH = {
         "@angular/core": "Angular", "@remix-run/react": "Remix", "astro": "Astro",
         "@tanstack/react-query": "TanStack Query", "swr": "SWR",
     },
+    "mobile": {
+        "react-native": "React Native", "expo": "Expo", "expo-router": "Expo Router",
+        "@react-navigation/native": "React Navigation",
+    },
     "node-backend": {
         "express": "Express", "fastify": "Fastify", "@nestjs/core": "NestJS",
         "koa": "Koa", "hono": "Hono", "elysia": "Elysia", "@trpc/server": "tRPC",
@@ -111,6 +115,7 @@ REFERENCE_RULES = {
     "staff": "references/staff-engineering-execution.md",
     "frontend-react": "references/stack-react-nextjs.md",
     "frontend-other": "references/stack-web-frameworks.md",
+    "mobile": "references/mobile-product-engineering.md",
     "node-backend": "references/stack-node-typescript.md",
     "python-web": "references/stack-python-fastapi.md",
     "data-primary": "references/stack-postgres-redis.md",
@@ -268,6 +273,33 @@ def detect_infra(paths: list[tuple[pathlib.Path, pathlib.Path]], out: dict[str, 
             out["infrastructure"].add("Vercel")
 
 
+def detect_mobile(paths: list[tuple[pathlib.Path, pathlib.Path]], files_by_name: dict[str, list[pathlib.Path]], detected: dict[str, set[str]], languages: set[str], managers: set[str]) -> None:
+    for path in files_by_name.get("pubspec.yaml", [])[:20]:
+        text = read_manifest(path).lower()
+        if re.search(r"(?m)^\s*flutter\s*:", text) or re.search(r"(?m)^\s*sdk\s*:\s*flutter\s*$", text):
+            detected["mobile"].add("Flutter")
+            languages.add("Dart")
+            managers.add("pub")
+            break
+
+    for path, rel in paths:
+        if not path.is_file():
+            continue
+        lower_name = path.name.lower()
+        lower_parts = [part.lower() for part in rel.parts]
+        if lower_name == "project.pbxproj":
+            text = read_manifest(path)
+            if "IPHONEOS_DEPLOYMENT_TARGET" in text or "TARGETED_DEVICE_FAMILY" in text:
+                detected["mobile"].add("iOS/Xcode")
+                languages.add("Swift/Objective-C")
+        if lower_name == "androidmanifest.xml":
+            has_gradle = bool(files_by_name.get("build.gradle") or files_by_name.get("build.gradle.kts") or files_by_name.get("settings.gradle") or files_by_name.get("settings.gradle.kts"))
+            if has_gradle or "android" in lower_parts:
+                detected["mobile"].add("Android")
+                languages.add("Kotlin/Java")
+                managers.add("Gradle")
+
+
 def detect_go(files_by_name: dict[str, list[pathlib.Path]], detected: dict[str, set[str]], languages: set[str], managers: set[str]) -> None:
     if "go.mod" not in files_by_name and "go.work" not in files_by_name:
         return
@@ -394,6 +426,8 @@ def suggested_references(detected: dict[str, set[str]], monorepo: bool) -> set[s
         refs.add(REFERENCE_RULES["frontend-react"])
     if frontend.intersection({"Vue", "Nuxt", "Svelte", "SvelteKit", "Angular", "Remix", "Astro"}):
         refs.add(REFERENCE_RULES["frontend-other"])
+    if detected.get("mobile"):
+        refs.add(REFERENCE_RULES["mobile"])
     for category in ("node-backend", "python-web", "messaging-workflows", "containers-kubernetes", "jvm", "dotnet", "go-services", "legacy-web"):
         if detected.get(category):
             refs.add(REFERENCE_RULES[category])
@@ -477,6 +511,7 @@ def main() -> int:
     detect_jvm(files_by_name, detected, languages, managers)
     detect_dotnet(paths, detected, languages, managers)
     detect_legacy_web(files_by_name, detected, languages, managers)
+    detect_mobile(paths, files_by_name, detected, languages, managers)
 
     if "Cargo.toml" in files_by_name:
         languages.add("Rust")
