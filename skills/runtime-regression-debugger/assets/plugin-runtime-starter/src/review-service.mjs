@@ -64,7 +64,7 @@ export class ReviewService {
     if (candidateId) {
       const state = await this.store.read();
       const candidate = state.runtime.candidates?.[candidateId];
-      if (!candidate) throw Object.assign(new Error(`Unknown candidate ${candidateId}`), { code: 'CANDIDATE_NOT_FOUND' });
+      if (!candidate || candidate.missionId !== missionId) throw Object.assign(new Error(`Unknown candidate ${candidateId}`), { code: 'CANDIDATE_NOT_FOUND' });
       head = candidate.commitSha;
     } else {
       const wt = await this.worktreeManager.ensureMissionWorktree(project, mission);
