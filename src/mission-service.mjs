@@ -205,7 +205,7 @@ export class MissionService {
   }
 
   async readiness({ missionId }) {
-    const { mission, tasks } = await this.status({ missionId });
+    const { mission, tasks, mergeProposals } = await this.status({ missionId });
     const project = await this.projectService.get(mission.projectId);
     const live = await sourceIdentity(project.repoPath);
     const blockers = [];
@@ -217,16 +217,42 @@ export class MissionService {
       if (failed.length) blockers.push({ code: 'FAILED_TASKS', taskIds: failed.map((task) => task.id) });
     }
     if (mission.phase === 'finalize' && !mission.activeCandidateId) blockers.push({ code: 'CANDIDATE_REQUIRED' });
-    const operatorActionRequired = mission.phase === 'finalize' && mission.status === 'awaiting-operator-merge';
+
+    const awaitingOperatorMerge = mission.phase === 'finalize' && mission.status === 'awaiting-operator-merge';
+    let proposalSourceStale = false;
+    if (awaitingOperatorMerge) {
+      const proposal = mergeProposals.find((item) => item.id === mission.activeMergeProposalId);
+      if (!proposal) {
+        blockers.push({ code: 'MERGE_PROPOSAL_REQUIRED', activeMergeProposalId: mission.activeMergeProposalId || null });
+      } else if (proposal.status !== 'proposed') {
+        blockers.push({ code: 'MERGE_PROPOSAL_NOT_ACTIVE', mergeProposalId: proposal.id, status: proposal.status || null });
+      } else if (!proposal.expectedSourceHead) {
+        blockers.push({ code: 'MERGE_PROPOSAL_SOURCE_IDENTITY_MISSING', mergeProposalId: proposal.id });
+      } else if (proposal.expectedSourceHead !== live.head) {
+        proposalSourceStale = true;
+        blockers.push({
+          code: 'MERGE_PROPOSAL_SOURCE_STALE',
+          mergeProposalId: proposal.id,
+          expectedSourceHead: proposal.expectedSourceHead,
+          liveSourceHead: live.head
+        });
+      }
+    }
+
+    const ready = blockers.length === 0;
+    const operatorActionRequired = awaitingOperatorMerge && ready;
+    const nextAction = operatorActionRequired
+      ? 'operator-merge'
+      : (proposalSourceStale && blockers.length === 1 ? 'candidate-refresh' : null);
     return {
       missionId,
-      ready: blockers.length === 0,
+      ready,
       phase: mission.phase,
       status: mission.status,
       liveSourceIdentity: live,
       blockers,
       operatorActionRequired,
-      nextAction: operatorActionRequired ? 'operator-merge' : null,
+      nextAction,
       activeMergeProposalId: mission.activeMergeProposalId || null
     };
   }
