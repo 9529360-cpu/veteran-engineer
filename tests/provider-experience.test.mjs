@@ -5,6 +5,20 @@ import test from 'node:test';
 import { createVeteranApp } from '../src/app.mjs';
 import { createGitRepo, cleanup } from './helpers.mjs';
 
+function temporaryEnv(values) {
+  const previous = new Map();
+  for (const [key, value] of Object.entries(values)) {
+    previous.set(key, process.env[key]);
+    process.env[key] = value;
+  }
+  return () => {
+    for (const [key, value] of previous) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  };
+}
+
 async function seedExperiences(app, projectId) {
   const active = await app.services.experienceService.commit({
     projectId,
@@ -26,11 +40,15 @@ async function seedExperiences(app, projectId) {
 
 test('planner provider receives reviewed active experience only and core validates its proposed DAG', async () => {
   const { root, repo, stateRoot } = await createGitRepo({ files: { 'src/a.txt': 'a\n' } });
+  const restoreEnv = temporaryEnv({
+    VETERAN_PROVIDER_PLANNER_SECRET: 'planner-secret',
+    VETERAN_PROVIDER_PLANNER_ALLOWED: 'planner-allowed'
+  });
   try {
     const planner = path.join(root, 'planner.cjs');
-    await fs.writeFile(planner, `let input='';process.stdin.setEncoding('utf8');process.stdin.on('data',c=>input+=c);process.stdin.on('end',()=>{const p=JSON.parse(input);if(p.protocol!=='veteran-planner-v1')process.exit(3);if(p.projectExperience.length!==1||p.projectExperience[0].statement!=='Active reviewed project fact')process.exit(4);process.stdout.write(JSON.stringify({tasks:[{id:'T1',contract:'Update src/a.txt',owner:'src',dependencies:[],writeSet:['src'],risk:'low'}]}));});\n`);
+    await fs.writeFile(planner, `let input='';process.stdin.setEncoding('utf8');process.stdin.on('data',c=>input+=c);process.stdin.on('end',()=>{const p=JSON.parse(input);if(process.env.VETERAN_PROVIDER_PLANNER_SECRET)process.exit(5);if(process.env.VETERAN_PROVIDER_PLANNER_ALLOWED!=='planner-allowed')process.exit(6);if(p.protocol!=='veteran-planner-v1')process.exit(3);if(p.projectExperience.length!==1||p.projectExperience[0].statement!=='Active reviewed project fact')process.exit(4);process.stdout.write(JSON.stringify({tasks:[{id:'T1',contract:'Update src/a.txt',owner:'src',dependencies:[],writeSet:['src'],risk:'low'}]}));});\n`);
     await fs.mkdir(stateRoot, { recursive: true });
-    await fs.writeFile(path.join(stateRoot, 'operator.json'), `${JSON.stringify({ defaults: { plannerProvider: { command: process.execPath, args: [planner] } } }, null, 2)}\n`);
+    await fs.writeFile(path.join(stateRoot, 'operator.json'), `${JSON.stringify({ defaults: { plannerProvider: { command: process.execPath, args: [planner], envAllowlist: ['VETERAN_PROVIDER_PLANNER_ALLOWED'] } } }, null, 2)}\n`);
     const app = await createVeteranApp({ stateRoot });
     const project = await app.services.projectService.open({ repoPath: repo });
     const { active, candidate } = await seedExperiences(app, project.id);
@@ -43,6 +61,7 @@ test('planner provider receives reviewed active experience only and core validat
     assert.ok(state.experiences[active.id].usage.count >= 1);
     assert.equal(state.experiences[candidate.id].usage.count, 0);
   } finally {
+    restoreEnv();
     await cleanup(root);
   }
 });
@@ -71,11 +90,15 @@ test('worker packet routes active experience but never candidate experience', as
 
 test('semantic reviewer provider receives active experience only', async () => {
   const { root, repo, stateRoot } = await createGitRepo();
+  const restoreEnv = temporaryEnv({
+    VETERAN_PROVIDER_REVIEWER_SECRET: 'reviewer-secret',
+    VETERAN_PROVIDER_REVIEWER_ALLOWED: 'reviewer-allowed'
+  });
   try {
     const reviewer = path.join(root, 'reviewer.cjs');
-    await fs.writeFile(reviewer, `let input='';process.stdin.setEncoding('utf8');process.stdin.on('data',c=>input+=c);process.stdin.on('end',()=>{const p=JSON.parse(input);if(p.protocol!=='veteran-reviewer-v1')process.exit(3);if(p.projectExperience.length!==1||p.projectExperience[0].statement!=='Active reviewed project fact')process.exit(4);process.stdout.write(JSON.stringify({passed:true,findings:[]}));});\n`);
+    await fs.writeFile(reviewer, `let input='';process.stdin.setEncoding('utf8');process.stdin.on('data',c=>input+=c);process.stdin.on('end',()=>{const p=JSON.parse(input);if(process.env.VETERAN_PROVIDER_REVIEWER_SECRET)process.exit(5);if(process.env.VETERAN_PROVIDER_REVIEWER_ALLOWED!=='reviewer-allowed')process.exit(6);if(p.protocol!=='veteran-reviewer-v1')process.exit(3);if(p.projectExperience.length!==1||p.projectExperience[0].statement!=='Active reviewed project fact')process.exit(4);process.stdout.write(JSON.stringify({passed:true,findings:[]}));});\n`);
     await fs.mkdir(stateRoot, { recursive: true });
-    await fs.writeFile(path.join(stateRoot, 'operator.json'), `${JSON.stringify({ defaults: { reviewerProvider: { command: process.execPath, args: [reviewer] }, requireSemanticReview: true } }, null, 2)}\n`);
+    await fs.writeFile(path.join(stateRoot, 'operator.json'), `${JSON.stringify({ defaults: { reviewerProvider: { command: process.execPath, args: [reviewer], envAllowlist: ['VETERAN_PROVIDER_REVIEWER_ALLOWED'] }, requireSemanticReview: true } }, null, 2)}\n`);
     const app = await createVeteranApp({ stateRoot });
     const project = await app.services.projectService.open({ repoPath: repo });
     await seedExperiences(app, project.id);
@@ -84,6 +107,7 @@ test('semantic reviewer provider receives active experience only', async () => {
     const result = await app.services.reviewService.semantic({ missionId: planned.mission.id });
     assert.equal(result.passed, true);
   } finally {
+    restoreEnv();
     await cleanup(root);
   }
 });
