@@ -1,5 +1,5 @@
 import { RISK_LEVELS } from './constants.mjs';
-import { runProcess, sourceIdentity, writeSetsConflict } from './git.mjs';
+import { allowlistedProcessEnvironment, runProcess, sourceIdentity, writeSetsConflict } from './git.mjs';
 import { normalizePathList, nowIso, randomId } from './util.mjs';
 
 const TERMINAL_TASKS = new Set(['done', 'failed', 'cancelled', 'blocked', 'superseded']);
@@ -110,6 +110,8 @@ export class MissionService {
       };
       const result = await runProcess(provider.command, provider.args || [], {
         cwd: project.repoPath,
+        env: allowlistedProcessEnvironment(provider.envAllowlist || []),
+        inheritEnv: false,
         input: JSON.stringify(payload),
         allowFailure: true,
         timeoutMs: provider.timeoutMs || 180_000
