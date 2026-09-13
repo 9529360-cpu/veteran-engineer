@@ -28,6 +28,16 @@ ROUTES = {
     "wireframe": ["references/frontend-product-patterns.md"],
     "design-system": ["references/frontend-product-patterns.md"],
     "responsive-design": ["references/frontend-product-patterns.md"],
+    "product-analysis": ["references/product-analysis-engineering.md", "references/full-stack-product-engineering.md"],
+    "product-research": ["references/product-analysis-engineering.md"],
+    "competitor-analysis": ["references/product-analysis-engineering.md", "references/full-stack-product-engineering.md"],
+    "product-teardown": ["references/product-analysis-engineering.md"],
+    "behavior-analysis": ["references/product-analysis-engineering.md"],
+    "black-box-analysis": ["references/product-analysis-engineering.md"],
+    "product-diff": ["references/product-analysis-engineering.md"],
+    "capability-map": ["references/product-analysis-engineering.md"],
+    "product-network-analysis": ["references/product-analysis-engineering.md", "references/api-backend-patterns.md"],
+    "technical-fingerprint": ["references/product-analysis-engineering.md"],
     "lifecycle": ["references/temporal-debugging-state-transitions.md", "references/runtime-lifecycle-patterns.md"],
     "async": ["references/temporal-debugging-state-transitions.md", "references/async-edge-job-patterns.md"],
     "concurrency": ["references/temporal-debugging-state-transitions.md", "references/causal-debugging-experiment-design.md", "references/distributed-systems-consistency.md"],
@@ -92,7 +102,7 @@ ROUTES = {
     "simplification": ["references/lifecycle-closure-design-to-deletion.md"],
     "system-rescue": ["references/project-takeover-engineering.md"],
 }
-ALIASES = {"publish": "release", "publishing": "release", "github-release": "release", "release-tag": "release", "autopublish": "release", "auto-publish": "release", "deployment": "release", "deploy": "release", "monorepository": "monorepo", "workspaces": "workspace", "ast-refactor": "codemod", "mass-refactor": "large-refactor", "infrastructure-as-code": "iac", "opentofu": "terraform", "pulumi": "iac", "full-stack": "fullstack", "full_stack": "fullstack", "crosslayer": "cross-layer", "vertical-slice": "delivery", "end-to-end": "delivery", "requirement": "requirements", "repo-search": "navigation", "code-search": "navigation", "generated-code": "generated", "code-generation": "codegen", "final-audit": "final-review", "db": "database", "payments": "payment", "jobs": "queue", "race": "concurrency", "cause": "causality", "fsm": "state-machine", "state": "state-machine", "test": "validation", "tests": "validation", "proof": "evidence", "provider": "dependency", "vendor": "dependency", "retire": "deletion", "multirepo": "multi-repo", "kafka": "broker", "rabbitmq": "broker", "2pc": "distributed-transaction", "saga": "distributed-transaction", "ebpf": "profiling", "bpftrace": "profiling", "slo": "error-budget", "decommission": "simplification", "rescue": "system-rescue", "interface-design": "ui", "ui-design": "ui", "screen-design": "ui", "ux-design": "ux", "product-designer": "product-design", "design-tokens": "design-system", "responsive-ui": "responsive-design"}
+ALIASES = {"publish": "release", "publishing": "release", "github-release": "release", "release-tag": "release", "autopublish": "release", "auto-publish": "release", "deployment": "release", "deploy": "release", "monorepository": "monorepo", "workspaces": "workspace", "ast-refactor": "codemod", "mass-refactor": "large-refactor", "infrastructure-as-code": "iac", "opentofu": "terraform", "pulumi": "iac", "full-stack": "fullstack", "full_stack": "fullstack", "crosslayer": "cross-layer", "vertical-slice": "delivery", "end-to-end": "delivery", "requirement": "requirements", "repo-search": "navigation", "code-search": "navigation", "generated-code": "generated", "code-generation": "codegen", "final-audit": "final-review", "db": "database", "payments": "payment", "jobs": "queue", "race": "concurrency", "cause": "causality", "fsm": "state-machine", "state": "state-machine", "test": "validation", "tests": "validation", "proof": "evidence", "provider": "dependency", "vendor": "dependency", "retire": "deletion", "multirepo": "multi-repo", "kafka": "broker", "rabbitmq": "broker", "2pc": "distributed-transaction", "saga": "distributed-transaction", "ebpf": "profiling", "bpftrace": "profiling", "slo": "error-budget", "decommission": "simplification", "rescue": "system-rescue", "interface-design": "ui", "ui-design": "ui", "screen-design": "ui", "ux-design": "ux", "product-designer": "product-design", "design-tokens": "design-system", "responsive-ui": "responsive-design", "product-intelligence": "product-analysis", "competitive-analysis": "competitor-analysis", "competitor-research": "competitor-analysis", "blackbox-analysis": "black-box-analysis", "black-box-research": "black-box-analysis", "product-comparison": "competitor-analysis", "product-version-diff": "product-diff", "feature-map": "capability-map", "api-observation": "product-network-analysis", "technology-fingerprint": "technical-fingerprint"}
 
 def split_csv(value: str) -> list[str]:
     out = []
