@@ -1,5 +1,5 @@
 export const TOOL_DEFINITIONS = Object.freeze([
-  ['project_open', 'Open an authorized Git project and capture exact source identity.'],
+  ['project_open', 'Open a local Git project or safely acquire an authorized remote repository and capture exact source identity.'],
   ['project_snapshot', 'Refresh repository identity, dirty state, and project signals.'],
   ['mission_plan', 'Create a dependency-aware mission plan with quality and write-conflict gates.'],
   ['mission_execute', 'Dispatch or execute ready worker waves inside isolated worktrees.'],

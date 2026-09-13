@@ -19,7 +19,7 @@ import { MissionAdvanceService } from './mission-advance.mjs';
 import { loadOperatorConfig } from './operator-config.mjs';
 import { beginRequest, completeRequest, failRequest, markRequestUnknown, replayOrThrow } from './idempotency.mjs';
 import { MCP_TRANSPORT_MODES } from './mcp-protocol-capability.mjs';
-import { randomId, stableStringify } from './util.mjs';
+import { randomId, sha256, stableStringify } from './util.mjs';
 
 const MUTATING_TOOLS = new Set([
   'project_open', 'project_snapshot', 'mission_plan', 'mission_execute', 'mission_advance',
@@ -71,7 +71,11 @@ export async function createVeteranApp({
   assertAppStateBackend(backend);
   const store = assertAppStateBackend(await backend.init());
   const { config: operatorConfig, path: operatorConfigPath } = await loadOperatorConfig({ stateRoot, configPath });
-  const projectService = new ProjectService({ store, operatorConfig });
+  const projectService = new ProjectService({
+    store,
+    operatorConfig,
+    managedProjectsRoot: path.join(path.resolve(stateRoot), 'projects')
+  });
   const evidenceService = new EvidenceService({ store });
   const experienceService = new ExperienceService({ store });
   const missionService = new MissionService({ store, projectService, experienceService, evidenceService });
@@ -127,11 +131,12 @@ export async function createVeteranApp({
     if (!handler) throw Object.assign(new Error(`Unknown tool: ${name}`), { code: 'TOOL_NOT_FOUND' });
     if (!MUTATING_TOOLS.has(name)) return handler(args || {});
     const { requestId, ...payload } = args || {};
-    const fingerprint = stableStringify(payload);
+    const legacyFingerprint = stableStringify(payload);
+    const fingerprint = `sha256:${sha256(legacyFingerprint)}`;
     const admissionId = randomId('requestattempt');
     let begin;
     try {
-      begin = await beginRequest(store, requestId, name, fingerprint, admissionId);
+      begin = await beginRequest(store, requestId, name, fingerprint, admissionId, { legacyFingerprints: [legacyFingerprint] });
     } catch (error) {
       if (isStateCommitAuditOutcomeUnknown(error)) {
         const reconciled = await tryReconcileStateCommit(store);

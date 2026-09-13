@@ -24,11 +24,27 @@ The pinned base dependency graph is:
 
 Current mainline validation after the PostgreSQL hosted-state milestone proves:
 
-1. `npm run check`: **67 syntax files**, exact **34-tool** surface, protocol constants, pinned SDK graph/lock integrity, runtime-starter mirror parity, and **70/70 Node tests PASS**;
+1. `npm run check`: **70 syntax files**, exact **34-tool** surface, protocol constants, pinned SDK graph/lock integrity, runtime-starter mirror parity, and **78/78 Node tests PASS**;
 2. a real Docker engine-backed confined `WorkerAdapter` smoke;
 3. a real PostgreSQL engine-backed state-backend integration gate, followed by the real modern MCP handshake while PostgreSQL is the active state backend.
 
 The bundled recovery seed under `skills/runtime-regression-debugger/assets/plugin-runtime-starter/` is part of the product contract. The main validation gate now compares the mirrored runtime file set and file contents against the repository runtime so root/starter drift fails CI instead of becoming a future recovery surprise.
+
+## Remote repository onboarding
+
+`project_open` now accepts exactly one source: an existing local `repoPath` or an authorized `repoUrl`. A remote URL is cloned into the runtime-managed project area under the execution-local state root, so an operator can hand Veteran a repository address without manually preparing a checkout first. The public MCP surface remains 34 tools; this extends the existing project intent instead of adding a raw Git primitive.
+
+Remote acquisition is deliberately conservative:
+
+- credential-free HTTPS, SSH, SSH scp-style, and local `file://` Git URLs are accepted; embedded HTTPS credentials, query strings, fragments, and unsupported remote-helper protocols are rejected;
+- private repositories must authenticate through the operator's normal Git credential helper or SSH agent, so secrets are not placed in tool arguments or durable project state;
+- clone runs with hooks disabled and does not recurse into submodules automatically;
+- the managed checkout path is deterministic for the normalized remote and concurrent opens serialize through a local acquisition lock;
+- a reused managed checkout fetches origin and advances only by fast-forward; dirty, detached, or locally diverged source checkouts fail closed instead of being reset;
+- `refreshRemote=false` is an explicit opt-out for intentional offline/stale reuse;
+- local repositories with credential-bearing origin URLs are stored only with a sanitized remote URL.
+
+The managed source checkout is still outside the worker mutation surface. Mission and task changes continue to occur only in runtime-owned worktrees.
 
 ## Mission and authority model
 
@@ -92,7 +108,7 @@ PostgreSQL state and audit append commit in one SQL transaction. Each durable st
 
 ## Request idempotency and unknown outcomes
 
-Every mutating MCP operation requires a `requestId`. Reuse with a different operation/payload is rejected. Completed requests replay their recorded result; failed requests replay failure; `unknown` outcomes are never replayed blindly.
+Every mutating MCP operation requires a `requestId`. Reuse with a different operation/payload is rejected. Completed requests replay their recorded result; failed requests replay failure; `unknown` outcomes are never replayed blindly. New request identities store a SHA-256 payload fingerprint rather than the raw request JSON, so idempotency does not become a durable copy of goals, paths, repository URLs, or future sensitive arguments. Legacy raw fingerprints remain replay-compatible.
 
 Admission carries an internal attempt identity. If request admission itself becomes ambiguous, only the invocation that owns the durable reservation may continue after reconciliation. If a handler mutation may already have committed, the request becomes `unknown`, not falsely `failed`. If only completion acknowledgement is ambiguous, Veteran returns success only after durable state proves the request is already `completed`.
 
@@ -152,6 +168,7 @@ The convergence pass found and closed concrete issues rather than merely re-read
 - an earlier experimental PostgreSQL lockfile was not accepted because it broke the existing official MCP SDK integrity gate;
 - the first PostgreSQL audit query sorted a text alias and would order sequence `10` before `2`; real concurrency tests exposed it and the query now orders by the numeric database column;
 - root/runtime-starter synchronization is now executable CI policy instead of a documentation promise;
+- remote project onboarding no longer requires a manual local clone, while managed checkout refresh remains credential-safe and fast-forward-only;
 - hosted PostgreSQL now has cross-instance concurrency evidence, not only same-process/same-pool evidence;
 - README and handoff authority are refreshed to the actual mainline checkpoint.
 

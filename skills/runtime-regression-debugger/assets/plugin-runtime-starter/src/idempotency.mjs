@@ -1,6 +1,6 @@
 import { nowIso } from './util.mjs';
 
-export async function beginRequest(store, requestId, operation, fingerprint, admissionId = null) {
+export async function beginRequest(store, requestId, operation, fingerprint, admissionId = null, { legacyFingerprints = [] } = {}) {
   if (!requestId || typeof requestId !== 'string') {
     const error = new Error('requestId is required for mutating operations');
     error.code = 'REQUEST_ID_REQUIRED';
@@ -9,7 +9,8 @@ export async function beginRequest(store, requestId, operation, fingerprint, adm
   return store.transaction('request_started', (state) => {
     const existing = state.requests[requestId];
     if (existing) {
-      if (existing.operation !== operation || existing.fingerprint !== fingerprint) {
+      const fingerprintMatches = existing.fingerprint === fingerprint || legacyFingerprints.includes(existing.fingerprint);
+      if (existing.operation !== operation || !fingerprintMatches) {
         const error = new Error('requestId was already used for a different operation');
         error.code = 'REQUEST_ID_CONFLICT';
         throw error;

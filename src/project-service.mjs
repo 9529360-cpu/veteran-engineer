@@ -1,29 +1,68 @@
 import path from 'node:path';
 import { git, resolveRepository, sourceIdentity } from './git.mjs';
+import { acquireRemoteRepository, sanitizeStoredRemoteUrl } from './repository-acquisition.mjs';
 import { nowIso, randomId, sha256 } from './util.mjs';
 import { projectPolicy } from './operator-config.mjs';
 
 export class ProjectService {
-  constructor({ store, operatorConfig = { defaults: {}, projects: {} } }) {
+  constructor({ store, operatorConfig = { defaults: {}, projects: {} }, managedProjectsRoot }) {
     this.store = store;
     this.operatorConfig = operatorConfig;
+    this.managedProjectsRoot = managedProjectsRoot ? path.resolve(managedProjectsRoot) : null;
   }
 
-  async open({ repoPath, name }) {
-    const repo = await resolveRepository(repoPath);
+  async open({ repoPath, repoUrl, name, refreshRemote = true }) {
+    const hasPath = typeof repoPath === 'string' && repoPath.trim();
+    const hasUrl = typeof repoUrl === 'string' && repoUrl.trim();
+    if ((hasPath && hasUrl) || (!hasPath && !hasUrl)) {
+      throw Object.assign(new Error('project_open requires exactly one of repoPath or repoUrl'), { code: 'PROJECT_SOURCE_INVALID' });
+    }
+
+    let repo;
+    let remoteUrl = null;
+    let sourceKind = 'local';
+    let managedCheckout = null;
+    let defaultName = null;
+    if (hasUrl) {
+      if (!this.managedProjectsRoot) {
+        throw Object.assign(new Error('Remote repository onboarding is unavailable without a managed project root'), { code: 'PROJECT_REMOTE_ROOT_REQUIRED' });
+      }
+      const acquired = await acquireRemoteRepository({
+        repoUrl: repoUrl.trim(),
+        managedRoot: this.managedProjectsRoot,
+        refresh: refreshRemote !== false
+      });
+      repo = acquired.repoPath;
+      remoteUrl = acquired.remoteUrl;
+      sourceKind = 'managed-remote';
+      defaultName = acquired.suggestedName;
+      managedCheckout = {
+        managed: true,
+        reused: acquired.reused,
+        refreshed: acquired.refresh.refreshed,
+        canonicalRemoteUrl: acquired.canonicalRemoteUrl
+      };
+    } else {
+      repo = await resolveRepository(repoPath.trim());
+      const remote = await git(repo, ['config', '--get', 'remote.origin.url'], { allowFailure: true });
+      remoteUrl = sanitizeStoredRemoteUrl(remote.stdout.trim());
+      defaultName = path.basename(repo);
+    }
+
     const identity = await sourceIdentity(repo);
-    const remote = await git(repo, ['config', '--get', 'remote.origin.url'], { allowFailure: true });
     const projectKey = sha256(repo).slice(0, 24);
-    const policy = projectPolicy(this.operatorConfig, repo);
+    const policy = projectPolicy(this.operatorConfig, repo, remoteUrl);
     return this.store.transaction('project_opened', (state) => {
       let project = Object.values(state.projects).find((item) => item.projectKey === projectKey);
       if (!project) {
         project = {
           id: randomId('project'),
           projectKey,
-          name: name || path.basename(repo),
+          name: name || defaultName,
           repoPath: repo,
-          remoteUrl: remote.stdout.trim() || null,
+          remoteUrl,
+          sourceKind,
+          managedCheckout: sourceKind === 'managed-remote',
           createdAt: nowIso(),
           updatedAt: nowIso(),
           sourceIdentity: identity,
@@ -39,7 +78,9 @@ export class ProjectService {
       } else {
         project.updatedAt = nowIso();
         project.sourceIdentity = identity;
-        project.remoteUrl = remote.stdout.trim() || project.remoteUrl;
+        project.remoteUrl = remoteUrl || project.remoteUrl;
+        project.sourceKind = sourceKind;
+        project.managedCheckout = sourceKind === 'managed-remote';
         project.validationCapabilities = policy.validationCapabilities;
         project.workerPolicy = policy.workerPolicy;
         project.plannerProvider = policy.plannerProvider;
@@ -48,8 +89,8 @@ export class ProjectService {
         project.requireValidation = policy.requireValidation;
         project.requiredValidationCapabilities = policy.requiredValidationCapabilities;
       }
-      return project;
-    }, { repo, head: identity.head, dirty: identity.dirty });
+      return managedCheckout ? { ...project, checkout: managedCheckout } : project;
+    }, { repo, head: identity.head, dirty: identity.dirty, sourceKind, remoteUrl });
   }
 
   async snapshot({ projectId }) {
