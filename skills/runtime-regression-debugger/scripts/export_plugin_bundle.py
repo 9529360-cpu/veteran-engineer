@@ -25,6 +25,19 @@ LOCAL_PROFILES = {"desktop", "codex"}
 ALL_PROFILES = LOCAL_PROFILES | {"web"}
 
 
+def reject_symlink_components(root: pathlib.Path, candidate: pathlib.Path) -> None:
+    root = root.resolve()
+    try:
+        rel = candidate.absolute().relative_to(root)
+    except ValueError as exc:
+        raise RuntimeError(f"plugin export input escapes source root: {candidate}") from exc
+    current = root
+    for part in rel.parts:
+        current = current / part
+        if current.is_symlink():
+            raise RuntimeError(f"plugin export refuses symbolic link: {current.relative_to(root).as_posix()}")
+
+
 def copy_filtered(src: pathlib.Path, dst: pathlib.Path, *, exclude_runtime_asset: bool = False) -> None:
     src = src.resolve()
     for path in src.rglob("*"):
@@ -35,6 +48,8 @@ def copy_filtered(src: pathlib.Path, dst: pathlib.Path, *, exclude_runtime_asset
             continue
         if exclude_runtime_asset and rel.parts[:2] == ("assets", "plugin-runtime-starter"):
             continue
+        if path.is_symlink():
+            raise RuntimeError(f"plugin export refuses symbolic link: {rel.as_posix()}")
         target = dst / rel
         if path.is_dir():
             target.mkdir(parents=True, exist_ok=True)
@@ -95,7 +110,9 @@ def build_local_profile(skill_root: pathlib.Path, runtime: pathlib.Path, plugin_
 
 
 def build_web_profile(skill_root: pathlib.Path, runtime: pathlib.Path, plugin_root: pathlib.Path, app_manifest: pathlib.Path | None) -> None:
-    manifest = load_json(runtime / ".codex-plugin" / "plugin.json")
+    manifest_path = runtime / ".codex-plugin" / "plugin.json"
+    reject_symlink_components(skill_root, manifest_path)
+    manifest = load_json(manifest_path)
     manifest.pop("mcpServers", None)
     manifest["skills"] = "./skills/"
     if app_manifest is not None:
@@ -177,6 +194,7 @@ def main() -> int:
     runtime = skill_root / "assets" / "plugin-runtime-starter"
     if not (skill_root / "SKILL.md").is_file():
         raise RuntimeError(f"not a skill root: {skill_root}")
+    reject_symlink_components(skill_root, runtime)
     if not runtime.is_dir():
         raise RuntimeError(f"plugin runtime starter missing: {runtime}")
     if args.app_manifest and args.profile != "web":
