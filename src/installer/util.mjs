@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { constants as fsConstants } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -49,9 +50,20 @@ export async function runCommand(command, args = [], { cwd, env, timeoutMs = 30_
   });
 }
 
+async function isExecutableFile(candidate) {
+  try {
+    const stat = await fs.stat(candidate);
+    if (!stat.isFile()) return false;
+    if (process.platform !== 'win32') await fs.access(candidate, fsConstants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function findExecutable(command, env = process.env) {
   if (!command || command.includes('/') || command.includes('\\')) {
-    return (await pathExists(command)) ? path.resolve(command) : null;
+    return (await isExecutableFile(command)) ? path.resolve(command) : null;
   }
   const paths = String(env.PATH || '').split(path.delimiter).filter(Boolean);
   const extensions = process.platform === 'win32'
@@ -60,10 +72,7 @@ export async function findExecutable(command, env = process.env) {
   for (const dir of paths) {
     for (const ext of extensions) {
       const candidate = path.join(dir, process.platform === 'win32' ? `${command}${ext}` : command);
-      try {
-        const stat = await fs.stat(candidate);
-        if (stat.isFile()) return candidate;
-      } catch { /* continue */ }
+      if (await isExecutableFile(candidate)) return candidate;
     }
   }
   return null;

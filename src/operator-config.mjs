@@ -2,16 +2,71 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathExists } from './util.mjs';
 
+function invalidOperatorConfig(pathValue, expected, value) {
+  const error = new Error(`Invalid operator config at ${pathValue}: expected ${expected}`);
+  error.code = 'OPERATOR_CONFIG_INVALID';
+  error.details = {
+    path: pathValue,
+    expected,
+    actualType: value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value
+  };
+  return error;
+}
+
+function isRecord(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function assertBooleanField(scope, key, pathValue) {
+  if (scope[key] !== undefined && typeof scope[key] !== 'boolean') {
+    throw invalidOperatorConfig(`${pathValue}.${key}`, 'boolean', scope[key]);
+  }
+}
+
+function validatePolicyScope(value, pathValue) {
+  if (value === undefined || value === null) return {};
+  if (!isRecord(value)) throw invalidOperatorConfig(pathValue, 'object', value);
+
+  assertBooleanField(value, 'requireSemanticReview', pathValue);
+  assertBooleanField(value, 'requireValidation', pathValue);
+
+  const workerPolicy = value.workerPolicy;
+  if (workerPolicy !== undefined && workerPolicy !== null) {
+    if (!isRecord(workerPolicy)) throw invalidOperatorConfig(`${pathValue}.workerPolicy`, 'object', workerPolicy);
+    for (const key of ['enabled', 'allowUnconfinedCustomWorkers', 'allowRawValidation']) {
+      assertBooleanField(workerPolicy, key, `${pathValue}.workerPolicy`);
+    }
+    if (workerPolicy.maxWorkers !== undefined && (!Number.isInteger(workerPolicy.maxWorkers) || workerPolicy.maxWorkers < 1)) {
+      throw invalidOperatorConfig(`${pathValue}.workerPolicy.maxWorkers`, 'positive integer', workerPolicy.maxWorkers);
+    }
+  }
+  return value;
+}
+
+function validateOperatorConfig(input = {}) {
+  if (input === undefined || input === null) input = {};
+  if (!isRecord(input)) throw invalidOperatorConfig('root', 'object', input);
+
+  const defaults = validatePolicyScope(input.defaults, 'defaults');
+  const rawProjects = input.projects === undefined || input.projects === null ? {} : input.projects;
+  if (!isRecord(rawProjects)) throw invalidOperatorConfig('projects', 'object', rawProjects);
+
+  const projects = {};
+  for (const [key, value] of Object.entries(rawProjects)) {
+    projects[key] = validatePolicyScope(value, `projects.${key}`);
+  }
+  return { defaults, projects };
+}
+
 export async function loadOperatorConfig({ stateRoot, configPath = process.env.VETERAN_ENGINEER_CONFIG } = {}) {
   const target = configPath ? path.resolve(configPath) : path.join(path.resolve(stateRoot), 'operator.json');
   if (!(await pathExists(target))) return { path: target, config: { defaults: {}, projects: {} } };
   const parsed = JSON.parse(await fs.readFile(target, 'utf8'));
-  return { path: target, config: { defaults: parsed.defaults || {}, projects: parsed.projects || {} } };
+  return { path: target, config: validateOperatorConfig(parsed) };
 }
 
 export function projectPolicy(operatorConfig, repoPath, remoteUrl = null) {
-  const defaults = operatorConfig?.defaults || {};
-  const projects = operatorConfig?.projects || {};
+  const { defaults, projects } = validateOperatorConfig(operatorConfig || {});
   const specific = projects[repoPath] || projects[repoPath.replaceAll('\\', '/')] || (remoteUrl ? projects[remoteUrl] : null) || {};
   return {
     validationCapabilities: specific.validationCapabilities || defaults.validationCapabilities || [],

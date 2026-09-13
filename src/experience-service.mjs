@@ -111,11 +111,16 @@ export class ExperienceService {
       }));
     const conflictKeys = new Map();
     for (const item of candidates) {
-      const key = `${item.mechanism}::${item.equivalenceClass || ''}`;
+      if (!item.equivalenceClass) continue;
+      const key = `${item.mechanism}::${item.equivalenceClass}`;
       if (!conflictKeys.has(key)) conflictKeys.set(key, new Set());
       conflictKeys.get(key).add(item.statement);
     }
-    const usable = candidates.filter((item) => conflictKeys.get(`${item.mechanism}::${item.equivalenceClass || ''}`).size === 1).slice(0, Math.max(0, Math.min(limit, 50)));
+    const nonConflicting = candidates.filter((item) => {
+      if (!item.equivalenceClass) return true;
+      return conflictKeys.get(`${item.mechanism}::${item.equivalenceClass}`).size === 1;
+    });
+    const usable = nonConflicting.slice(0, Math.max(0, Math.min(limit, 50)));
     if (recordUsage && usable.length) {
       await this.store.transaction('experience_used', (working) => {
         for (const item of usable) {
@@ -127,7 +132,7 @@ export class ExperienceService {
     }
     return {
       items: usable,
-      excludedConflicts: candidates.length - usable.length,
+      excludedConflicts: candidates.length - nonConflicting.length,
       note: 'Candidate, challenged, rejected, and retired experiences never influence execution.'
     };
   }
