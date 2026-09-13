@@ -1,10 +1,15 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { git, sourceIdentity } from './git.mjs';
-import { ensureDir, pathExists } from './util.mjs';
+import { ensureDir, pathExists, sha256 } from './util.mjs';
 
 function safeSegment(value) {
-  return String(value).replace(/[^a-zA-Z0-9._-]+/g, '-').slice(0, 96);
+  const raw = String(value);
+  const normalized = raw.replace(/[^a-zA-Z0-9._-]+/g, '-');
+  if (normalized === raw && raw.length <= 96) return normalized;
+  const digest = sha256(raw).slice(0, 16);
+  const prefix = normalized.slice(0, 96 - digest.length - 1);
+  return `${prefix || 'id'}-${digest}`;
 }
 
 function gitRefSegment(value) {
