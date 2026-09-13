@@ -46,6 +46,10 @@ JS_TECH = {
         "react-native": "React Native", "expo": "Expo", "expo-router": "Expo Router",
         "@react-navigation/native": "React Navigation",
     },
+    "browser-extension": {
+        "webextension-polyfill": "WebExtension Polyfill", "wxt": "WXT", "plasmo": "Plasmo",
+        "@crxjs/vite-plugin": "CRXJS", "web-ext": "web-ext",
+    },
     "node-backend": {
         "express": "Express", "fastify": "Fastify", "@nestjs/core": "NestJS",
         "koa": "Koa", "hono": "Hono", "elysia": "Elysia", "@trpc/server": "tRPC",
@@ -116,6 +120,7 @@ REFERENCE_RULES = {
     "frontend-react": "references/stack-react-nextjs.md",
     "frontend-other": "references/stack-web-frameworks.md",
     "mobile": "references/mobile-product-engineering.md",
+    "browser-extension": "references/browser-extension-product-engineering.md",
     "desktop-runtime": "references/runtime-lifecycle-patterns.md",
     "desktop-shell": "references/host-shell-platform-patterns.md",
     "desktop-packaging": "references/release-promotion-patterns.md",
@@ -276,6 +281,17 @@ def detect_infra(paths: list[tuple[pathlib.Path, pathlib.Path]], out: dict[str, 
             out["infrastructure"].add("Vercel")
 
 
+def detect_browser_extensions(files_by_name: dict[str, list[pathlib.Path]], detected: dict[str, set[str]]) -> None:
+    for path in files_by_name.get("manifest.json", [])[:40]:
+        try:
+            data = json.loads(read_manifest(path))
+        except json.JSONDecodeError:
+            continue
+        version = data.get("manifest_version") if isinstance(data, dict) else None
+        if isinstance(version, int) and not isinstance(version, bool) and version in {2, 3}:
+            detected["browser-extension"].add(f"Manifest V{version}")
+
+
 def detect_mobile(paths: list[tuple[pathlib.Path, pathlib.Path]], files_by_name: dict[str, list[pathlib.Path]], detected: dict[str, set[str]], languages: set[str], managers: set[str]) -> None:
     for path in files_by_name.get("pubspec.yaml", [])[:20]:
         text = read_manifest(path).lower()
@@ -431,6 +447,8 @@ def suggested_references(detected: dict[str, set[str]], monorepo: bool) -> set[s
         refs.add(REFERENCE_RULES["frontend-other"])
     if detected.get("mobile"):
         refs.add(REFERENCE_RULES["mobile"])
+    if detected.get("browser-extension"):
+        refs.add(REFERENCE_RULES["browser-extension"])
     desktop = detected.get("desktop-runtime", set())
     if desktop:
         refs.add(REFERENCE_RULES["desktop-runtime"])
@@ -503,6 +521,8 @@ def main() -> int:
             "path": str(path.relative_to(root)), "name": info.get("name"),
             "node_engine": info.get("node_engine"), "script_names": info.get("scripts", [])[:80],
         })
+
+    detect_browser_extensions(files_by_name, detected)
 
     pyproject_paths = files_by_name.get("pyproject.toml", [])[:30]
     requirement_paths = [path for path, rel in paths if path.is_file() and rel.name.lower().startswith("requirements") and rel.suffix.lower() in {".txt", ".in"}][:30]
