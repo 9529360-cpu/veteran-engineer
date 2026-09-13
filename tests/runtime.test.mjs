@@ -64,6 +64,36 @@ test('app-level requestId replays completed mutations and rejects payload confli
   }
 });
 
+test('app resumes only its own request admission after pre-audit ambiguity is reconciled', async () => {
+  const { createGitRepo } = await import('./helpers.mjs');
+  const { createVeteranApp } = await import('../src/app.mjs');
+  const fixture = await createGitRepo();
+  let armed = false;
+  try {
+    const backend = new LocalJsonStateBackend({
+      root: fixture.stateRoot,
+      faultInjector: async (stage, commit) => {
+        if (armed && stage === 'after_state_commit_before_audit' && commit.eventType === 'request_started') {
+          armed = false;
+          throw Object.assign(new Error('injected admission audit gap'), { code: 'INJECTED_ADMISSION_AUDIT_GAP' });
+        }
+      }
+    });
+    const app = await createVeteranApp({ stateRoot: fixture.stateRoot, stateBackend: backend });
+    armed = true;
+    const args = { requestId: 'req-project-admission-gap', repoPath: fixture.repo };
+    const result = await app.callTool('project_open', args);
+    const state = await app.store.read();
+    assert.equal(state.requests['req-project-admission-gap'].status, 'completed');
+    assert.ok(state.requests['req-project-admission-gap'].admissionId);
+    assert.deepEqual(state.requests['req-project-admission-gap'].result, result);
+    assert.equal(Object.values(state.projects).length, 1);
+    assert.equal((await app.store.verifyAudit()).ok, true);
+  } finally {
+    await cleanup(fixture.root);
+  }
+});
+
 test('app marks request unknown instead of failed when handler state commit audit outcome is ambiguous', async () => {
   const { createGitRepo } = await import('./helpers.mjs');
   const { createVeteranApp } = await import('../src/app.mjs');
