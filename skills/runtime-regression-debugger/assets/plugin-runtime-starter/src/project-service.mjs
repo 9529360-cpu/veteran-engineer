@@ -98,7 +98,7 @@ export class ProjectService {
         project.environmentProfile = environmentProfile;
         project.environmentReadiness = environmentReadiness;
         project.bootstrapPlan = bootstrapPlan;
-        project.remoteUrl = remoteUrl || project.remoteUrl;
+        project.remoteUrl = remoteUrl;
         project.sourceKind = sourceKind;
         project.managedCheckout = sourceKind === 'managed-remote';
         project.validationCapabilities = policy.validationCapabilities;
