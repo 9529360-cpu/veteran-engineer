@@ -6,6 +6,7 @@ import { projectPolicy } from './operator-config.mjs';
 import { requireSurfaceCapability, resolveSurfaceProfile } from './surface-capabilities.mjs';
 import { inspectProjectEnvironment } from './project-environment.mjs';
 import { assessProjectEnvironmentReadiness } from './project-environment-readiness.mjs';
+import { compileProjectBootstrapPlan } from './project-bootstrap-plan.mjs';
 
 export class ProjectService {
   constructor({ store, operatorConfig = { defaults: {}, projects: {} }, managedProjectsRoot, surfaceProfile = 'local-stdio' }) {
@@ -62,6 +63,7 @@ export class ProjectService {
     const identity = await sourceIdentity(repo);
     const environmentProfile = await inspectProjectEnvironment(repo);
     const environmentReadiness = await assessProjectEnvironmentReadiness(environmentProfile, { cwd: this.store.root, surfaceProfile: this.surfaceProfile.id });
+    const bootstrapPlan = compileProjectBootstrapPlan(environmentProfile, environmentReadiness);
     const projectKey = sha256(repo).slice(0, 24);
     const policy = projectPolicy(this.operatorConfig, repo, remoteUrl);
     return this.store.transaction('project_opened', (state) => {
@@ -80,6 +82,7 @@ export class ProjectService {
           sourceIdentity: identity,
           environmentProfile,
           environmentReadiness,
+          bootstrapPlan,
           validationCapabilities: policy.validationCapabilities,
           workerPolicy: policy.workerPolicy,
           plannerProvider: policy.plannerProvider,
@@ -94,6 +97,7 @@ export class ProjectService {
         project.sourceIdentity = identity;
         project.environmentProfile = environmentProfile;
         project.environmentReadiness = environmentReadiness;
+        project.bootstrapPlan = bootstrapPlan;
         project.remoteUrl = remoteUrl || project.remoteUrl;
         project.sourceKind = sourceKind;
         project.managedCheckout = sourceKind === 'managed-remote';
@@ -106,7 +110,7 @@ export class ProjectService {
         project.requiredValidationCapabilities = policy.requiredValidationCapabilities;
       }
       return managedCheckout ? { ...project, checkout: managedCheckout } : project;
-    }, { repo, head: identity.head, dirty: identity.dirty, sourceKind, remoteUrl, environmentContract: environmentProfile.contract, environmentReadiness: environmentReadiness.status, runtimeFamilies: environmentProfile.runtimeFamilies });
+    }, { repo, head: identity.head, dirty: identity.dirty, sourceKind, remoteUrl, environmentContract: environmentProfile.contract, environmentReadiness: environmentReadiness.status, bootstrapPlan: bootstrapPlan.status, runtimeFamilies: environmentProfile.runtimeFamilies });
   }
 
   async snapshot({ projectId }) {
@@ -116,14 +120,16 @@ export class ProjectService {
     const identity = await sourceIdentity(project.repoPath);
     const environmentProfile = await inspectProjectEnvironment(project.repoPath);
     const environmentReadiness = await assessProjectEnvironmentReadiness(environmentProfile, { cwd: this.store.root, surfaceProfile: this.surfaceProfile.id });
+    const bootstrapPlan = compileProjectBootstrapPlan(environmentProfile, environmentReadiness);
     const result = await this.store.transaction('project_snapshotted', (working) => {
       const target = working.projects[projectId];
       target.sourceIdentity = identity;
       target.environmentProfile = environmentProfile;
       target.environmentReadiness = environmentReadiness;
+      target.bootstrapPlan = bootstrapPlan;
       target.updatedAt = nowIso();
       return target;
-    }, { projectId, head: identity.head, dirty: identity.dirty, environmentContract: environmentProfile.contract, environmentReadiness: environmentReadiness.status, runtimeFamilies: environmentProfile.runtimeFamilies });
+    }, { projectId, head: identity.head, dirty: identity.dirty, environmentContract: environmentProfile.contract, environmentReadiness: environmentReadiness.status, bootstrapPlan: bootstrapPlan.status, runtimeFamilies: environmentProfile.runtimeFamilies });
     return result;
   }
 
