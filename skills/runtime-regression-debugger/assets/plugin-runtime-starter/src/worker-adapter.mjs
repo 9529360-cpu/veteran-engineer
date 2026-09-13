@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { nowIso } from './util.mjs';
 import { buildContainerInvocation, validateContainerWorkerConfig } from './container-worker.mjs';
 
@@ -12,6 +12,22 @@ const FORBIDDEN_CODEX_FLAGS = new Set([
 
 function substitute(value, vars) {
   return String(value).replace(/\{(packet|worktree|taskId|missionId)\}/g, (_, key) => vars[key]);
+}
+
+function terminateTree(child, signal = 'SIGTERM') {
+  if (!child?.pid) return false;
+  if (process.platform === 'win32') {
+    const args = ['/PID', String(child.pid), '/T'];
+    if (signal === 'SIGKILL') args.push('/F');
+    const result = spawnSync('taskkill', args, { stdio: 'ignore', windowsHide: true });
+    return result.status === 0;
+  }
+  try {
+    process.kill(-child.pid, signal);
+    return true;
+  } catch {
+    try { return child.kill(signal); } catch { return false; }
+  }
 }
 
 function codexPreset(project) {
@@ -114,8 +130,16 @@ export class WorkerAdapter {
     env.VETERAN_MISSION_ID = mission.id;
 
     const startedAt = nowIso();
-    const child = spawn(invocation.command, invocation.args, { cwd: worktreePath, env, shell: false, stdio: ['pipe', 'pipe', 'pipe'] });
-    this.running.set(task.key, { child, container: invocation.container || null, env });
+    const child = spawn(invocation.command, invocation.args, {
+      cwd: worktreePath,
+      env,
+      shell: false,
+      detached: process.platform !== 'win32',
+      windowsHide: true,
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+    const running = { child, container: invocation.container || null, env, forceTimer: null };
+    this.running.set(task.key, running);
     if (config.stdinMode === 'codex-prompt') child.stdin.end(codexPrompt(packet));
     else if (config.stdin !== undefined) child.stdin.end(String(config.stdin));
     else child.stdin.end();
@@ -127,22 +151,40 @@ export class WorkerAdapter {
     child.stderr.on('data', (chunk) => { stderr += chunk; if (stderr.length > 2_000_000) stderr = stderr.slice(-2_000_000); });
     const effectiveTimeoutMs = timeoutMs || config.timeoutMs || 900_000;
     const outcome = await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        child.kill('SIGTERM');
-        this.#cleanupContainer(invocation.container, env);
-        setTimeout(() => child.kill('SIGKILL'), 3000).unref();
-      }, effectiveTimeoutMs);
+      const timer = setTimeout(() => this.#terminateRunning(running), effectiveTimeoutMs);
       child.on('error', (error) => {
         clearTimeout(timer);
+        this.#clearTermination(running);
+        this.#cleanupContainer(invocation.container, env);
         reject(error);
       });
       child.on('close', (code, signal) => {
         clearTimeout(timer);
+        this.#clearTermination(running);
         this.#cleanupContainer(invocation.container, env);
         resolve({ code, signal });
       });
     }).finally(() => this.running.delete(task.key));
     return { ...outcome, stdout, stderr, startedAt, endedAt: nowIso(), pid: child.pid, packetPath: resolvedPacketPath };
+  }
+
+  #terminateRunning(running) {
+    if (!running?.child) return;
+    terminateTree(running.child, 'SIGTERM');
+    this.#cleanupContainer(running.container, running.env);
+    if (!running.forceTimer) {
+      running.forceTimer = setTimeout(() => {
+        terminateTree(running.child, 'SIGKILL');
+        this.#cleanupContainer(running.container, running.env);
+      }, 3000);
+      running.forceTimer.unref();
+    }
+  }
+
+  #clearTermination(running) {
+    if (!running?.forceTimer) return;
+    clearTimeout(running.forceTimer);
+    running.forceTimer = null;
   }
 
   #cleanupContainer(container, env) {
@@ -158,8 +200,7 @@ export class WorkerAdapter {
   cancel(taskKey) {
     const running = this.running.get(taskKey);
     if (!running) return false;
-    running.child.kill('SIGTERM');
-    this.#cleanupContainer(running.container, running.env);
+    this.#terminateRunning(running);
     return true;
   }
 }
