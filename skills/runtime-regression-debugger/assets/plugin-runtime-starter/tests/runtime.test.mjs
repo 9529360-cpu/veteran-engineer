@@ -18,6 +18,8 @@ test('runtime health reports explicit fallback and official SDK protocol capabil
     let health = await runtime.health();
     assert.equal(health.toolCount, 34);
     assert.deepEqual(health.toolSurface, [...TOOL_NAMES]);
+    assert.equal(health.surface.id, 'local-stdio');
+    assert.equal(health.surface.contract, 'veteran-surface-capabilities-v1');
     assert.deepEqual(health.mcp.eras, ['legacy']);
     assert.deepEqual(health.mcp.protocols, ['2025-11-25']);
     runtime.setProtocolMode(MCP_TRANSPORT_MODES.OFFICIAL_SDK);

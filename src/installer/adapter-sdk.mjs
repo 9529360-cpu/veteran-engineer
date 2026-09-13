@@ -3,6 +3,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { pathExists } from '../util.mjs';
 import { HOST_ADAPTER_API_VERSION } from '../constants.mjs';
+import { resolveSurfaceProfile } from '../surface-capabilities.mjs';
 
 const ID_RE = /^[a-z][a-z0-9-]{1,63}$/;
 
@@ -15,6 +16,7 @@ export function validateHostAdapter(adapter, source = '<built-in>') {
   }
   if (!ID_RE.test(adapter.id || '')) throw new Error(`Invalid host adapter id from ${source}: ${adapter.id}`);
   if (!adapter.displayName || typeof adapter.displayName !== 'string') throw new Error(`Host adapter ${adapter.id} missing displayName`);
+  resolveSurfaceProfile(adapter.surfaceProfile || 'local-stdio');
   for (const method of ['install', 'status', 'doctor', 'uninstall']) {
     if (typeof adapter[method] !== 'function') throw new Error(`Host adapter ${adapter.id} missing ${method}()`);
   }

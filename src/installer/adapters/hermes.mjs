@@ -50,6 +50,7 @@ export default {
   apiVersion: HOST_ADAPTER_API_VERSION,
   id: 'hermes',
   displayName: 'Hermes Agent',
+  surfaceProfile: 'local-stdio',
   capabilities: { mcp: true, skill: true },
   async install(context) {
     const executable = await requireHermes(context);

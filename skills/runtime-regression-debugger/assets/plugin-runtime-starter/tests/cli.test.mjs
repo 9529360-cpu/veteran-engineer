@@ -15,8 +15,10 @@ test('CLI generic lifecycle exposes status and doctor protocol mode', async () =
   const descriptor = path.join(home, 'descriptor.json');
   const common = ['--home', home, '--distribution-root', root];
   try {
-    let result = await runProcess(process.execPath, [cli, 'install', 'generic', ...common, '--descriptor', descriptor, '--json'], { cwd: root });
+    let result = await runProcess(process.execPath, [cli, 'install', 'generic', ...common, '--descriptor', descriptor, '--surface-profile', 'secure-tunnel', '--json'], { cwd: root });
     assert.equal(JSON.parse(result.stdout).host, 'generic');
+    const descriptorJson = JSON.parse(await fs.readFile(descriptor, 'utf8'));
+    assert.equal(descriptorJson.mcpServers['veteran-engineer'].env.VETERAN_ENGINEER_SURFACE_PROFILE, 'secure-tunnel');
     result = await runProcess(process.execPath, [cli, 'status', 'generic', ...common, '--descriptor', descriptor, '--json'], { cwd: root });
     const status = JSON.parse(result.stdout);
     assert.equal(status.hosts.generic.installed, true);

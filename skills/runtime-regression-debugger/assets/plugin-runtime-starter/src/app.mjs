@@ -20,6 +20,7 @@ import { loadOperatorConfig } from './operator-config.mjs';
 import { beginRequest, completeRequest, failRequest, markRequestUnknown, replayOrThrow } from './idempotency.mjs';
 import { MCP_TRANSPORT_MODES } from './mcp-protocol-capability.mjs';
 import { randomId, sha256, stableStringify } from './util.mjs';
+import { resolveSurfaceProfile } from './surface-capabilities.mjs';
 
 const MUTATING_TOOLS = new Set([
   'project_open', 'project_snapshot', 'mission_plan', 'mission_execute', 'mission_advance',
@@ -60,9 +61,11 @@ export async function createVeteranApp({
   stateBackendConfig = null,
   stateBackendEnv = process.env,
   protocolMode = MCP_TRANSPORT_MODES.STANDALONE_FALLBACK,
+  surfaceProfile = process.env.VETERAN_ENGINEER_SURFACE_PROFILE || 'local-stdio',
   configPath
 } = {}) {
   if (!stateRoot) throw new Error('stateRoot is required');
+  const resolvedSurfaceProfile = resolveSurfaceProfile(surfaceProfile);
   const backend = stateBackend || createStateBackend({
     stateRoot: path.resolve(stateRoot),
     config: stateBackendConfig,
@@ -74,7 +77,8 @@ export async function createVeteranApp({
   const projectService = new ProjectService({
     store,
     operatorConfig,
-    managedProjectsRoot: path.join(path.resolve(stateRoot), 'projects')
+    managedProjectsRoot: path.join(path.resolve(stateRoot), 'projects'),
+    surfaceProfile: resolvedSurfaceProfile
   });
   const evidenceService = new EvidenceService({ store });
   const experienceService = new ExperienceService({ store });
@@ -85,7 +89,7 @@ export async function createVeteranApp({
   const validationService = new ValidationService({ store, projectService, missionService, worktreeManager, evidenceService });
   const reviewService = new ReviewService({ store, projectService, missionService, worktreeManager, evidenceService, experienceService });
   const candidateService = new CandidateService({ store, projectService, missionService, worktreeManager, evidenceService });
-  const runtimeService = new RuntimeService({ store, experienceService, protocolMode });
+  const runtimeService = new RuntimeService({ store, experienceService, protocolMode, surfaceProfile: resolvedSurfaceProfile });
   const handoffService = new HandoffService({ store, missionService });
   const missionAdvanceService = new MissionAdvanceService({ store, projectService, missionService, worktreeManager, workerOrchestrator, validationService, reviewService, candidateService, evidenceService });
 

@@ -9,6 +9,7 @@ import { copyDistribution, defaultInstallerPaths, distributionDigest, readJson, 
 import { ensureDir, nowIso, pathExists } from '../util.mjs';
 import { RUNTIME_VERSION, HOST_ADAPTER_API_VERSION } from '../constants.mjs';
 import { inspectMcpSdkIntegrity } from '../mcp-sdk-integrity.mjs';
+import { resolveSurfaceProfile } from '../surface-capabilities.mjs';
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_DISTRIBUTION_ROOT = path.resolve(moduleDir, '..', '..');
@@ -68,7 +69,7 @@ export class VeteranInstaller {
 
   async listHosts() {
     const registry = await this.#registry();
-    return [...registry.values()].map((adapter) => ({ id: adapter.id, displayName: adapter.displayName, apiVersion: adapter.apiVersion, capabilities: adapter.capabilities || {} }));
+    return [...registry.values()].map((adapter) => ({ id: adapter.id, displayName: adapter.displayName, apiVersion: adapter.apiVersion, surface: resolveSurfaceProfile(adapter.surfaceProfile || 'local-stdio'), capabilities: adapter.capabilities || {} }));
   }
 
   async #context(adapter, options = {}, state = null) {

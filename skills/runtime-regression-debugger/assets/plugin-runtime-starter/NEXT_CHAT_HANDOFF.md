@@ -41,12 +41,12 @@ Mainline CI has three real gates:
 
 Current base gate proves:
 
-- **70 syntax files**
+- **73 syntax files**
 - exact **34-tool** MCP surface
 - protocol constants correct
 - official SDK graph + lockfile integrity verified
 - runtime/starter mirror parity enforced by `scripts/check.mjs`
-- **78 total / 78 PASS / 0 SKIP / 0 FAIL** Node tests
+- **82 total / 82 PASS / 0 SKIP / 0 FAIL** Node tests in CI (local environments without the official SDK may show 80 PASS / 2 SKIP)
 
 PostgreSQL integration separately proves the shared base/transaction semantics, durability behavior, commit acknowledgement reconciliation, tamper rejection, audit repair, and concurrent writes from independent backend instances/connection pools sharing one durable `instanceKey`.
 
@@ -75,6 +75,12 @@ Important recent mainline milestone:
 - hosted PostgreSQL merge: `d874544261676535a0a0aadec06b9089d3cbed27` (`#12`)
 
 When this handoff is read after later commits, refresh `main` before trusting any SHA/count here.
+
+## Cross-surface runtime milestone
+
+The runtime now treats Web/Desktop/Codex differences as capability/topology edges instead of engineering-core forks. `veteran-surface-capabilities-v1` defines `local-stdio`, `remote-mcp`, and `secure-tunnel`; `runtime_health` reports the effective profile, remote MCP refuses caller-local repository paths, and generic descriptors can carry an explicit surface profile.
+
+Plugin export is profile-aware: Desktop/Codex artifacts retain the local runtime and `.mcp.json`, while the Web artifact excludes local MCP/runtime surfaces and can optionally reference a caller-supplied `.app.json`. Tunnel/app provisioning remains external platform configuration until a stable machine-consumable OpenAI contract exists.
 
 ## Remote repository onboarding
 

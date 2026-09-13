@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { RUNTIME_VERSION, MODERN_PROTOCOL_VERSION, LEGACY_PROTOCOL_VERSION } from '../src/constants.mjs';
 import { TOOL_NAMES } from '../src/tool-catalog.mjs';
 import { inspectMcpSdkIntegrity } from '../src/mcp-sdk-integrity.mjs';
+import { SURFACE_CAPABILITY_CONTRACT, surfaceProfileNames } from '../src/surface-capabilities.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
@@ -81,6 +82,9 @@ assert.equal(server?.type, 'stdio');
 assert.equal(server?.command, 'node');
 assert.deepEqual(server?.args, ['${PLUGIN_ROOT}/mcp/server.mjs']);
 assert.equal(server?.cwd, '${PLUGIN_ROOT}');
+assert.equal(server?.env?.VETERAN_ENGINEER_SURFACE_PROFILE, 'local-stdio');
+assert.equal(SURFACE_CAPABILITY_CONTRACT, 'veteran-surface-capabilities-v1');
+assert.deepEqual(surfaceProfileNames(), ['local-stdio', 'remote-mcp', 'secure-tunnel']);
 assert.equal(TOOL_NAMES.length, 34);
 assert.equal(new Set(TOOL_NAMES).size, 34, 'MCP tool names must be unique');
 assert.equal(MODERN_PROTOCOL_VERSION, '2026-07-28');

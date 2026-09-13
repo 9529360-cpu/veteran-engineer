@@ -4,8 +4,13 @@
     "veteran-engineer": {
       "type": "stdio",
       "command": "node",
-      "args": ["${PLUGIN_ROOT}/mcp/server.mjs"],
-      "cwd": "${PLUGIN_ROOT}"
+      "args": [
+        "${PLUGIN_ROOT}/mcp/server.mjs"
+      ],
+      "cwd": "${PLUGIN_ROOT}",
+      "env": {
+        "VETERAN_ENGINEER_SURFACE_PROFILE": "local-stdio"
+      }
     }
   }
 }

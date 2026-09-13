@@ -6,15 +6,17 @@ import { protocolCapability, MCP_TRANSPORT_MODES } from './mcp-protocol-capabili
 import { TOOL_NAMES } from './tool-catalog.mjs';
 import { nowIso, pathExists } from './util.mjs';
 import { inspectMcpSdkIntegrity } from './mcp-sdk-integrity.mjs';
+import { resolveSurfaceProfile } from './surface-capabilities.mjs';
 
 const defaultRuntimeRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 export class RuntimeService {
-  constructor({ store, experienceService, protocolMode = MCP_TRANSPORT_MODES.STANDALONE_FALLBACK, runtimeRoot = defaultRuntimeRoot }) {
+  constructor({ store, experienceService, protocolMode = MCP_TRANSPORT_MODES.STANDALONE_FALLBACK, runtimeRoot = defaultRuntimeRoot, surfaceProfile = 'local-stdio' }) {
     this.store = store;
     this.experienceService = experienceService;
     this.protocolMode = protocolMode;
     this.runtimeRoot = runtimeRoot;
+    this.surfaceProfile = resolveSurfaceProfile(surfaceProfile);
   }
 
   setProtocolMode(mode) {
@@ -39,6 +41,7 @@ export class RuntimeService {
       stateReadable: Boolean(state),
       audit: { ok: audit.ok, entries: audit.entries },
       mcp: protocolCapability(this.protocolMode),
+      surface: this.surfaceProfile,
       sdk: await inspectMcpSdkIntegrity(this.runtimeRoot),
       toolCount: TOOL_NAMES.length,
       toolSurface: [...TOOL_NAMES],
