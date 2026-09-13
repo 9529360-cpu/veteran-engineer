@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { sha256 } from './util.mjs';
 
 const ENGINES = new Set(['docker', 'podman']);
 const DIGEST_IMAGE = /^[^\s@]+@sha256:[0-9a-f]{64}$/i;
@@ -26,8 +27,11 @@ function bindSpec(source, target, readonly = false) {
 
 function containerName({ packetPath, mission, task }) {
   const dispatch = path.basename(packetPath, path.extname(packetPath));
-  const raw = `veteran-${mission.id}-${task.id}-${dispatch}`.toLowerCase().replace(/[^a-z0-9_.-]+/g, '-');
-  return raw.slice(0, 63).replace(/[-_.]+$/g, '') || `veteran-${Date.now()}`;
+  const readable = `veteran-${mission.id}-${task.id}`.toLowerCase().replace(/[^a-z0-9_.-]+/g, '-');
+  const digest = sha256(`${mission.id}\u0000${task.id}\u0000${dispatch}`).slice(0, 16);
+  const maxPrefix = 63 - digest.length - 1;
+  const prefix = readable.slice(0, maxPrefix).replace(/[-_.]+$/g, '') || 'veteran';
+  return `${prefix}-${digest}`;
 }
 
 function containerUser(config) {
