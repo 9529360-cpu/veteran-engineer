@@ -52,7 +52,13 @@ def copy_filtered(src: pathlib.Path, dst: pathlib.Path, *, exclude_runtime_asset
 
 
 def load_json(path: pathlib.Path) -> dict:
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise RuntimeError(f"invalid JSON file: {path}") from error
+    if not isinstance(value, dict):
+        raise RuntimeError(f"JSON manifest must contain an object: {path}")
+    return value
 
 
 def write_json(path: pathlib.Path, value: dict) -> None:
@@ -111,6 +117,7 @@ def build_web_profile(skill_root: pathlib.Path, runtime: pathlib.Path, plugin_ro
             raise RuntimeError("plugin export refuses symbolic link app manifest")
         if not app_manifest.is_file():
             raise RuntimeError(f"app manifest does not exist: {app_manifest}")
+        load_json(app_manifest)
         shutil.copyfile(app_manifest, plugin_root / ".app.json")
         manifest["apps"] = "./.app.json"
     else:
@@ -167,9 +174,11 @@ def validate_export(root: pathlib.Path, profile: str) -> None:
         if "mcpServers" in manifest:
             raise RuntimeError("web plugin manifest must not declare mcpServers")
         app_path = root / ".app.json"
-        if app_path.exists() and manifest.get("apps") != "./.app.json":
-            raise RuntimeError("web app reference must be declared through ./.app.json")
-        if not app_path.exists() and "apps" in manifest:
+        if app_path.exists():
+            load_json(app_path)
+            if manifest.get("apps") != "./.app.json":
+                raise RuntimeError("web app reference must be declared through ./.app.json")
+        elif "apps" in manifest:
             raise RuntimeError("web plugin manifest references an app but .app.json is missing")
 
 
@@ -216,6 +225,8 @@ def main() -> int:
 
     app_manifest = pathlib.Path(args.app_manifest).expanduser().absolute() if args.app_manifest else None
     output = pathlib.Path(args.output).expanduser().resolve()
+    if output.is_relative_to(skill_root):
+        raise RuntimeError("--output must be outside the Skill root to prevent self-inclusion")
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="veteran-engineer-plugin-") as temp_name:
         temp = pathlib.Path(temp_name)
