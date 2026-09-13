@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 
 export const BROWSER_VALIDATION_CONTRACT = 'veteran-browser-validation-v1';
@@ -13,9 +14,12 @@ const MAX_STDERR_BYTES = 256 * 1024;
 const MAX_TIMEOUT_MS = 10 * 60_000;
 const SAFE_ENV_KEYS = [
   'PATH', 'Path', 'PATHEXT', 'SystemRoot', 'WINDIR', 'COMSPEC',
-  'HOME', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH',
   'TMPDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL', 'LC_CTYPE', 'SHELL'
 ];
+const PROTECTED_HOME_ENV = new Set([
+  'HOME', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH',
+  'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'APPDATA', 'LOCALAPPDATA'
+]);
 
 function errorWithCode(message, code, details = null) {
   const error = new Error(message);
@@ -78,8 +82,12 @@ function normalizeEnvAllowlist(raw) {
     if (typeof value !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) {
       throw errorWithCode('Browser provider envAllowlist contains an invalid variable name', 'BROWSER_PROVIDER_ENV_INVALID');
     }
-    if (!seen.has(value)) {
-      seen.add(value);
+    const identity = value.toUpperCase();
+    if (PROTECTED_HOME_ENV.has(identity)) {
+      throw errorWithCode('Browser provider envAllowlist may not override isolated home/config variables', 'BROWSER_PROVIDER_ENV_INVALID');
+    }
+    if (!seen.has(identity)) {
+      seen.add(identity);
       output.push(value);
     }
   }
@@ -132,15 +140,25 @@ async function resolveContainedFile(root, relativePath) {
   return absolute;
 }
 
-function isolatedEnvironment(allowlist) {
-  const env = {};
-  for (const key of SAFE_ENV_KEYS) {
-    if (typeof process.env[key] === 'string') env[key] = process.env[key];
+async function isolatedEnvironment(allowlist, environment) {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'veteran-browser-home-'));
+  try {
+    const env = {};
+    for (const key of SAFE_ENV_KEYS) {
+      if (typeof environment?.[key] === 'string') env[key] = environment[key];
+    }
+    env.HOME = home;
+    env.USERPROFILE = home;
+    env.XDG_CONFIG_HOME = path.join(home, '.config');
+    env.XDG_CACHE_HOME = path.join(home, '.cache');
+    for (const key of allowlist) {
+      if (typeof environment?.[key] === 'string') env[key] = environment[key];
+    }
+    return { env, home };
+  } catch (error) {
+    await fs.rm(home, { recursive: true, force: true }).catch(() => {});
+    throw error;
   }
-  for (const key of allowlist) {
-    if (typeof process.env[key] === 'string') env[key] = process.env[key];
-  }
-  return env;
 }
 
 function appendBounded(state, chunk, limit) {
@@ -247,7 +265,7 @@ function normalizeProviderResult(raw, baseUrl) {
   };
 }
 
-export async function runBrowserValidation(browser, { cwd, serviceReadinessUrl = null } = {}) {
+export async function runBrowserValidation(browser, { cwd, serviceReadinessUrl = null, environment = process.env } = {}) {
   const scenarioFile = await resolveContainedFile(cwd, browser.scenarioFile);
   const baseUrl = browser.baseUrl || (serviceReadinessUrl ? `${new URL(serviceReadinessUrl).origin}/` : null);
   if (!baseUrl) throw errorWithCode('Browser validation requires browser.baseUrl or service readiness URL', 'BROWSER_BASE_URL_REQUIRED');
@@ -259,12 +277,18 @@ export async function runBrowserValidation(browser, { cwd, serviceReadinessUrl =
     artifactsManagedByValidation: true
   })}\n`;
   const [command, ...args] = browser.command;
-  const processResult = await runProviderProcess(command, args, {
-    cwd,
-    env: isolatedEnvironment(browser.envAllowlist),
-    timeoutMs: browser.timeoutMs,
-    input: payload
-  });
+  const { env, home } = await isolatedEnvironment(browser.envAllowlist, environment);
+  let processResult;
+  try {
+    processResult = await runProviderProcess(command, args, {
+      cwd,
+      env,
+      timeoutMs: browser.timeoutMs,
+      input: payload
+    });
+  } finally {
+    await fs.rm(home, { recursive: true, force: true }).catch(() => {});
+  }
   const diagnostics = {
     exitCode: processResult.code,
     signal: processResult.signal,
