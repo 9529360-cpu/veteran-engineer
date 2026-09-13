@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
+import { STATE_SCHEMA_VERSION } from '../src/constants.mjs';
 import { StateStore } from '../src/state-store.mjs';
 import { tempDir, cleanup } from './helpers.mjs';
 
@@ -36,6 +37,26 @@ test('state store recovers from backup when primary JSON is corrupt', async () =
     assert.equal(recovered.runtime.value, 'first');
     const reparsed = JSON.parse(await fs.readFile(store.statePath, 'utf8'));
     assert.equal(reparsed.runtime.value, 'first');
+  });
+});
+
+test('state store fails closed on unsupported primary schema without restoring an older backup', async () => {
+  await withStore(async (store) => {
+    await store.transaction('first', (state) => { state.runtime.value = 'first'; });
+    await store.transaction('second', (state) => { state.runtime.value = 'second'; });
+    const future = JSON.parse(await fs.readFile(store.statePath, 'utf8'));
+    future.schemaVersion = STATE_SCHEMA_VERSION + 1;
+    future.runtime.value = 'future-runtime-state';
+    const futureSerialized = `${JSON.stringify(future, null, 2)}\n`;
+    const backupBefore = await fs.readFile(store.backupPath, 'utf8');
+    await fs.writeFile(store.statePath, futureSerialized);
+
+    await assert.rejects(
+      store.read(),
+      (error) => error.code === 'STATE_SCHEMA_UNSUPPORTED' && /Unsupported state schema/.test(error.message)
+    );
+    assert.equal(await fs.readFile(store.statePath, 'utf8'), futureSerialized);
+    assert.equal(await fs.readFile(store.backupPath, 'utf8'), backupBefore);
   });
 });
 

@@ -65,7 +65,7 @@ export function errorWithCode(message, code, details) {
 
 export function within(root, candidate) {
   const rel = path.relative(path.resolve(root), path.resolve(candidate));
-  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
 }
 
 export async function sleep(ms) {
