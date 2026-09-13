@@ -28,7 +28,7 @@ Do not ask the user for facts the repository, issue, tests, schemas, runtime, or
 
 Establish:
 
-- repository instructions and local constraints;
+- repository identity, instructions, and local constraints;
 - branch/base/working-tree state;
 - active entrypoint and caller chain;
 - authoritative state owner;
@@ -37,6 +37,8 @@ Establish:
 - deployed/version coexistence when relevant;
 - tests that claim to protect the behavior;
 - runtime evidence if the symptom is production-only.
+
+Before the first write, reconcile the user's explicit current repository target with the active checkout or connector identity using the strongest available root, remote/repository ID, and default-branch evidence. If they disagree, switch or reopen the correct repository and discard inherited branch, PR, SHA, CI, and file-ownership assumptions until they are re-established for that target. Read `project-takeover-engineering.md` for the detailed identity gate when multiple repositories or checkouts are in play.
 
 Never infer liveness from file existence alone. Old code often survives after authority moved elsewhere.
 
