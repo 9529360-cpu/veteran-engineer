@@ -54,6 +54,43 @@ registerStateBackendTransactionConformance({
   create: () => createPostgresFixture({ prefix: 'transaction' })
 });
 
+test('postgres separate backend instances serialize one durable state identity without lost updates', async () => {
+  const rootA = await tempDir('veteran-postgres-instance-a-');
+  const rootB = await tempDir('veteran-postgres-instance-b-');
+  const key = instanceKey('cross-instance');
+  let backendA;
+  let backendB;
+  try {
+    backendA = await new PostgresStateBackend({ root: rootA, connectionString, instanceKey: key, poolMax: 2 }).init();
+    backendB = await new PostgresStateBackend({ root: rootB, connectionString, instanceKey: key, poolMax: 2 }).init();
+    await backendA.transaction('cross_instance_counter_init', (state) => {
+      state.runtime.crossInstanceCounter = 0;
+    });
+    const beforeAudit = await backendA.verifyAudit();
+
+    const writes = Array.from({ length: 24 }, (_, index) => {
+      const backend = index % 2 === 0 ? backendA : backendB;
+      return backend.transaction('cross_instance_counter_incremented', (state) => {
+        state.runtime.crossInstanceCounter += 1;
+      }, { index });
+    });
+    await Promise.all(writes);
+
+    const [stateA, stateB, auditA, auditB] = await Promise.all([
+      backendA.read(), backendB.read(), backendA.verifyAudit(), backendB.verifyAudit()
+    ]);
+    assert.equal(stateA.runtime.crossInstanceCounter, 24);
+    assert.equal(stateB.runtime.crossInstanceCounter, 24);
+    assert.equal(auditA.ok, true);
+    assert.equal(auditB.ok, true);
+    assert.equal(auditA.head, auditB.head);
+    assert.equal(auditA.entries, beforeAudit.entries + 24);
+  } finally {
+    await Promise.all([backendA?.close?.(), backendB?.close?.()].filter(Boolean).map((promise) => promise.catch(() => {})));
+    await Promise.all([cleanup(rootA), cleanup(rootB)]);
+  }
+});
+
 test('postgres durability capability keeps state and audit atomic and resolves acknowledgement loss by commit identity', async () => {
   const control = { eventType: null };
   const fixture = await createPostgresFixture({

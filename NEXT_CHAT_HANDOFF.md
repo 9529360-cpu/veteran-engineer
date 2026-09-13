@@ -1,112 +1,128 @@
 # Veteran Engineer — Current Checkpoint Handoff
 
-## Authority and provenance
+## Authority
 
-The historical pre-reconstruction `0.3.0` ZIP is lost and cannot be recovered byte-for-byte. The active implementation authority is the GitHub repository:
+The active implementation authority is the GitHub repository:
 
 `9529360-cpu/veteran-engineer`
 
-Judge the product by current repository/runtime evidence, executable gates, and the bundled `runtime-regression-debugger` Skill. Product invariant:
+Judge the product by current repository/runtime evidence, executable gates, and the bundled `runtime-regression-debugger` Skill. Historical exported ZIPs and remembered checkpoints are not implementation authority.
+
+Product invariant:
 
 `Skill/policy + shared Mission/MCP runtime -> thin host adapter -> host registration`
 
-Do not fork the engineering core for Codex, Hermes, generic MCP, or future hosts.
+Do not fork Mission, MCP, worker, state, evidence, or experience logic per host.
 
-## Current version and protocol surface
+## Current line
 
-- Runtime/package/plugin manifest: `0.3.0`
-- Version intentionally not bumped yet.
-- Exact MCP tool surface: **34** tools.
-- Official modern protocol: `2026-07-28`.
-- Standalone legacy protocol: `2025-11-25`.
-- Pinned SDK graph:
+- Runtime/package/plugin version: `0.3.0`
+- State schema: `3`
+- Public MCP tool surface: exactly **34 tools**
+- Official modern protocol: `2026-07-28`
+- Legacy protocol: `2025-11-25`
+- Standalone fallback is legacy-only
+- Modern pin never falls back
+- Pinned base SDK graph:
   - `@modelcontextprotocol/client@2.0.0`
   - `@modelcontextprotocol/server@2.0.0`
   - `@modelcontextprotocol/core@2.0.0`
   - `zod@4.2.0`
 
-The official path verifies installed versions plus `package-lock.json` entries and npm integrity. Missing/partial/drifted graphs fail closed. Standalone fallback remains deliberately legacy-only. A modern pin never falls back.
+The base lockfile remains the verified MCP SDK graph. PostgreSQL is an explicit hosted capability and currently requires exact `pg@8.23.0` installed in the shared runtime when selected.
 
 ## Current executable evidence
 
-GitHub CI runs on PRs and pushes to `main` with ordered gates:
+Mainline CI has three real gates:
 
-1. `npm ci --include=optional && npm run check`
-2. real Docker engine-backed `WorkerAdapter` smoke
+1. Node 20 `npm ci --include=optional && npm run check`
+2. real Docker engine-backed confined WorkerAdapter smoke
+3. real PostgreSQL engine-backed state-backend integration plus modern MCP handshake with PostgreSQL selected
 
-Current mainline evidence at merge `91df0cd8a3138947e53672b584cc39bd3504f23d`:
+Current base gate proves:
 
-- static/syntax/manifest gate: PASS (**59 syntax files**)
-- exact MCP tool count: **34**
-- official SDK graph + lockfile integrity: VERIFIED
-- full Node suite: **62 total / 62 PASS / 0 SKIP / 0 FAIL**
-- official pinned `2026-07-28` stdio handshake: PASS
-- official modern client auto-negotiation against forced standalone legacy fallback: PASS
-- modern pin against standalone fallback: expected failure PASS
-- `VETERAN_MCP_REQUIRE_SDK=1`: no silent fallback PASS
-- real Docker engine-backed WorkerAdapter smoke: PASS
-- root/starter mirrors for changed source/tests/scripts: synchronized
+- **67 syntax files**
+- exact **34-tool** MCP surface
+- protocol constants correct
+- official SDK graph + lockfile integrity verified
+- runtime/starter mirror parity enforced by `scripts/check.mjs`
+- **70 total / 70 PASS / 0 SKIP / 0 FAIL** Node tests
 
-State-specific proof now includes:
+PostgreSQL integration separately proves the shared base/transaction semantics, durability behavior, commit acknowledgement reconciliation, tamper rejection, audit repair, and concurrent writes from independent backend instances/connection pools sharing one durable `instanceKey`.
 
-- `veteran-state-backend-v1` base contract: PASS
-- Local JSON conformance: PASS
-- concurrent transaction serialization without lost updates: PASS
-- failed mutator commits neither state nor audit event: PASS
-- timeline durability + audit verification: PASS
-- restart orphaned request `started -> unknown`: PASS
-- `veteran-state-transaction-v1`: PASS
-- stable opaque snapshot revisions: PASS
-- stale revision fails before state/audit mutation: PASS
-- two contenders on one revision admit exactly one winner: PASS
-- durable state commit / missing audit is detected: PASS
-- restart repairs a missing audit exactly once: PASS
-- audit appended / acknowledgement lost is recognized without duplication: PASS
-- a later mutation reconciles the prior audit gap before proceeding: PASS
-- audit mismatch/tamper remains fail-closed: PASS
-- ambiguous request admission resumes only the owning attempt: PASS
-- ambiguous handler commit becomes request `unknown`, not false `failed`: PASS
-- ambiguous request-completion audit returns success only after durable reconciliation proves `completed`: PASS
+## Completed milestones
 
-Important milestone merge SHAs:
+The active implementation now contains:
 
-- Mission finalize / merge proposal: `36ff039fd4119e237e8319a45703619e448e12bb`
-- Confined container worker: `d22faf4ce618dce76a4c3d01903ea9ffdf9ee5dd`
-- Checkpoint/Actions v7 refresh: `a015e21fc1fd394ed012cbfc98a907b2f85dad8b`
-- Real Docker worker proof + host UID/GID fix: `c2762d30055988bd48b5df00c482f852753b208b`
-- State backend v1 contract + conformance: `17fdd364cc88ebd9f490dbbcd0ed0b0f44180e05`
-- Transactional state compare-and-commit: `045414c7f2592856a35c4ab01c9f9a79c9f6cea3`
-- State commit/audit partial-failure reconciliation: `91df0cd8a3138947e53672b584cc39bd3504f23d`
+1. Mission finalize and durable merge proposal
+2. confined Docker/Podman WorkerAdapter
+3. real Docker engine worker proof and host UID:GID correction
+4. `veteran-state-backend-v1`
+5. `veteran-state-transaction-v1`
+6. opaque revisions + compare-and-commit / stale conflict semantics
+7. state-commit / audit partial-failure reconciliation
+8. request admission attempt identity and conservative unknown outcomes
+9. `veteran-state-durability-v1`
+10. Local JSON conformance for all three contracts
+11. explicit PostgreSQL hosted backend with real engine proof
+12. root/runtime-starter parity as an executable CI invariant
+13. convergence audit across the previous milestones
 
-## Mission lifecycle
+Important recent mainline milestone:
 
-The mission state machine covers:
+- hosted PostgreSQL merge: `d874544261676535a0a0aadec06b9089d3cbed27` (`#12`)
+
+When this handoff is read after later commits, refresh `main` before trusting any SHA/count here.
+
+## Mission authority and finalize
+
+Mission lifecycle:
 
 `execution -> validation -> deterministic review -> semantic review -> immutable candidate -> finalize`
 
-Finalize never merges or pushes. A proof-fresh candidate produces a durable merge proposal containing candidate/ref/source/proof identity, `automaticMerge:false`, `automaticPush:false`, and `requiresOperatorAction:true`. Stable retries reuse the proposal; missing finalize evidence after a partial failure is repaired on retry. Source drift supersedes the proposal, refreshes the candidate, and forces revalidation/re-review.
+Finalize never merges or pushes. A proof-fresh candidate produces a durable merge proposal with:
 
-## Worker execution model
+- `automaticMerge:false`
+- `automaticPush:false`
+- `requiresOperatorAction:true`
 
-The runtime owns task worktrees, HEAD authority, actual-write verification, task commits, and deterministic serial integration. Worker HEAD mutation is rejected. Task packets live outside task worktrees.
+Proposal identity binds candidate SHA/ref, expected source HEAD/branch, mission HEAD, and proof identities. Source or mission drift invalidates the proposal and forces candidate refresh plus revalidation/re-review. Stable retries reuse an unchanged proposal. Partial-failure evidence is repaired rather than silently replaced.
 
-The Codex preset uses `codex exec --sandbox workspace-write --ephemeral`; dangerous sandbox/approval bypass flags are rejected. `custom-unconfined` requires explicit operator opt-in and remains blocked for high/critical/broad-write tasks.
+## Worker boundary
 
-The built-in `container` worker remains at the WorkerAdapter boundary. It requires Docker/Podman, digest-pinned images, no network, read-only rootfs, `cap-drop ALL`, `no-new-privileges`, bounded resources, bounded `noexec,nosuid` `/tmp`, only task-worktree writable, read-only task `.git` control file and packet, allowlist-only environment, no arbitrary engine flags/mounts, unique names, and cleanup on cancel/timeout/client exit.
+The runtime owns task worktrees, HEAD authority, actual-write verification, task commits, and deterministic serial integration.
 
-The permanent real-engine CI gate exposed and closed the host packet UID boundary: confined containers default to the host process numeric UID:GID when available so host `0600` packets remain private/readable and worktree output is not root-owned. Explicit operator `user` still overrides this default.
+Codex preset:
 
-Container isolation is defense-in-depth; post-execution HEAD, symlink-containment, write-scope, commit, and integration gates remain mandatory.
+`codex exec --sandbox workspace-write --ephemeral`
+
+Dangerous sandbox/approval bypass flags are rejected.
+
+Confined container worker:
+
+- Docker or Podman only
+- digest-pinned images only
+- network disabled
+- read-only rootfs
+- all capabilities dropped
+- `no-new-privileges`
+- bounded resources
+- bounded `noexec,nosuid` `/tmp`
+- only isolated task worktree writable
+- task `.git` control file and packet read-only
+- allowlist-only environment forwarding
+- host numeric UID:GID by default when available
+- cleanup on cancel/timeout/client exit
+
+Container isolation never replaces post-execution HEAD, symlink-containment, write-scope, commit, and integration gates.
+
+`custom-unconfined` remains blocked for high/critical/broad-write tasks and requires explicit operator opt-in otherwise.
 
 ## Durable state architecture
 
-Local JSON remains the default authority and its proven storage algorithm has not been replaced. It provides cross-process locking, atomic state-file replacement, backup recovery, append-only audit hash chain, persistent requestId idempotency, unknown-outcome reconciliation, and durable projects/missions/tasks/evidence/experience/candidates/merge proposals.
+### Base contract
 
-Two internal contracts currently guard future state backends:
-
-### `veteran-state-backend-v1`
-
-Required runtime-facing surface:
+`veteran-state-backend-v1` requires:
 
 - `init()`
 - `read()`
@@ -116,76 +132,120 @@ Required runtime-facing surface:
 - execution-local `artifactsDir`
 - execution-local `worktreesDir`
 
-`LocalJsonStateBackend extends StateStore` is the first conforming implementation. `createVeteranApp` accepts backend injection but fails closed on contract violations.
+### Transaction contract
 
-### `veteran-state-transaction-v1`
-
-Required transactional extension:
+`veteran-state-transaction-v1` requires:
 
 - `readSnapshot()` -> `{ state, revision }`
 - `compareAndCommit(expectedRevision, eventType, mutator, auditSummary)`
 
-Revisions are opaque. Local JSON computes a content revision and checks it inside the existing state lock. Stale revisions raise `STATE_REVISION_CONFLICT` before state/audit mutation. Concurrent CAS contenders on one revision produce one winner and one conflict. A successful caller must re-read to get the next revision; the runtime does not invent a speculative post-commit token.
+Revisions are opaque. Stale expected revisions fail before state/audit mutation.
 
-### State commit / audit outcome semantics
+### Durability contract
 
-Every new local durable state mutation now stores `runtime.durability.lastStateCommit` with a unique commit identity, commit timestamp, event type, and audit summary. The matching audit entry includes the same `stateCommitId`.
+`veteran-state-durability-v1` requires explicit commit-outcome reconciliation through `reconcilePendingAudit()`.
 
-If state replacement is durable but audit append or acknowledgement becomes ambiguous, the transaction raises `STATE_COMMIT_AUDIT_OUTCOME_UNKNOWN` with `stateCommitted:true`; it does not pretend the transaction definitely failed. Startup, explicit `reconcilePendingAudit()`, and the next mutation reconcile the latest commit against the verified audit chain before progressing:
+Durable mutations bind state and audit with `stateCommitId`. Unknown outcomes are conservative; blind replay is forbidden. Tamper/mismatch fails closed.
 
-- matching entry already exists -> accept without duplication;
-- entry is missing -> append exactly once;
-- duplicate/mismatch/malformed/tampered chain -> fail closed with audit integrity error.
+### Local JSON
 
-`verifyAudit()` also detects when the current state's latest commit has no matching audit record.
+Local JSON remains the default authority and keeps:
 
-At the request layer, each `request_started` reservation carries an internal admission attempt identity. Only the invocation whose admission identity matches the durable reservation may resume after an ambiguous admission commit. A handler mutation with an ambiguous durable outcome is marked request `unknown`, never `failed`. A completion-stage ambiguity returns the known result only after reconciliation proves the durable request record is already `completed`.
+- cross-process locking
+- atomic state replacement
+- backup recovery
+- audit hash chain
+- requestId idempotency
+- commit/audit repair
+- orphaned `started -> unknown` startup reconciliation
 
-Existing schema version remains `3`; old state without `runtime.durability` remains readable, and old audit entries without `stateCommitId` retain their historical hash material.
+### PostgreSQL
 
-## Experience
+PostgreSQL is opt-in and can be selected programmatically or via:
 
-Reviewed **active** experience may influence Planner/Worker/semantic Reviewer. Candidate/challenged/rejected/retired experience is quarantined. Current repository/runtime evidence always outranks experience.
+```bash
+VETERAN_ENGINEER_STATE_BACKEND=postgres
+VETERAN_ENGINEER_POSTGRES_URL='postgresql://...'
+VETERAN_ENGINEER_STATE_INSTANCE='stable-instance-key'
+VETERAN_ENGINEER_POSTGRES_POOL_MAX=4
+```
+
+It requires exact `pg@8.23.0` in the shared runtime.
+
+PostgreSQL semantics:
+
+- state row and audit append commit in one SQL transaction
+- per-instance database transaction lock before mutations/reconciliation
+- state row `FOR UPDATE`
+- explicit CAS revision check
+- post-COMMIT acknowledgement ambiguity reconciled by `stateCommitId`
+- uncertain connection removed from the pool
+- audit chain ordered by the numeric DB sequence column
+- latest missing audit can be repaired exactly once
+- tampered/mismatched audit fails closed
+- independent backend instances targeting one `instanceKey` serialize without lost updates
+
+## Request idempotency
+
+Every mutating MCP request requires `requestId`.
+
+- same id + different operation/payload -> conflict
+- completed -> replay stored result
+- failed -> replay failure
+- unknown -> never blindly replay
+- started -> equivalent request reported in progress unless the current invocation owns the durable ambiguous admission reservation
+
+If handler state may already have committed, request status becomes `unknown` rather than false `failed`. Completion acknowledgement ambiguity returns known success only after durable state proves `completed`.
+
+## MCP compatibility
+
+Official SDK path supports modern and legacy protocol eras. Standalone fallback is intentionally legacy-only; it does not partially clone the 2026 wire.
+
+Hard modern proof:
+
+```bash
+npm run mcp:handshake:modern
+```
+
+The base gate verifies exact SDK versions, lock entries, npm integrity, and tool count. `VETERAN_MCP_REQUIRE_SDK=1` cannot silently degrade.
 
 ## Cross-host installation
 
-- Shared runtime default: `~/plugins/veteran-engineer`
-- Durable state default: `~/.veteran-engineer/state`
-- Installer metadata: `~/.veteran-engineer/installer.json`
-- Codex, Hermes, generic MCP, and trusted external adapters all use the same runtime.
-- Repair/upgrade preserves an existing `node_modules` tree so official SDK capability does not silently disappear.
+- shared runtime: `~/plugins/veteran-engineer`
+- durable state: `~/.veteran-engineer/state`
+- installer metadata: `~/.veteran-engineer/installer.json`
 
-## Authority invariants
+Install/repair/upgrade synchronizes one shared distribution. Host adapters remain thin. Uninstall cannot purge the runtime while another host still references it.
 
-1. One product; host adapters do not fork the core.
-2. Current repository/runtime evidence outranks experience.
-3. Candidate/challenged/rejected/retired experience never influences execution.
-4. Planner/worker/reviewer providers propose; core validates and owns state.
-5. Runtime never auto-merges/pushes/deploys/publishes/releases.
-6. User checkout is never the multi-agent mutation surface.
-7. Unknown idempotent outcomes require reconciliation, never blind replay.
-8. Unconfined custom workers cannot run high/critical/broad-write tasks.
-9. AI validation defaults to operator-defined capabilities, not arbitrary shell.
-10. Modern MCP support requires a real pinned official-SDK proof.
-11. Container isolation does not replace runtime ownership gates.
-12. Future state backends must pass base + transactional + durable-outcome semantics; storage shape alone is insufficient.
+Distribution refresh preserves an existing `node_modules` tree. This matters for installed runtime capabilities such as official MCP SDK packages and the opt-in PostgreSQL driver.
 
 ## Packaging resilience
 
-The bundled Skill must continue to contain `assets/plugin-runtime-starter/` as the recovery seed. Core runtime files/tests/scripts changed for product behavior must remain synchronized with that starter. `scripts/export_plugin_bundle.py` remains the supported bundle export path and must avoid recursive starter duplication.
+The bundled Skill must keep `assets/plugin-runtime-starter/` as a recovery seed. Root runtime and starter are now checked byte-for-byte for the mirrored runtime surface by the normal validation gate. Do not merge a runtime/source/test/script/doc change that updates only one side.
 
-## Exact next target
+`scripts/export_plugin_bundle.py` remains the supported Skill bundle export path; do not manually maintain a second Skill fork.
 
-Keep `0.3.0` until a separate version/release decision is made. Preserve the exact 34-tool public MCP surface unless a separate compatibility decision explicitly changes it.
+## Convergence findings already closed
 
-The local commit/audit partial-failure gap is closed. Before introducing a real hosted database, promote the newly proven semantics into an explicit **durable-outcome backend capability contract** and reusable conformance gate:
+The convergence pass found concrete defects and closed them:
 
-1. declare a versioned capability for commit-outcome reconciliation rather than relying on optional method detection;
-2. require a backend-level reconciliation operation and fail closed at app startup when the capability is absent;
-3. conformance must prove state-committed/audit-missing recovery, audit-appended/ack-lost deduplication, conservative unknown request outcomes, and tamper/mismatch rejection;
-4. keep `veteran-state-backend-v1` and `veteran-state-transaction-v1` unchanged for compatibility;
-5. Local JSON remains the first implementation and default backend;
-6. no MCP surface expansion solely for storage;
-7. only after this capability is executable should a concrete hosted transactional adapter be added behind an explicit operator configuration boundary.
+1. An experimental PostgreSQL dependency lock corrupted the existing optional MCP dependency graph. The old SDK integrity gate correctly failed closed; that lockfile was not accepted into main.
+2. The first PostgreSQL audit query cast sequence to text and then accidentally ordered by the text alias, producing `1, 10, 2...`. Real concurrency tests exposed the issue. Ordering now uses the numeric database column.
+3. Root/runtime-starter synchronization used to be a convention only. It is now enforced by the main validation gate.
+4. Hosted state originally had same-process/pool concurrency proof. The convergence gate now also proves two independent backend instances/pools against the same durable identity.
+5. README and handoff were one milestone behind implementation. They are now current.
 
-The installed ChatGPT Skill is already usable; future repository hardening must not block normal Skill use. Repackage the Skill at the next meaningful stable checkpoint rather than after every small internal PR.
+The audit did not find evidence that finalize auto-merges/pushes, that workers own Git commits, that unknown outcomes replay blindly, that standalone fallback pretends to be modern MCP, or that Local JSON stopped being the default.
+
+## Exact next decision
+
+There is no mandatory correctness feature queued behind this checkpoint. Keep the product converged unless new evidence or a concrete product requirement appears.
+
+The next major action should be a deliberate product/release decision, not another automatic feature wave. Candidate decisions:
+
+- keep developing on `0.3.0`; or
+- prepare a versioned release candidate and package hosted PostgreSQL capability more formally.
+
+If packaging PostgreSQL into the base dependency graph is chosen, regenerate and verify the lockfile with real npm tooling; do not hand-edit it. Preserve the official MCP dependency integrity proof.
+
+Do not add MCP tools merely for storage. Do not move merge/push/deploy authority into the runtime. Do not replace Local JSON as default without a separate migration/compatibility decision.
