@@ -382,7 +382,7 @@ export class PostgresStateBackend {
 
   async #inspectAudit(client) {
     const result = await client.query(
-      `SELECT seq::text AS seq, at, type, summary, prev_hash, state_commit_id, hash FROM ${AUDIT_TABLE} WHERE instance_key = $1 ORDER BY seq ASC`,
+      `SELECT seq::text AS audit_seq, at, type, summary, prev_hash, state_commit_id, hash FROM ${AUDIT_TABLE} WHERE instance_key = $1 ORDER BY ${AUDIT_TABLE}.seq ASC`,
       [this.instanceKey]
     );
     const items = [];
@@ -390,7 +390,7 @@ export class PostgresStateBackend {
     let expectedSeq = 0n;
     for (const row of result.rows) {
       expectedSeq += 1n;
-      const seq = BigInt(row.seq);
+      const seq = BigInt(row.audit_seq);
       if (seq !== expectedSeq || row.prev_hash !== prevHash) return { ok: false, entries: items.length, head: prevHash, reason: 'chain-link-mismatch', entry: row };
       const entry = {
         seq: Number(seq),
