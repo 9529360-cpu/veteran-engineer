@@ -54,6 +54,21 @@ export async function failRequest(store, requestId, error) {
   }, { requestId, code: error?.code || 'ERROR' });
 }
 
+export async function markRequestUnknown(store, requestId, cause) {
+  return store.transaction('request_outcome_marked_unknown', (state) => {
+    const request = state.requests[requestId];
+    if (!request) throw new Error(`Unknown requestId: ${requestId}`);
+    if (request.status === 'completed' || request.status === 'failed' || request.status === 'unknown') return request;
+    request.status = 'unknown';
+    request.reconciledAt = nowIso();
+    request.error = {
+      code: cause?.code || 'REQUEST_OUTCOME_UNKNOWN',
+      message: cause?.message || 'Request outcome requires reconciliation'
+    };
+    return request;
+  }, { requestId, causeCode: cause?.code || 'REQUEST_OUTCOME_UNKNOWN' });
+}
+
 export function replayOrThrow(record) {
   if (record.status === 'completed') return record.result;
   if (record.status === 'failed') {
