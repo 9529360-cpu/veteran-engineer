@@ -5,10 +5,14 @@ import test from 'node:test';
 import { inspectPostgresStateCapability } from '../src/installer/capabilities.mjs';
 import { cleanup, tempDir } from './helpers.mjs';
 
-async function installFakePg(runtimeRoot, version) {
+async function installFakePg(runtimeRoot, version, { exposePool = true } = {}) {
   const packageDir = path.join(runtimeRoot, 'node_modules', 'pg');
   await fs.mkdir(packageDir, { recursive: true });
-  await fs.writeFile(path.join(packageDir, 'package.json'), `${JSON.stringify({ name: 'pg', version })}\n`);
+  await fs.writeFile(path.join(packageDir, 'package.json'), `${JSON.stringify({ name: 'pg', version, main: 'index.cjs' })}\n`);
+  await fs.writeFile(
+    path.join(packageDir, 'index.cjs'),
+    exposePool ? 'module.exports = { Pool: class Pool {} };\n' : 'module.exports = {};\n'
+  );
 }
 
 test('local-json doctor treats PostgreSQL driver as optional capability', async () => {
@@ -19,6 +23,7 @@ test('local-json doctor treats PostgreSQL driver as optional capability', async 
     assert.equal(report.selected, 'local-json');
     assert.equal(report.postgresSelected, false);
     assert.equal(report.driver.installed, false);
+    assert.equal(report.driver.loadable, false);
     const driverCheck = report.checks.find((item) => item.name === 'postgres-driver');
     assert.equal(driverCheck.optional, true);
     assert.equal(driverCheck.ok, false);
@@ -27,7 +32,7 @@ test('local-json doctor treats PostgreSQL driver as optional capability', async 
   }
 });
 
-test('PostgreSQL selection trims whitespace, requires exact driver, and does not leak connection secrets', async () => {
+test('PostgreSQL selection trims whitespace, requires exact loadable driver, and does not leak connection secrets', async () => {
   const runtimeRoot = await tempDir('veteran-installer-capability-postgres-');
   const env = {
     VETERAN_ENGINEER_STATE_BACKEND: ' postgres ',
@@ -49,13 +54,25 @@ test('PostgreSQL selection trims whitespace, requires exact driver, and does not
     assert.equal(mismatch.ok, false);
     assert.equal(mismatch.driver.installedVersion, '8.22.0');
     assert.equal(mismatch.driver.requiredVersion, '8.23.0');
+    assert.equal(mismatch.driver.exact, false);
+    assert.equal(mismatch.driver.loadable, false);
     assert.equal(JSON.stringify(mismatch).includes('supersecret'), false);
+
+    await installFakePg(runtimeRoot, '8.23.0', { exposePool: false });
+    const invalid = await inspectPostgresStateCapability({ runtimeRoot, env });
+    assert.equal(invalid.ok, false);
+    assert.equal(invalid.driver.exact, true);
+    assert.equal(invalid.driver.loadable, false);
+    assert.equal(invalid.driver.ready, false);
+    assert.equal(invalid.driver.errorCode, 'POSTGRES_DRIVER_INVALID');
 
     await installFakePg(runtimeRoot, '8.23.0');
     const exact = await inspectPostgresStateCapability({ runtimeRoot, env });
     assert.equal(exact.ok, true);
     assert.equal(exact.config.poolMax, 7);
     assert.equal(exact.driver.exact, true);
+    assert.equal(exact.driver.loadable, true);
+    assert.equal(exact.driver.ready, true);
     assert.equal(JSON.stringify(exact).includes('supersecret'), false);
   } finally {
     await cleanup(runtimeRoot);
