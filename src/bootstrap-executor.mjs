@@ -4,8 +4,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { changedPaths, git } from './git.mjs';
 import { sha256, stableStringify } from './util.mjs';
+import { CredentialBroker, normalizeCredentialReferences } from './credential-broker.mjs';
 
 export const PROJECT_BOOTSTRAP_EXECUTION_CONTRACT = 'veteran-project-bootstrap-execution-v1';
+export const BOOTSTRAP_AUTHORIZATION_CONTRACT = 'veteran-bootstrap-authorization-v1';
 const PLAN_CONTRACT = 'veteran-project-bootstrap-plan-v1';
 const MAX_ENV_NAMES = 64;
 const MAX_COMMAND_PARTS = 64;
@@ -63,11 +65,22 @@ export function normalizeBootstrapAuthorization(raw) {
   if (raw.allowThirdPartyCode !== undefined && typeof raw.allowThirdPartyCode !== 'boolean') {
     throw codedError('bootstrapAuthorization.allowThirdPartyCode must be a boolean', 'BOOTSTRAP_AUTHORIZATION_INVALID');
   }
+  if (raw.contract === BOOTSTRAP_AUTHORIZATION_CONTRACT) {
+    return {
+      contract: BOOTSTRAP_AUTHORIZATION_CONTRACT,
+      execute: true,
+      allowNetwork: raw.allowNetwork === true,
+      allowThirdPartyCode: raw.allowThirdPartyCode === true,
+      credentialRefs: normalizeCredentialReferences(raw.credentialRefs)
+    };
+  }
+  const legacyEnvironmentNames = normalizeEnvAllowlist(raw.envAllowlist);
   return {
+    contract: BOOTSTRAP_AUTHORIZATION_CONTRACT,
     execute: true,
     allowNetwork: raw.allowNetwork === true,
     allowThirdPartyCode: raw.allowThirdPartyCode === true,
-    envAllowlist: normalizeEnvAllowlist(raw.envAllowlist)
+    credentialRefs: normalizeCredentialReferences(raw.credentialRefs, { legacyEnvironmentNames })
   };
 }
 
@@ -186,17 +199,23 @@ function runStep(command, args, { cwd, env, timeoutMs }) {
   });
 }
 
-async function isolatedEnvironment(allowlist) {
+async function isolatedEnvironment(credentialBroker, credentialRefs) {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'veteran-bootstrap-home-'));
-  const env = {};
-  for (const key of SAFE_ENV_KEYS) if (typeof process.env[key] === 'string') env[key] = process.env[key];
-  env.HOME = home;
-  env.USERPROFILE = home;
-  env.XDG_CONFIG_HOME = path.join(home, '.config');
-  env.XDG_CACHE_HOME = path.join(home, '.cache');
-  env.GIT_TERMINAL_PROMPT = '0';
-  for (const key of allowlist) if (typeof process.env[key] === 'string') env[key] = process.env[key];
-  return { env, home };
+  try {
+    const env = {};
+    for (const key of SAFE_ENV_KEYS) if (typeof process.env[key] === 'string') env[key] = process.env[key];
+    env.HOME = home;
+    env.USERPROFILE = home;
+    env.XDG_CONFIG_HOME = path.join(home, '.config');
+    env.XDG_CACHE_HOME = path.join(home, '.cache');
+    env.GIT_TERMINAL_PROMPT = '0';
+    const materialized = await credentialBroker.materialize(credentialRefs || []);
+    Object.assign(env, materialized.env);
+    return { env, home, credentialTargets: materialized.targets };
+  } catch (error) {
+    await fs.rm(home, { recursive: true, force: true }).catch(() => {});
+    throw error;
+  }
 }
 
 function stepDiagnostic(step, result) {
@@ -214,7 +233,8 @@ function stepDiagnostic(step, result) {
 }
 
 export class ProjectBootstrapExecutor {
-  constructor({ stepTimeoutMs = DEFAULT_STEP_TIMEOUT_MS } = {}) {
+  constructor({ stepTimeoutMs = DEFAULT_STEP_TIMEOUT_MS, credentialBroker = null } = {}) {
+    this.credentialBroker = credentialBroker || new CredentialBroker();
     this.stepTimeoutMs = Math.max(1000, Math.min(MAX_STEP_TIMEOUT_MS, Number(stepTimeoutMs) || DEFAULT_STEP_TIMEOUT_MS));
   }
 
@@ -230,7 +250,7 @@ export class ProjectBootstrapExecutor {
       return { contract: PROJECT_BOOTSTRAP_EXECUTION_CONTRACT, status: 'not-needed', planHash, sourceHead: baseHead, steps: [] };
     }
 
-    const { env, home } = await isolatedEnvironment(normalizedAuthorization.envAllowlist);
+    const { env, home, credentialTargets } = await isolatedEnvironment(this.credentialBroker, normalizedAuthorization.credentialRefs);
     const results = [];
     try {
       for (const step of steps) {
@@ -256,6 +276,7 @@ export class ProjectBootstrapExecutor {
         steps: results
       };
     } finally {
+      for (const target of credentialTargets) delete env[target];
       await fs.rm(home, { recursive: true, force: true }).catch(() => {});
     }
   }
