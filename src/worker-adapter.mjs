@@ -115,7 +115,7 @@ export class WorkerAdapter {
 
     const startedAt = nowIso();
     const child = spawn(invocation.command, invocation.args, { cwd: worktreePath, env, shell: false, stdio: ['pipe', 'pipe', 'pipe'] });
-    this.running.set(task.key, child);
+    this.running.set(task.key, { child, container: invocation.container || null, env });
     if (config.stdinMode === 'codex-prompt') child.stdin.end(codexPrompt(packet));
     else if (config.stdin !== undefined) child.stdin.end(String(config.stdin));
     else child.stdin.end();
@@ -129,6 +129,7 @@ export class WorkerAdapter {
     const outcome = await new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         child.kill('SIGTERM');
+        this.#cleanupContainer(invocation.container, env);
         setTimeout(() => child.kill('SIGKILL'), 3000).unref();
       }, effectiveTimeoutMs);
       child.on('error', (error) => {
@@ -137,16 +138,28 @@ export class WorkerAdapter {
       });
       child.on('close', (code, signal) => {
         clearTimeout(timer);
+        this.#cleanupContainer(invocation.container, env);
         resolve({ code, signal });
       });
     }).finally(() => this.running.delete(task.key));
     return { ...outcome, stdout, stderr, startedAt, endedAt: nowIso(), pid: child.pid, packetPath: resolvedPacketPath };
   }
 
+  #cleanupContainer(container, env) {
+    if (!container?.engine || !container?.name) return;
+    try {
+      const cleanup = spawn(container.engine, ['rm', '-f', container.name], { env, shell: false, stdio: 'ignore', detached: true });
+      cleanup.unref();
+    } catch {
+      // Best effort only; the runtime still records the worker outcome and reconciliation state.
+    }
+  }
+
   cancel(taskKey) {
-    const child = this.running.get(taskKey);
-    if (!child) return false;
-    child.kill('SIGTERM');
+    const running = this.running.get(taskKey);
+    if (!running) return false;
+    running.child.kill('SIGTERM');
+    this.#cleanupContainer(running.container, running.env);
     return true;
   }
 }

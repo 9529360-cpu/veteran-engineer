@@ -28,6 +28,10 @@ test('container worker invocation is fail-closed and host-isolated by default', 
     mission
   });
   assert.equal(invocation.command, 'docker');
+  assert.equal(invocation.container.engine, 'docker');
+  assert.match(invocation.container.name, /^veteran-m1-t1-/);
+  const nameIndex = invocation.args.indexOf('--name');
+  assert.equal(invocation.args[nameIndex + 1], invocation.container.name);
   assert.deepEqual(invocation.args.slice(0, 4), ['run', '--rm', '--network', 'none']);
   assert.ok(invocation.args.includes('--read-only'));
   assert.ok(invocation.args.includes('ALL'));

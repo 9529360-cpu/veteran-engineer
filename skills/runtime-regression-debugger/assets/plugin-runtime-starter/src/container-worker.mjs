@@ -1,4 +1,5 @@
 import path from 'node:path';
+
 const ENGINES = new Set(['docker', 'podman']);
 const DIGEST_IMAGE = /^[^\s@]+@sha256:[0-9a-f]{64}$/i;
 const ENV_KEY = /^[A-Z_][A-Z0-9_]*$/;
@@ -23,14 +24,20 @@ function bindSpec(source, target, readonly = false) {
   return `type=bind,source=${source},target=${target}${readonly ? ',readonly' : ''}`;
 }
 
+function containerName({ packetPath, mission, task }) {
+  const dispatch = path.basename(packetPath, path.extname(packetPath));
+  const raw = `veteran-${mission.id}-${task.id}-${dispatch}`.toLowerCase().replace(/[^a-z0-9_.-]+/g, '-');
+  return raw.slice(0, 63).replace(/[-_.]+$/g, '') || `veteran-${Date.now()}`;
+}
+
 export function validateContainerWorkerConfig(config) {
   const engine = String(config?.engine || 'docker');
   if (!ENGINES.has(engine)) {
-    const error = new Error(`Container worker engine must be one of: ${[...ENGINES].join(', ')}`);
+    const error = new Error(`Container worker engine must be one of: ${([...ENGINES].join(', ')}`);
     error.code = 'CONTAINER_WORKER_ENGINE_BLOCKED';
     throw error;
   }
-  if (!DIGEST_IMAGE.test(String(config?.image || ''))) {
+  if (!EIGEST_IMAGE.test(String(config?.image || ''))) {
     const error = new Error('Container worker image must be pinned to an explicit sha256 digest');
     error.code = 'CONTAINER_WORKER_IMAGE_UNPINNED';
     throw error;
@@ -58,8 +65,10 @@ export function buildContainerInvocation({ config, worktreePath, packetPath, tas
   const pidsLimit = validated.pidsLimit === undefined ? 256 : positiveNumber(validated.pidsLimit, 'pidsLimit', { integer: true });
   const memoryMb = validated.memoryMb === undefined ? 1024 : positiveNumber(validated.memoryMb, 'memoryMb', { integer: true });
   const cpus = validated.cpus === undefined ? 1 : positiveNumber(validated.cpus, 'cpus');
+  const name = containerName({ packetPath, mission, task });
   const args = [
     'run', '--rm',
+    '--name', name,
     '--network', 'none',
     '--read-only',
     '--cap-drop', 'ALL',
@@ -81,5 +90,5 @@ export function buildContainerInvocation({ config, worktreePath, packetPath, tas
   if (validated.user) args.push('--user', String(validated.user));
   if (validated.stdin !== undefined) args.push('--interactive');
   args.push(validated.image, ...validated.containerCommand);
-  return { command: validated.engine, args };
+  return { command: validated.engine, args, container: { engine: validated.engine, name } };
 }
