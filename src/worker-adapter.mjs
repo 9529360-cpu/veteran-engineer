@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { nowIso } from './util.mjs';
+import { buildContainerInvocation, validateContainerWorkerConfig } from './container-worker.mjs';
 
 const SAFE_ENV_KEYS = ['PATH', 'HOME', 'USERPROFILE', 'TMP', 'TEMP', 'TMPDIR', 'SYSTEMROOT', 'COMSPEC', 'LANG', 'LC_ALL', 'SHELL'];
 const FORBIDDEN_CODEX_FLAGS = new Set([
@@ -55,7 +56,9 @@ export function enforceWorkerPolicy(project, task, config) {
     error.code = 'WORKER_EXECUTION_DISABLED';
     throw error;
   }
-  if (!config?.command) {
+  if (config?.type === 'container') {
+    validateContainerWorkerConfig(config);
+  } else if (!config?.command) {
     const error = new Error('No worker executable is configured');
     error.code = 'WORKER_NOT_CONFIGURED';
     throw error;
@@ -84,6 +87,12 @@ function codexPrompt(packet) {
   ].join('\n');
 }
 
+export function buildWorkerInvocation({ config, worktreePath, packetPath, task, mission }) {
+  if (config.type === 'container') return buildContainerInvocation({ config, worktreePath, packetPath, task, mission });
+  const vars = { packet: packetPath, worktree: worktreePath, taskId: task.id, missionId: mission.id };
+  return { command: config.command, args: (config.args || []).map((arg) => substitute(arg, vars)) };
+}
+
 export class WorkerAdapter {
   constructor() {
     this.running = new Map();
@@ -94,19 +103,18 @@ export class WorkerAdapter {
     const resolvedPacketPath = packetPath || path.join(path.dirname(worktreePath), `.veteran-task-${task.id}-${Date.now()}.json`);
     await fs.mkdir(path.dirname(resolvedPacketPath), { recursive: true });
     await fs.writeFile(resolvedPacketPath, `${JSON.stringify(packet, null, 2)}\n`, { mode: 0o600 });
-    const vars = { packet: resolvedPacketPath, worktree: worktreePath, taskId: task.id, missionId: mission.id };
-    const args = (config.args || []).map((arg) => substitute(arg, vars));
+    const invocation = buildWorkerInvocation({ config, worktreePath, packetPath: resolvedPacketPath, task, mission });
     const env = {};
     for (const key of SAFE_ENV_KEYS) if (process.env[key] !== undefined) env[key] = process.env[key];
     for (const key of config.envAllowlist || []) if (process.env[key] !== undefined) env[key] = process.env[key];
-    Object.assign(env, config.env || {});
+    if (config.type !== 'container') Object.assign(env, config.env || {});
     env.VETERAN_TASK_PACKET = resolvedPacketPath;
     env.VETERAN_WORKTREE = worktreePath;
     env.VETERAN_TASK_ID = task.id;
     env.VETERAN_MISSION_ID = mission.id;
 
     const startedAt = nowIso();
-    const child = spawn(config.command, args, { cwd: worktreePath, env, shell: false, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(invocation.command, invocation.args, { cwd: worktreePath, env, shell: false, stdio: ['pipe', 'pipe', 'pipe'] });
     this.running.set(task.key, child);
     if (config.stdinMode === 'codex-prompt') child.stdin.end(codexPrompt(packet));
     else if (config.stdin !== undefined) child.stdin.end(String(config.stdin));
