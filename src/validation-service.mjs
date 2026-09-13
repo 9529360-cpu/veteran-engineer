@@ -2,25 +2,80 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { runProcess, git } from './git.mjs';
 import { nowIso, randomId } from './util.mjs';
+import {
+  normalizeProductService,
+  startValidationService,
+  waitForValidationReadiness,
+  stopValidationService
+} from './product-validation-runner.mjs';
+import { normalizeValidationArtifacts, collectValidationArtifacts } from './validation-artifact-collector.mjs';
+import { normalizeBrowserValidation, runBrowserValidation } from './browser-validation-provider.mjs';
+import { CredentialBroker } from './credential-broker.mjs';
+import { normalizeObservabilityValidation, runObservabilityValidation } from './observability-validation-provider.mjs';
 
 function normalizeCapability(raw) {
-  if (!raw || typeof raw !== 'object' || !raw.name || !Array.isArray(raw.command) || raw.command.length === 0) return null;
+  if (!raw || typeof raw !== 'object' || !raw.name) return null;
+  const browser = normalizeBrowserValidation(raw.browser);
+  const observability = normalizeObservabilityValidation(raw.observability);
+  const hasCommand = Array.isArray(raw.command) && raw.command.length > 0;
+  const modes = [hasCommand, Boolean(browser), Boolean(observability)].filter(Boolean).length;
+  if (modes === 0) return null;
+  if (modes > 1) {
+    throw Object.assign(new Error('Validation capability must choose exactly one of command, browser, or observability execution'), { code: 'VALIDATION_CAPABILITY_AMBIGUOUS' });
+  }
+  const service = normalizeProductService(raw.service);
+  if (browser && !browser.baseUrl && !service?.readiness?.url) {
+    throw Object.assign(new Error('Browser validation requires browser.baseUrl or service readiness URL'), { code: 'BROWSER_BASE_URL_REQUIRED' });
+  }
   return {
     name: String(raw.name),
     description: String(raw.description || ''),
-    command: raw.command.map(String),
+    command: hasCommand ? raw.command.map(String) : null,
     cwd: raw.cwd ? String(raw.cwd) : '.',
-    timeoutMs: Math.max(1000, Number(raw.timeoutMs || 120_000))
+    timeoutMs: Number.isFinite(Number(raw.timeoutMs ?? 120_000)) ? Math.max(1000, Number(raw.timeoutMs ?? 120_000)) : 120_000,
+    service,
+    browser,
+    observability,
+    artifacts: normalizeValidationArtifacts(raw.artifacts)
   };
 }
 
+async function resolveWorktreeCwd(worktree, relativeCwd, label = 'Validation') {
+  const cwd = path.resolve(worktree, relativeCwd);
+  const realCwd = await fs.realpath(cwd).catch(() => cwd);
+  const root = path.resolve(worktree);
+  if (!realCwd.startsWith(`${root}${path.sep}`) && realCwd !== root) {
+    throw Object.assign(new Error(`${label} cwd escapes detached worktree`), { code: 'VALIDATION_CWD_ESCAPE' });
+  }
+  return cwd;
+}
+
+function validationArtifact({ result, serviceRun }) {
+  const sections = [
+    '--- validation stdout ---',
+    result?.stdout || '',
+    '--- validation stderr ---',
+    result?.stderr || ''
+  ];
+  if (serviceRun) {
+    sections.push(
+      '--- service stdout ---',
+      serviceRun.logs.stdout || '',
+      '--- service stderr ---',
+      serviceRun.logs.stderr || ''
+    );
+  }
+  return `${sections.join('\n')}\n`;
+}
+
 export class ValidationService {
-  constructor({ store, projectService, missionService, worktreeManager, evidenceService }) {
+  constructor({ store, projectService, missionService, worktreeManager, evidenceService, credentialBroker = null }) {
     this.store = store;
     this.projectService = projectService;
     this.missionService = missionService;
     this.worktreeManager = worktreeManager;
     this.evidenceService = evidenceService;
+    this.credentialBroker = credentialBroker || new CredentialBroker();
   }
 
   async capabilities({ projectId }) {
@@ -39,20 +94,29 @@ export class ValidationService {
         throw error;
       }
       if (!Array.isArray(rawCommand) || rawCommand.length === 0) throw new Error('rawCommand must be a non-empty argv array');
-      selected = { name: 'raw', description: 'Explicit raw validation', command: rawCommand.map(String), cwd: '.', timeoutMs: 120_000 };
+      selected = { name: 'raw', description: 'Explicit raw validation', command: rawCommand.map(String), cwd: '.', timeoutMs: 120_000, service: null, browser: null, observability: null, artifacts: [] };
     }
     if (!selected) throw Object.assign(new Error(`Unknown validation capability: ${capability}`), { code: 'VALIDATION_CAPABILITY_NOT_FOUND' });
 
     let commitSha;
     let mission = null;
+    let validationMissionId = null;
     if (candidateId) {
       const state = await this.store.read();
       const candidate = state.runtime.candidates?.[candidateId];
-      if (!candidate || candidate.projectId !== projectId) throw Object.assign(new Error(`Unknown candidate ${candidateId}`), { code: 'CANDIDATE_NOT_FOUND' });
+      const candidateMission = candidate ? state.missions[candidate.missionId] : null;
+      if (!candidate || candidate.projectId !== projectId || !candidateMission || candidateMission.projectId !== projectId || (missionId && missionId !== candidate.missionId)) {
+        throw Object.assign(new Error(`Unknown candidate ${candidateId}`), { code: 'CANDIDATE_NOT_FOUND' });
+      }
       commitSha = candidate.commitSha;
-      mission = state.missions[candidate.missionId];
+      mission = candidateMission;
+      if (missionId) validationMissionId = candidate.missionId;
     } else if (missionId) {
       ({ mission } = await this.missionService.status({ missionId }));
+      if (mission.projectId !== projectId) {
+        throw Object.assign(new Error(`Unknown mission: ${missionId}`), { code: 'MISSION_NOT_FOUND' });
+      }
+      validationMissionId = mission.id;
       const missionWt = await this.worktreeManager.ensureMissionWorktree(project, mission);
       commitSha = (await git(missionWt.path, ['rev-parse', 'HEAD'])).stdout.trim();
     } else {
@@ -62,39 +126,154 @@ export class ValidationService {
     const validationId = randomId('validation');
     const wt = path.join(this.store.worktreesDir, `validation-${validationId}`);
     await git(project.repoPath, ['worktree', 'add', '--detach', wt, commitSha]);
-    let result;
+    let result = { code: 1, signal: null, stdout: '', stderr: '' };
+    let serviceRun = null;
+    let readiness = null;
+    let cleanup = null;
+    let failureStage = null;
+    let browserSummary = null;
+    let observabilitySummary = null;
+    let artifactCollection = { attachments: [], summary: null };
+    let artifactCollectionError = null;
     try {
-      const cwd = path.resolve(wt, selected.cwd);
-      const realCwd = await fs.realpath(cwd).catch(() => cwd);
-      if (!realCwd.startsWith(`${path.resolve(wt)}${path.sep}`) && realCwd !== path.resolve(wt)) {
-        throw Object.assign(new Error('Validation cwd escapes detached worktree'), { code: 'VALIDATION_CWD_ESCAPE' });
+      const cwd = await resolveWorktreeCwd(wt, selected.cwd);
+      if (selected.service) {
+        const serviceCwd = await resolveWorktreeCwd(wt, selected.service.cwd, 'Validation service');
+        serviceRun = startValidationService(selected.service, { cwd: serviceCwd });
+        readiness = await waitForValidationReadiness(serviceRun, selected.service.readiness);
+        if (!readiness.ready) {
+          failureStage = readiness.reason === 'service-exited' ? 'service-startup' : 'readiness';
+          result = {
+            code: 1,
+            signal: null,
+            stdout: '',
+            stderr: readiness.reason === 'service-exited'
+              ? 'Validation service exited before readiness was established.'
+              : `Validation service did not become ready within ${selected.service.readiness.timeoutMs}ms.`
+          };
+        }
       }
-      const [command, ...args] = selected.command;
-      result = await runProcess(command, args, { cwd, timeoutMs: selected.timeoutMs, allowFailure: true });
+      if (!failureStage) {
+        if (selected.observability) {
+          try {
+            const observabilityCwd = await resolveWorktreeCwd(wt, selected.observability.cwd, 'Observability provider');
+            observabilitySummary = await runObservabilityValidation(selected.observability, {
+              cwd: observabilityCwd,
+              expectedSourceHead: commitSha,
+              credentialBroker: this.credentialBroker
+            });
+            result = {
+              code: observabilitySummary.passed ? 0 : 1,
+              signal: null,
+              stdout: observabilitySummary.summary || '',
+              stderr: observabilitySummary.passed ? '' : (observabilitySummary.failureCode || 'Observability validation failed')
+            };
+            if (!observabilitySummary.passed) failureStage = 'observability-validation';
+          } catch (error) {
+            observabilitySummary = {
+              contract: selected.observability.contract,
+              passed: false,
+              failureCode: error?.code || 'OBSERVABILITY_VALIDATION_FAILED',
+              summary: String(error?.message || error).slice(0, 1000),
+              observedSourceHead: null,
+              checks: [],
+              diagnostics: null
+            };
+            result = { code: 1, signal: null, stdout: '', stderr: observabilitySummary.failureCode };
+            failureStage = 'observability-validation';
+          }
+        } else if (selected.browser) {
+          try {
+            const browserCwd = await resolveWorktreeCwd(wt, selected.browser.cwd, 'Browser provider');
+            browserSummary = await runBrowserValidation(selected.browser, {
+              cwd: browserCwd,
+              serviceReadinessUrl: selected.service?.readiness?.url || null
+            });
+            result = {
+              code: browserSummary.passed ? 0 : 1,
+              signal: null,
+              stdout: browserSummary.summary || '',
+              stderr: browserSummary.passed ? '' : (browserSummary.failureCode || 'Browser validation failed')
+            };
+            if (!browserSummary.passed) failureStage = 'browser-validation';
+          } catch (error) {
+            browserSummary = {
+              contract: selected.browser.contract,
+              passed: false,
+              failureCode: error?.code || 'BROWSER_VALIDATION_FAILED',
+              summary: String(error?.message || error).slice(0, 1000),
+              assertions: [],
+              currentUrl: null,
+              diagnostics: null
+            };
+            result = { code: 1, signal: null, stdout: '', stderr: browserSummary.failureCode };
+            failureStage = 'browser-validation';
+          }
+        } else {
+          const [command, ...args] = selected.command;
+          result = await runProcess(command, args, { cwd, timeoutMs: selected.timeoutMs, allowFailure: true });
+          if (result.code !== 0) failureStage = 'validation-command';
+        }
+      }
     } finally {
+      if (serviceRun) cleanup = await stopValidationService(serviceRun, selected.service.shutdownGraceMs);
+      if (selected.artifacts?.length) {
+        try {
+          artifactCollection = await collectValidationArtifacts(wt, selected.artifacts);
+          if (!artifactCollection.summary.complete && !failureStage) {
+            failureStage = 'artifact-collection';
+            result = { code: 1, signal: null, stdout: result.stdout || '', stderr: 'Required validation evidence artifacts were not produced.' };
+          }
+        } catch (error) {
+          artifactCollectionError = { code: error?.code || 'VALIDATION_ARTIFACT_COLLECTION_FAILED', message: String(error?.message || error).slice(0, 1000) };
+          if (!failureStage) {
+            failureStage = 'artifact-collection';
+            result = { code: 1, signal: null, stdout: result.stdout || '', stderr: artifactCollectionError.message };
+          }
+        }
+      }
       await git(project.repoPath, ['worktree', 'remove', '--force', wt], { allowFailure: true });
       await fs.rm(wt, { recursive: true, force: true });
     }
-    const passed = result.code === 0;
+    const passed = !failureStage && result.code === 0;
+    const serviceSummary = serviceRun ? {
+      configured: true,
+      ready: readiness?.ready === true,
+      readiness: readiness ? {
+        reason: readiness.reason,
+        attempts: readiness.attempts,
+        elapsedMs: readiness.elapsedMs,
+        lastStatus: readiness.lastStatus ?? null,
+        lastError: readiness.lastError ?? null
+      } : null,
+      stdoutTruncated: serviceRun.logs.stdoutTruncated,
+      stderrTruncated: serviceRun.logs.stderrTruncated,
+      cleanup
+    } : null;
+    const artifactSummary = selected.artifacts?.length ? {
+      ...(artifactCollection.summary || { configured: true, complete: false, requiredMissing: false, files: 0, bytes: 0, items: [] }),
+      error: artifactCollectionError
+    } : null;
     const evidence = await this.evidenceService.record({
       projectId,
-      missionId: mission?.id || missionId,
+      missionId: mission?.id || null,
       type: 'validation',
-      summary: { capability: selected.name, passed, exitCode: result.code, commitSha },
+      summary: { capability: selected.name, passed, exitCode: result.code, commitSha, failureStage, service: serviceSummary, browser: browserSummary, observability: observabilitySummary, artifacts: artifactSummary },
       sourceIdentity: { head: commitSha },
-      artifact: `${result.stdout}\n--- stderr ---\n${result.stderr}`,
+      artifact: validationArtifact({ result, serviceRun }),
+      attachments: artifactCollection.attachments,
       metadata: { candidateId }
     });
-    if (missionId) {
+    if (validationMissionId) {
       await this.store.transaction('mission_validation_recorded', (state) => {
-        const target = state.missions[missionId];
+        const target = state.missions[validationMissionId];
         target.validation.status = passed ? 'passed' : 'failed';
         target.validation.evidenceIds.push(evidence.id);
         target.validation.commitSha = commitSha;
         target.updatedAt = nowIso();
-        state.runtime.timeline.push({ type: 'validation_completed', missionId, at: nowIso(), passed, evidenceId: evidence.id, commitSha });
-      }, { missionId, passed, capability: selected.name, commitSha });
+        state.runtime.timeline.push({ type: 'validation_completed', missionId: validationMissionId, at: nowIso(), passed, evidenceId: evidence.id, commitSha });
+      }, { missionId: validationMissionId, passed, capability: selected.name, commitSha, failureStage });
     }
-    return { passed, capability: selected.name, commitSha, evidenceId: evidence.id, exitCode: result.code };
+    return { passed, capability: selected.name, commitSha, evidenceId: evidence.id, exitCode: result.code, failureStage, service: serviceSummary, browser: browserSummary, observability: observabilitySummary, artifacts: artifactSummary };
   }
 }

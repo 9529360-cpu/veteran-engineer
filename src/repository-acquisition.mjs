@@ -7,6 +7,7 @@ import { ensureDir, errorWithCode, pathExists, randomId, sha256, sleep, within }
 const MANAGED_REPO_LOCK_TIMEOUT_MS = 120_000;
 const MANAGED_REPO_LOCK_STALE_MS = 300_000;
 const ALLOWED_URL_PROTOCOLS = new Set(['https:', 'ssh:', 'file:']);
+const STORABLE_REMOTE_PROTOCOLS = new Set(['http:', 'https:', 'ssh:', 'git:', 'file:']);
 const SCP_REMOTE_RE = /^(?<user>[A-Za-z0-9._-]+)@(?<host>[A-Za-z0-9.-]+):(?<repo>[^\s]+)$/;
 
 function safeSegment(value, fallback = 'repo') {
@@ -107,13 +108,14 @@ export function sanitizeStoredRemoteUrl(input) {
   if (scp) return scp.displayUrl;
   try {
     const url = new URL(value);
-    if (url.protocol === 'https:' || url.protocol === 'http:') url.username = '';
+    if (!STORABLE_REMOTE_PROTOCOLS.has(url.protocol)) return null;
+    if (url.protocol !== 'ssh:') url.username = '';
     url.password = '';
     url.search = '';
     url.hash = '';
     return url.href;
   } catch {
-    return value;
+    return null;
   }
 }
 
