@@ -1,6 +1,7 @@
 import { StateStore } from './state-store.mjs';
 import { STATE_BACKEND_CONTRACT } from './state-backend-contract.mjs';
 import { STATE_BACKEND_TRANSACTION_CONTRACT, stateRevisionConflict } from './state-backend-transaction-contract.mjs';
+import { STATE_BACKEND_DURABILITY_CONTRACT } from './state-backend-durability-contract.mjs';
 import { sha256, stableStringify } from './util.mjs';
 
 function revisionFor(state) {
@@ -13,6 +14,7 @@ export class LocalJsonStateBackend extends StateStore {
     this.backendContract = STATE_BACKEND_CONTRACT;
     this.backendKind = 'local-json';
     this.transactionContract = STATE_BACKEND_TRANSACTION_CONTRACT;
+    this.durabilityContract = STATE_BACKEND_DURABILITY_CONTRACT;
   }
 
   async readSnapshot() {
