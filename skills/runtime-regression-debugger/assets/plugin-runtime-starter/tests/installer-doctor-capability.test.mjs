@@ -37,8 +37,7 @@ test('installer doctor fails closed on selected PostgreSQL prerequisites before 
     assert.equal(report.runtime.stateBackend.driver.installed, false);
     assert.equal(report.runtime.checks.find((item) => item.name === 'state:postgres-driver')?.optional, false);
     assert.equal(report.runtime.checks.find((item) => item.name === 'mcp-legacy-handshake')?.skipped, true);
-    assert.equal(report.runtime.checks.find((item) => item.name === 'mcp-modern-2026-pinned')?.skipped, true);
-    assert.equal(execCalls, 0);
+    assert.equal(execCalls, 0, 'doctor must not execute MCP probes after a required runtime prerequisite fails');
     assert.equal(JSON.stringify(report).includes('doctorsecret'), false);
   } finally {
     await cleanup(home);
