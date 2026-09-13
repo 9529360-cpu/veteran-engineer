@@ -51,7 +51,7 @@ test('engineering context router treats mobile engineering as a first-class prod
   assert.ok(paths.includes('references/async-edge-job-patterns.md'));
   assert.ok(paths.includes('references/distributed-systems-consistency.md'));
 
-  const aliases = runRouter('app,rn,swiftui,jetpack-compose,expo-app,dart-flutter,deep-linking,push-notifications,offline-mobile');
+  const aliases = runRouter('mobile-app,rn,swiftui,jetpack-compose,expo-app,dart-flutter,deep-linking,push-notifications,offline-mobile');
   assert.ok(aliases, 'Python is required to validate mobile engineering aliases');
   assert.equal(aliases.status, 0, aliases.stderr || aliases.stdout);
   const aliasPayload = JSON.parse(aliases.stdout);
