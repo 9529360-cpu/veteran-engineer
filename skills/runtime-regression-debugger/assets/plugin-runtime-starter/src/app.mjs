@@ -185,8 +185,8 @@ export async function createVeteranApp({
         await markRequestUnknown(store, requestId, error).catch(() => {});
         throw requestOutcomeUnknown(requestId, error);
       }
-      await failRequest(store, requestId, error).catch(() => {});
-      throw error;
+      await markRequestUnknown(store, requestId, error).catch(() => {});
+      throw requestOutcomeUnknown(requestId, error);
     }
   }
 
