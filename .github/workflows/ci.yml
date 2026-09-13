@@ -110,12 +110,39 @@ jobs:
             -e POSTGRES_DB=veteran \
             -p 5432:5432 \
             "$IMAGE"
-          for attempt in $(seq 1 30); do
-            if docker exec veteran-postgres pg_isready -U veteran -d veteran >/dev/null 2>&1; then
-              exit 0
+
+          ready_streak=0
+          for attempt in $(seq 1 45); do
+            if node <<'NODE' >/dev/null 2>&1
+          const { Pool } = require('pg');
+          (async () => {
+            const pool = new Pool({
+              connectionString: process.env.VETERAN_TEST_POSTGRES_URL,
+              max: 1,
+              connectionTimeoutMillis: 1000
+            });
+            try {
+              const result = await pool.query('SELECT 1 AS ready');
+              if (result.rows?.[0]?.ready !== 1) process.exitCode = 1;
+            } finally {
+              await pool.end().catch(() => {});
+            }
+          })().catch(() => { process.exitCode = 1; });
+          NODE
+            then
+              ready_streak=$((ready_streak + 1))
+              if [ "$ready_streak" -ge 2 ]; then
+                echo "PostgreSQL accepted two consecutive runner-to-database SQL probes"
+                exit 0
+              fi
+            else
+              ready_streak=0
             fi
             sleep 1
           done
+
+          echo "PostgreSQL did not become stably reachable through the Node pg path" >&2
+          docker ps -a --filter name=veteran-postgres >&2
           docker logs veteran-postgres >&2
           exit 1
 
@@ -128,3 +155,11 @@ jobs:
           VETERAN_ENGINEER_POSTGRES_URL: ${{ env.VETERAN_TEST_POSTGRES_URL }}
           VETERAN_ENGINEER_STATE_INSTANCE: ci-mcp-${{ github.run_id }}-${{ github.run_attempt }}
         run: npm run mcp:handshake:modern
+
+      - name: Diagnose PostgreSQL failure
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          docker ps -a --filter name=veteran-postgres
+          docker logs --tail 200 veteran-postgres
