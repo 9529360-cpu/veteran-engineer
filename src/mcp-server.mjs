@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { createVeteranApp } from './app.mjs';
 import { RUNTIME_NAME, RUNTIME_VERSION, LEGACY_PROTOCOL_VERSION } from './constants.mjs';
 import { MCP_TRANSPORT_MODES } from './mcp-protocol-capability.mjs';
-import { TOOL_DEFINITIONS } from './tool-catalog.mjs';
+import { TOOL_DEFINITIONS, toolInputJsonSchema, toolRequiresRequestId } from './tool-catalog.mjs';
 import { inspectMcpSdkIntegrity, assertMcpSdkIntegrity } from './mcp-sdk-integrity.mjs';
 
 const runtimeRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -25,6 +25,12 @@ function errorPayload(error) {
   };
 }
 
+function sdkInputSchema(z, name) {
+  return toolRequiresRequestId(name)
+    ? z.object({ requestId: z.string().min(1) }).passthrough()
+    : z.object({}).passthrough();
+}
+
 async function createOfficialSdkServerFactory({ stateRoot, configPath }) {
   const [{ McpServer }, { serveStdio }, zod] = await Promise.all([
     import('@modelcontextprotocol/server'),
@@ -39,7 +45,7 @@ async function createOfficialSdkServerFactory({ stateRoot, configPath }) {
     for (const tool of TOOL_DEFINITIONS) {
       server.registerTool(tool.name, {
         description: tool.description,
-        inputSchema: z.object({}).passthrough()
+        inputSchema: sdkInputSchema(z, tool.name)
       }, async (args) => {
         try {
           const result = await app.callTool(tool.name, args || {});
@@ -81,7 +87,7 @@ async function startFallback({ stateRoot, configPath }) {
             instructions: 'Veteran Engineer standalone fallback: legacy MCP 2025 only.'
           });
         } else if (message.method === 'tools/list') {
-          success(message.id, { tools: TOOL_DEFINITIONS.map((tool) => ({ name: tool.name, description: tool.description, inputSchema: { type: 'object', additionalProperties: true } })) });
+          success(message.id, { tools: TOOL_DEFINITIONS.map((tool) => ({ name: tool.name, description: tool.description, inputSchema: toolInputJsonSchema(tool.name) })) });
         } else if (message.method === 'tools/call') {
           const name = message.params?.name;
           const args = message.params?.arguments || {};

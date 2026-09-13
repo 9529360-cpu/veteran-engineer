@@ -1,3 +1,13 @@
+const REQUEST_ID_TOOL_NAMES = Object.freeze([
+  'project_open', 'project_snapshot', 'mission_plan', 'mission_execute', 'mission_advance',
+  'mission_cancel', 'mission_resume', 'task_result_commit', 'worker_cancel', 'worker_resume',
+  'worker_retry', 'validation_run', 'review_run', 'semantic_review_run', 'remediation_plan',
+  'candidate_refresh', 'experience_commit', 'experience_review', 'experience_challenge',
+  'experience_compact', 'runtime_cleanup', 'runtime_maintenance', 'handoff_export'
+]);
+
+const REQUEST_ID_TOOL_SET = new Set(REQUEST_ID_TOOL_NAMES);
+
 export const TOOL_DEFINITIONS = Object.freeze([
   ['project_open', 'Open a local Git project or safely acquire an authorized remote repository and capture exact source identity.'],
   ['project_snapshot', 'Refresh repository identity, dirty state, and project signals.'],
@@ -15,7 +25,7 @@ export const TOOL_DEFINITIONS = Object.freeze([
   ['worker_retry', 'Retry a failed worker task with a new dispatch identity.'],
   ['evidence_query', 'Query bounded evidence records and artifact pointers.'],
   ['validation_capabilities', 'List operator-defined repository validation capabilities.'],
-  ['validation_run', 'Run an allowed validation capability in an isolated detached worktree.'],
+  ['validation_run', 'Run an allowed command or service-backed product validation in an isolated detached worktree.'],
   ['review_run', 'Run deterministic whole-change review against the mission base.'],
   ['semantic_review_run', 'Run the configured independent semantic reviewer provider.'],
   ['remediation_plan', 'Create a bounded remediation plan from review findings.'],
@@ -36,7 +46,27 @@ export const TOOL_DEFINITIONS = Object.freeze([
 ].map(([name, description]) => ({ name, description })));
 
 export const TOOL_NAMES = Object.freeze(TOOL_DEFINITIONS.map((item) => item.name));
+export { REQUEST_ID_TOOL_NAMES };
+
+export function toolRequiresRequestId(name) {
+  return REQUEST_ID_TOOL_SET.has(name);
+}
+
+export function toolInputJsonSchema(name) {
+  if (!toolRequiresRequestId(name)) return { type: 'object', additionalProperties: true };
+  return {
+    type: 'object',
+    properties: {
+      requestId: { type: 'string', minLength: 1, description: 'Stable idempotency key for this mutating operation.' }
+    },
+    required: ['requestId'],
+    additionalProperties: true
+  };
+}
 
 if (TOOL_NAMES.length !== 34) {
   throw new Error(`Veteran Engineer MCP surface must contain exactly 34 tools, got ${TOOL_NAMES.length}`);
+}
+for (const name of REQUEST_ID_TOOL_NAMES) {
+  if (!TOOL_NAMES.includes(name)) throw new Error(`Unknown requestId-requiring tool in catalog: ${name}`);
 }

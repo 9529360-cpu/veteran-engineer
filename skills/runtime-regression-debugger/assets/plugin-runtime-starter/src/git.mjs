@@ -4,11 +4,27 @@ import path from 'node:path';
 import { DEFAULT_COMMAND_TIMEOUT_MS } from './constants.mjs';
 import { errorWithCode, normalizePathList, within } from './util.mjs';
 
-export function runProcess(command, args = [], { cwd, env, timeoutMs = DEFAULT_COMMAND_TIMEOUT_MS, input, allowFailure = false } = {}) {
+const SAFE_SUBPROCESS_ENV_KEYS = ['PATH', 'HOME', 'USERPROFILE', 'TMP', 'TEMP', 'TMPDIR', 'SYSTEMROOT', 'COMSPEC', 'LANG', 'LC_ALL', 'SHELL'];
+
+export function allowlistedProcessEnvironment(extraKeys = [], source = process.env) {
+  if (!Array.isArray(extraKeys) || extraKeys.some((key) => typeof key !== 'string' || !key.trim())) {
+    throw errorWithCode('Subprocess envAllowlist must contain non-empty environment variable names', 'PROCESS_ENV_ALLOWLIST_INVALID');
+  }
+  const env = {};
+  for (const key of new Set([...SAFE_SUBPROCESS_ENV_KEYS, ...extraKeys.map((key) => key.trim())])) {
+    if (source[key] !== undefined) env[key] = source[key];
+  }
+  return env;
+}
+
+export function runProcess(command, args = [], { cwd, env, inheritEnv = true, timeoutMs = DEFAULT_COMMAND_TIMEOUT_MS, input, allowFailure = false } = {}) {
+  const childEnv = inheritEnv
+    ? (env ? { ...process.env, ...env } : process.env)
+    : { ...(env || {}) };
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd,
-      env: env ? { ...process.env, ...env } : process.env,
+      env: childEnv,
       shell: false,
       stdio: ['pipe', 'pipe', 'pipe']
     });

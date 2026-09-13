@@ -53,6 +53,8 @@ def main() -> int:
     parser.add_argument("--threshold", type=float, default=85.0)
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
+    if not 0.0 <= args.threshold <= 100.0:
+        raise RuntimeError("--threshold must be between 0 and 100")
 
     path = pathlib.Path(args.input_json)
     try:
@@ -72,7 +74,7 @@ def main() -> int:
 
     for row in results:
         sid = row.get("scenario_id")
-        if not isinstance(sid, int) or sid < 1:
+        if type(sid) is not int or sid < 1:
             raise RuntimeError("each result needs a positive integer scenario_id")
         if sid in seen:
             raise RuntimeError(f"duplicate scenario_id: {sid}")
@@ -87,7 +89,7 @@ def main() -> int:
         subtotal = 0
         for dim in DIMENSIONS:
             value = scores[dim]
-            if not isinstance(value, int) or value not in (0, 1, 2):
+            if type(value) is not int or value not in (0, 1, 2):
                 raise RuntimeError(f"scenario {sid}: {dim} must be integer 0, 1, or 2")
             subtotal += value
         red_flags = row.get("red_flags", [])

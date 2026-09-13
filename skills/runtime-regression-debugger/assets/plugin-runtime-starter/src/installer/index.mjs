@@ -5,6 +5,7 @@ import codexAdapter from './adapters/codex.mjs';
 import hermesAdapter from './adapters/hermes.mjs';
 import genericAdapter from './adapters/generic.mjs';
 import { loadExternalAdapters, validateHostAdapter } from './adapter-sdk.mjs';
+import { inspectPostgresStateCapability } from './capabilities.mjs';
 import { copyDistribution, defaultInstallerPaths, distributionDigest, readJson, runCommand, writeJsonAtomic } from './util.mjs';
 import { ensureDir, nowIso, pathExists } from '../util.mjs';
 import { RUNTIME_VERSION, HOST_ADAPTER_API_VERSION } from '../constants.mjs';
@@ -177,20 +178,27 @@ export class VeteranInstaller {
     const handshake = path.join(this.runtimeRoot, 'scripts', 'mcp-handshake.mjs');
     const requiredFiles = [path.join(this.runtimeRoot, 'package.json'), server, handshake, path.join(this.runtimeRoot, '.codex-plugin', 'plugin.json'), path.join(this.runtimeRoot, '.mcp.json')];
     for (const file of requiredFiles) checks.push({ name: `file:${path.relative(this.runtimeRoot, file)}`, ok: await pathExists(file) });
+
+    const stateBackend = await inspectPostgresStateCapability({ runtimeRoot: this.runtimeRoot, env: this.env });
+    checks.push(...stateBackend.checks.map((check) => ({ ...check, name: `state:${check.name}` })));
+
+    const runtimePrerequisitesOk = checks.filter((item) => !item.optional).every((item) => item.ok);
     let legacy = null;
-    if (checks.every((item) => item.ok)) {
+    if (runtimePrerequisitesOk) {
       const result = await this.exec(process.execPath, [handshake, '--server', server, '--mode', 'legacy', '--expect-tools', '34', '--state-root', this.runtimeStateRoot], { env: this.env, allowFailure: true, timeoutMs: 30_000 });
       if (result.code === 0) {
         try { legacy = JSON.parse(result.stdout.trim()); } catch { /* reported below */ }
       }
       checks.push({ name: 'mcp-legacy-handshake', ok: result.code === 0 && legacy?.toolCount === 34, exitCode: result.code, report: legacy, stderr: result.stderr.slice(0, 2000) });
+    } else {
+      checks.push({ name: 'mcp-legacy-handshake', ok: false, skipped: true, reason: 'runtime-prerequisite-failed' });
     }
 
     const sdkIntegrity = await inspectMcpSdkIntegrity(this.runtimeRoot);
     const sdkAvailable = sdkIntegrity.status === 'verified';
     let modern = null;
     let autoFallback = null;
-    if (sdkAvailable) {
+    if (sdkAvailable && runtimePrerequisitesOk) {
       const pinned = await this.exec(process.execPath, [handshake, '--server', server, '--mode', 'modern-pinned', '--require-sdk', '--require-server-sdk', '--stateful', '--expect-tools', '34', '--state-root', this.runtimeStateRoot], { env: this.env, allowFailure: true, timeoutMs: 45_000 });
       if (pinned.code === 0) try { modern = JSON.parse(pinned.stdout.trim()); } catch { /* reported below */ }
       checks.push({ name: 'mcp-modern-2026-pinned', ok: pinned.code === 0 && modern?.era === 'modern' && modern?.toolCount === 34 && modern?.stateful?.tool === 'project_open', exitCode: pinned.code, report: modern, stderr: pinned.stderr.slice(0, 3000) });
@@ -200,10 +208,12 @@ export class VeteranInstaller {
       checks.push({ name: 'mcp-modern-client-auto-fallback', ok: auto.code === 0 && autoFallback?.era === 'legacy' && autoFallback?.runtime?.mcp?.implementation === 'standalone-fallback', exitCode: auto.code, report: autoFallback, stderr: auto.stderr.slice(0, 3000) });
     } else if (sdkIntegrity.status === 'unavailable') {
       checks.push({ name: 'mcp-official-sdk-graph', ok: true, optional: true, available: false, report: sdkIntegrity, message: 'Official SDK packages are not installed; standalone legacy fallback remains available.' });
+    } else if (!runtimePrerequisitesOk) {
+      checks.push({ name: 'mcp-modern-2026-pinned', ok: false, skipped: true, reason: 'runtime-prerequisite-failed' });
     } else {
       checks.push({ name: 'mcp-official-sdk-integrity', ok: false, report: sdkIntegrity, message: 'Official SDK graph or lockfile is incomplete, unpinned, or unverifiable.' });
     }
-    return { ok: checks.filter((item) => !item.optional).every((item) => item.ok), sdkAvailable, sdkGraph: sdkIntegrity.graph, sdkLockfile: sdkIntegrity.lockfile, activeMcp: legacy?.runtime?.mcp || null, legacy, modern, autoFallback, checks };
+    return { ok: checks.filter((item) => !item.optional).every((item) => item.ok), sdkAvailable, sdkGraph: sdkIntegrity.graph, sdkLockfile: sdkIntegrity.lockfile, stateBackend, activeMcp: legacy?.runtime?.mcp || null, legacy, modern, autoFallback, checks };
   }
 
   async doctor(hostId = null, options = {}) {

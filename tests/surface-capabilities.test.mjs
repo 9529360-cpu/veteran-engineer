@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { pathToFileURL } from 'node:url';
-import { resolveSurfaceProfile, SURFACE_CAPABILITY_CONTRACT } from '../src/surface-capabilities.mjs';
+import { requireSurfaceCapability, resolveSurfaceProfile, SURFACE_CAPABILITY_CONTRACT } from '../src/surface-capabilities.mjs';
 import { createVeteranApp } from '../src/app.mjs';
 import { createGitRepo, cleanup } from './helpers.mjs';
 
@@ -16,6 +16,29 @@ test('surface capability profiles are explicit and fail closed on unknown profil
   assert.equal(remote.capabilities.repository.fileUrl, false);
   assert.equal(tunnel.capabilities.transport.secureTunnel, true);
   assert.throws(() => resolveSurfaceProfile('made-up-surface'), (error) => error.code === 'SURFACE_PROFILE_UNSUPPORTED');
+});
+
+test('surface capability objects are canonicalized instead of trusting caller-provided capabilities', () => {
+  const forged = {
+    contract: SURFACE_CAPABILITY_CONTRACT,
+    id: 'remote-mcp',
+    capabilities: { repository: { localPath: true, remoteGit: true, fileUrl: true } }
+  };
+  assert.throws(
+    () => requireSurfaceCapability(forged, 'repository', 'localPath'),
+    (error) => error.code === 'SURFACE_CAPABILITY_UNAVAILABLE' && error.details?.surfaceProfile === 'remote-mcp'
+  );
+  const canonical = requireSurfaceCapability(forged, 'repository', 'remoteGit');
+  assert.equal(canonical.capabilities.repository.localPath, false);
+  assert.equal(canonical.capabilities.repository.fileUrl, false);
+  assert.throws(
+    () => resolveSurfaceProfile({ contract: 'forged-contract', id: 'remote-mcp' }),
+    (error) => error.code === 'SURFACE_CAPABILITY_CONTRACT_INVALID'
+  );
+  assert.throws(
+    () => resolveSurfaceProfile({ contract: SURFACE_CAPABILITY_CONTRACT, id: '' }),
+    (error) => error.code === 'SURFACE_CAPABILITY_CONTRACT_INVALID'
+  );
 });
 
 test('remote MCP surface refuses caller-local paths and runtime-local file URLs', async () => {

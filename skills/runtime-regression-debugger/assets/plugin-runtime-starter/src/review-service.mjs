@@ -1,4 +1,4 @@
-import { runProcess, git } from './git.mjs';
+import { allowlistedProcessEnvironment, runProcess, git } from './git.mjs';
 import { nowIso, randomId } from './util.mjs';
 
 export class ReviewService {
@@ -64,7 +64,7 @@ export class ReviewService {
     if (candidateId) {
       const state = await this.store.read();
       const candidate = state.runtime.candidates?.[candidateId];
-      if (!candidate) throw Object.assign(new Error(`Unknown candidate ${candidateId}`), { code: 'CANDIDATE_NOT_FOUND' });
+      if (!candidate || candidate.missionId !== missionId) throw Object.assign(new Error(`Unknown candidate ${candidateId}`), { code: 'CANDIDATE_NOT_FOUND' });
       head = candidate.commitSha;
     } else {
       const wt = await this.worktreeManager.ensureMissionWorktree(project, mission);
@@ -93,7 +93,14 @@ export class ReviewService {
       experiencePrecedence: experience.precedence,
       limits: { maxFindings: 20, maxRemediationTasks: 8 }
     };
-    const result = await runProcess(provider.command, provider.args || [], { cwd: project.repoPath, input: JSON.stringify(payload), allowFailure: true, timeoutMs: provider.timeoutMs || 180_000 });
+    const result = await runProcess(provider.command, provider.args || [], {
+      cwd: project.repoPath,
+      env: allowlistedProcessEnvironment(provider.envAllowlist || []),
+      inheritEnv: false,
+      input: JSON.stringify(payload),
+      allowFailure: true,
+      timeoutMs: provider.timeoutMs || 180_000
+    });
     let parsed = null;
     try { parsed = JSON.parse(result.stdout); } catch { /* handled below */ }
     const findings = Array.isArray(parsed?.findings) ? parsed.findings.slice(0, 20) : [{ severity: 'high', code: 'SEMANTIC_REVIEWER_INVALID_OUTPUT', message: result.stderr.slice(0, 1000) }];
