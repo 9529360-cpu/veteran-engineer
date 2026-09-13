@@ -46,14 +46,6 @@ JS_TECH = {
         "react-native": "React Native", "expo": "Expo", "expo-router": "Expo Router",
         "@react-navigation/native": "React Navigation",
     },
-    "browser-extension": {
-        "webextension-polyfill": "WebExtension Polyfill", "wxt": "WXT", "plasmo": "Plasmo",
-        "@crxjs/vite-plugin": "CRXJS", "web-ext": "web-ext",
-    },
-    "cli": {
-        "commander": "Commander", "yargs": "Yargs", "cac": "CAC",
-        "@oclif/core": "oclif", "clipanion": "Clipanion", "ink": "Ink",
-    },
     "node-backend": {
         "express": "Express", "fastify": "Fastify", "@nestjs/core": "NestJS",
         "koa": "Koa", "hono": "Hono", "elysia": "Elysia", "@trpc/server": "tRPC",
@@ -98,10 +90,6 @@ PY_TECH = {
         "fastapi": "FastAPI", "starlette": "Starlette", "django": "Django", "flask": "Flask",
         "uvicorn": "Uvicorn", "gunicorn": "Gunicorn", "pydantic": "Pydantic",
     },
-    "cli": {
-        "click": "Click", "typer": "Typer", "textual": "Textual",
-        "prompt-toolkit": "prompt_toolkit",
-    },
     "data": {
         "sqlalchemy": "SQLAlchemy", "alembic": "Alembic", "psycopg": "PostgreSQL",
         "psycopg2": "PostgreSQL", "psycopg2-binary": "PostgreSQL", "asyncpg": "PostgreSQL",
@@ -128,11 +116,6 @@ REFERENCE_RULES = {
     "frontend-react": "references/stack-react-nextjs.md",
     "frontend-other": "references/stack-web-frameworks.md",
     "mobile": "references/mobile-product-engineering.md",
-    "browser-extension": "references/browser-extension-product-engineering.md",
-    "cli": "references/cli-tui-product-engineering.md",
-    "desktop-runtime": "references/runtime-lifecycle-patterns.md",
-    "desktop-shell": "references/host-shell-platform-patterns.md",
-    "desktop-packaging": "references/release-promotion-patterns.md",
     "node-backend": "references/stack-node-typescript.md",
     "python-web": "references/stack-python-fastapi.md",
     "data-primary": "references/stack-postgres-redis.md",
@@ -290,17 +273,6 @@ def detect_infra(paths: list[tuple[pathlib.Path, pathlib.Path]], out: dict[str, 
             out["infrastructure"].add("Vercel")
 
 
-def detect_browser_extensions(files_by_name: dict[str, list[pathlib.Path]], detected: dict[str, set[str]]) -> None:
-    for path in files_by_name.get("manifest.json", [])[:40]:
-        try:
-            data = json.loads(read_manifest(path))
-        except json.JSONDecodeError:
-            continue
-        version = data.get("manifest_version") if isinstance(data, dict) else None
-        if isinstance(version, int) and not isinstance(version, bool) and version in {2, 3}:
-            detected["browser-extension"].add(f"Manifest V{version}")
-
-
 def detect_mobile(paths: list[tuple[pathlib.Path, pathlib.Path]], files_by_name: dict[str, list[pathlib.Path]], detected: dict[str, set[str]], languages: set[str], managers: set[str]) -> None:
     for path in files_by_name.get("pubspec.yaml", [])[:20]:
         text = read_manifest(path).lower()
@@ -340,10 +312,6 @@ def detect_go(files_by_name: dict[str, list[pathlib.Path]], detected: dict[str, 
         "gorm.io/gorm": "GORM", "github.com/redis/go-redis": "Redis",
         "github.com/segmentio/kafka-go": "Kafka", "github.com/nats-io/nats.go": "NATS",
     }
-    cli_mapping = {
-        "github.com/spf13/cobra": "Cobra", "github.com/urfave/cli": "urfave/cli",
-        "github.com/charmbracelet/bubbletea": "Bubble Tea",
-    }
     for path in files_by_name.get("go.mod", [])[:20]:
         text = read_manifest(path).lower()
         for needle, label in mapping.items():
@@ -351,18 +319,6 @@ def detect_go(files_by_name: dict[str, list[pathlib.Path]], detected: dict[str, 
                 detected["go-services"].add(label)
                 if "postgres" in label.lower() or "redis" in label.lower():
                     detected["data"].add("PostgreSQL" if "postgres" in label.lower() else "Redis")
-        for needle, label in cli_mapping.items():
-            if needle.lower() in text:
-                detected["cli"].add(label)
-
-
-def detect_rust_cli(files_by_name: dict[str, list[pathlib.Path]], detected: dict[str, set[str]]) -> None:
-    mapping = {"clap": "Clap", "ratatui": "Ratatui", "crossterm": "Crossterm"}
-    for path in files_by_name.get("Cargo.toml", [])[:30]:
-        text = read_manifest(path).lower()
-        for dependency, label in mapping.items():
-            if re.search(rf"(?m)^\s*{re.escape(dependency)}\s*=", text):
-                detected["cli"].add(label)
 
 
 def detect_jvm(files_by_name: dict[str, list[pathlib.Path]], detected: dict[str, set[str]], languages: set[str], managers: set[str]) -> None:
@@ -472,16 +428,6 @@ def suggested_references(detected: dict[str, set[str]], monorepo: bool) -> set[s
         refs.add(REFERENCE_RULES["frontend-other"])
     if detected.get("mobile"):
         refs.add(REFERENCE_RULES["mobile"])
-    if detected.get("browser-extension"):
-        refs.add(REFERENCE_RULES["browser-extension"])
-    if detected.get("cli"):
-        refs.add(REFERENCE_RULES["cli"])
-    desktop = detected.get("desktop-runtime", set())
-    if desktop:
-        refs.add(REFERENCE_RULES["desktop-runtime"])
-        refs.add(REFERENCE_RULES["desktop-shell"])
-    if desktop.intersection({"Electron Builder", "Electron Forge"}):
-        refs.add(REFERENCE_RULES["desktop-packaging"])
     for category in ("node-backend", "python-web", "messaging-workflows", "containers-kubernetes", "jvm", "dotnet", "go-services", "legacy-web"):
         if detected.get(category):
             refs.add(REFERENCE_RULES[category])
@@ -549,8 +495,6 @@ def main() -> int:
             "node_engine": info.get("node_engine"), "script_names": info.get("scripts", [])[:80],
         })
 
-    detect_browser_extensions(files_by_name, detected)
-
     pyproject_paths = files_by_name.get("pyproject.toml", [])[:30]
     requirement_paths = [path for path, rel in paths if path.is_file() and rel.name.lower().startswith("requirements") and rel.suffix.lower() in {".txt", ".in"}][:30]
     for path in pyproject_paths:
@@ -568,7 +512,6 @@ def main() -> int:
     detect_dotnet(paths, detected, languages, managers)
     detect_legacy_web(files_by_name, detected, languages, managers)
     detect_mobile(paths, files_by_name, detected, languages, managers)
-    detect_rust_cli(files_by_name, detected)
 
     if "Cargo.toml" in files_by_name:
         languages.add("Rust")
