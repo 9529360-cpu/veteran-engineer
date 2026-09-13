@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -186,7 +187,13 @@ async function sdkProbe(args, stateRoot) {
         const git = spawnSync('git', gitArgs, { cwd: statefulRepo, encoding: 'utf8', windowsHide: true });
         assert.equal(git.status, 0, `git ${gitArgs.join(' ')} failed: ${git.stderr || git.stdout}`);
       }
-      const opened = parseToolText(await client.callTool({ name: 'project_open', arguments: { requestId: 'official-modern-project-open', repoPath: statefulRepo } }));
+      const openResult = await client.callTool({ name: 'project_open', arguments: { requestId: `official-modern-project-open-${randomUUID()}`, repoPath: statefulRepo } });
+      const opened = parseToolText(openResult);
+      if (openResult?.isError) {
+        const error = new Error(`official modern stateful project_open failed: ${opened?.message || 'unknown MCP tool error'}`);
+        error.code = opened?.code || 'MCP_TOOL_ERROR';
+        throw error;
+      }
       assert.ok(opened?.id, 'official modern stateful project_open did not persist a project');
       stateful = { tool: 'project_open', projectId: opened.id };
     }
