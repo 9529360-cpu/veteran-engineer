@@ -27,6 +27,16 @@ async function createPostgresFixture({ faultInjector = null, prefix = 'conforman
     backend,
     backends,
     cleanup: async () => {
+      try {
+        const audit = await backend.verifyAudit();
+        if (!audit.ok) {
+          const rows = await backend.pool.query(
+            'SELECT seq::text AS seq, prev_hash, hash, state_commit_id, type FROM veteran_engineer_audit WHERE instance_key = $1 ORDER BY seq ASC',
+            [key]
+          );
+          console.error('POSTGRES_AUDIT_DIAGNOSTIC', JSON.stringify({ audit, rows: rows.rows }));
+        }
+      } catch {}
       await Promise.all(backends.map((item) => item.close().catch(() => {})));
       await cleanup(root);
     }
