@@ -11,6 +11,7 @@ const root = path.resolve(here, '..');
 const skillRoot = path.join(root, 'skills', 'runtime-regression-debugger');
 const router = path.join(skillRoot, 'scripts', 'engineering_context_router.py');
 const gate = path.join(skillRoot, 'scripts', 'product_analysis_gate.py');
+const analysisReference = path.join(skillRoot, 'references', 'product-analysis-engineering.md');
 
 async function exists(target) {
   try {
@@ -38,6 +39,7 @@ test('engineering context router treats Product Analysis as a first-class full-s
     t.skip('source Skill package is not present in the standalone runtime starter');
     return;
   }
+  assert.equal(await exists(analysisReference), true, 'Product Analysis reference must exist when its route is published');
 
   const direct = runPython(router, [
     '--signals',
@@ -78,10 +80,11 @@ test('engineering context router treats Product Analysis as a first-class full-s
 });
 
 test('product analysis gate requires evidence-backed observations and falsifiable inferences', async (t) => {
-  if (!(await exists(gate))) {
+  if (!(await exists(router))) {
     t.skip('source Skill package is not present in the standalone runtime starter');
     return;
   }
+  assert.equal(await exists(gate), true, 'Product Analysis gate must exist when the source Skill package is present');
 
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'veteran-product-analysis-'));
   try {
