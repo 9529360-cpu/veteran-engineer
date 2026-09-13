@@ -1,7 +1,14 @@
 import { spawn, spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 const DEFAULT_LOG_LIMIT_BYTES = 128 * 1024;
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+const SAFE_ENV_KEYS = [
+  'PATH', 'Path', 'PATHEXT', 'SystemRoot', 'WINDIR', 'COMSPEC',
+  'TMPDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL', 'LC_CTYPE', 'SHELL'
+];
 
 function boundedNumber(value, fallback, min, max) {
   const n = Number(value ?? fallback);
@@ -93,16 +100,43 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export function startValidationService(service, { cwd }) {
+function isolatedServiceEnvironment(environment, home) {
+  const env = {};
+  for (const key of SAFE_ENV_KEYS) {
+    if (typeof environment?.[key] === 'string') env[key] = environment[key];
+  }
+  env.HOME = home;
+  env.USERPROFILE = home;
+  env.XDG_CONFIG_HOME = path.join(home, '.config');
+  env.XDG_CACHE_HOME = path.join(home, '.cache');
+  env.GIT_TERMINAL_PROMPT = '0';
+  return env;
+}
+
+function cleanupServiceHome(serviceHandle) {
+  const home = serviceHandle?.home;
+  if (!home) return;
+  serviceHandle.home = null;
+  try { fs.rmSync(home, { recursive: true, force: true }); } catch {}
+}
+
+export function startValidationService(service, { cwd, environment = process.env } = {}) {
   const [command, ...args] = service.command;
-  const child = spawn(command, args, {
-    cwd,
-    env: process.env,
-    shell: false,
-    detached: process.platform !== 'win32',
-    stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true
-  });
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'veteran-validation-service-home-'));
+  let child;
+  try {
+    child = spawn(command, args, {
+      cwd,
+      env: isolatedServiceEnvironment(environment, home),
+      shell: false,
+      detached: process.platform !== 'win32',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true
+    });
+  } catch (error) {
+    try { fs.rmSync(home, { recursive: true, force: true }); } catch {}
+    throw error;
+  }
   const logs = { stdout: '', stderr: '', stdoutTruncated: false, stderrTruncated: false };
   let spawnError = null;
   let closed = false;
@@ -123,6 +157,7 @@ export function startValidationService(service, { cwd }) {
   return {
     child,
     logs,
+    home,
     status: () => ({
       running: isAlive(child),
       closed,
@@ -173,7 +208,11 @@ export async function waitForValidationReadiness(serviceHandle, readiness, { fet
 
 export async function stopValidationService(serviceHandle, graceMs) {
   const before = serviceHandle.status();
-  if (!before.treeRunning && !before.running) return { attempted: false, forced: false, before, after: serviceHandle.status() };
+  if (!before.treeRunning && !before.running) {
+    const after = serviceHandle.status();
+    cleanupServiceHome(serviceHandle);
+    return { attempted: false, forced: false, before, after };
+  }
   terminateTree(serviceHandle.child, 'SIGTERM');
   const deadline = Date.now() + graceMs;
   while ((serviceHandle.status().treeRunning || serviceHandle.status().running) && Date.now() < deadline) await delay(25);
@@ -184,5 +223,7 @@ export async function stopValidationService(serviceHandle, graceMs) {
     const killDeadline = Date.now() + 1_000;
     while ((serviceHandle.status().treeRunning || serviceHandle.status().running) && Date.now() < killDeadline) await delay(25);
   }
-  return { attempted: true, forced, before, after: serviceHandle.status() };
+  const after = serviceHandle.status();
+  cleanupServiceHome(serviceHandle);
+  return { attempted: true, forced, before, after };
 }
