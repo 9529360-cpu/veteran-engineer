@@ -55,8 +55,13 @@ export function validateContainerWorkerConfig(config) {
     error.code = 'CONTAINER_WORKER_CONFIG_INVALID';
     throw error;
   }
+  if (config.envAllowlist !== undefined && !Array.isArray(config.envAllowlist)) {
+    const error = new Error('Container worker envAllowlist must be an array when supplied');
+    error.code = 'CONTAINER_WORKER_CONFIG_INVALID';
+    throw error;
+  }
   for (const key of config.envAllowlist || []) {
-    if (!ENV_KEY.test(String(key)) || ENGINE_CONTROL_ENV.has(String(key))) {
+    if (typeof key !== 'string' || !ENV_KEY.test(key) || ENGINE_CONTROL_ENV.has(key)) {
       const error = new Error(`Invalid or engine-controlling container environment key: ${key}`);
       error.code = 'CONTAINER_WORKER_CONFIG_INVALID';
       throw error;
