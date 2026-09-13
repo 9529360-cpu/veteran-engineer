@@ -1,9 +1,23 @@
 import { git, sourceIdentity } from './git.mjs';
+import { isStateCommitAuditOutcomeUnknown } from './state-backend-durability-contract.mjs';
 import { nowIso, randomId } from './util.mjs';
 
 function parseMergeTree(stdout) {
   const first = stdout.trim().split(/\r?\n/)[0] || '';
   return /^[0-9a-f]{40,64}$/.test(first) ? first : null;
+}
+
+function candidateRollbackError(original, cleanup, ref, commitSha) {
+  const error = new Error('Candidate state did not commit and the candidate Git ref could not be rolled back safely');
+  error.code = 'CANDIDATE_REF_ROLLBACK_FAILED';
+  error.details = {
+    ref,
+    commitSha,
+    causeCode: original?.code || null,
+    cleanupExitCode: cleanup?.code ?? null,
+    cleanupError: `${cleanup?.stderr || cleanup?.stdout || ''}`.trim().slice(0, 2000) || null
+  };
+  return error;
 }
 
 export class CandidateService {
@@ -51,7 +65,6 @@ export class CandidateService {
     }
     const candidateId = randomId('candidate');
     const ref = `refs/veteran/candidates/${candidateId}`;
-    await git(project.repoPath, ['update-ref', ref, commitSha, '0000000000000000000000000000000000000000']);
     const candidate = {
       id: candidateId,
       projectId: project.id,
@@ -71,37 +84,56 @@ export class CandidateService {
       },
       createdAt: nowIso()
     };
-    const evidence = await this.evidenceService.record({ projectId: project.id, missionId, type: 'candidate', summary: candidate, sourceIdentity: { head: commitSha } });
-    await this.store.transaction('candidate_created', (state) => {
-      state.runtime.candidates ||= {};
-      state.runtime.candidates[candidateId] = candidate;
-      const target = state.missions[missionId];
-      if (target.activeMergeProposalId) {
-        const prior = state.runtime.mergeProposals?.[target.activeMergeProposalId];
-        if (prior && prior.status === 'proposed') {
-          prior.status = 'superseded';
-          prior.supersededAt = nowIso();
-          prior.supersededByCandidateId = candidateId;
+    const evidence = this.evidenceService.prepareMetadataRecord({
+      projectId: project.id,
+      missionId,
+      type: 'candidate',
+      summary: candidate,
+      sourceIdentity: { head: commitSha }
+    });
+
+    let refCreated = false;
+    try {
+      await git(project.repoPath, ['update-ref', ref, commitSha, '0000000000000000000000000000000000000000']);
+      refCreated = true;
+      await this.store.transaction('candidate_created', (state) => {
+        this.evidenceService.attachPreparedRecord(state, evidence);
+        state.runtime.candidates ||= {};
+        state.runtime.candidates[candidateId] = candidate;
+        const target = state.missions[missionId];
+        if (target.activeMergeProposalId) {
+          const prior = state.runtime.mergeProposals?.[target.activeMergeProposalId];
+          if (prior && prior.status === 'proposed') {
+            prior.status = 'superseded';
+            prior.supersededAt = nowIso();
+            prior.supersededByCandidateId = candidateId;
+          }
+          target.activeMergeProposalId = null;
         }
-        target.activeMergeProposalId = null;
+        target.candidateIds.push(candidateId);
+        target.activeCandidateId = candidateId;
+        target.updatedAt = nowIso();
+        if (preflight.sourceDrift) {
+          target.phase = 'validation';
+          target.status = 'ready';
+          target.validation = { status: 'pending', evidenceIds: [], commitSha };
+          target.review = { status: 'pending', evidenceIds: [], findings: [], commitSha };
+          target.semanticReview = { status: 'pending', evidenceIds: [], findings: [], commitSha };
+          target.currentSourceIdentity = { ...target.currentSourceIdentity, head: preflight.sourceHead, branch: preflight.sourceBranch || null, dirty: false, dirtyPaths: [] };
+        } else {
+          target.phase = 'candidate';
+          target.status = 'candidate-ready';
+        }
+        state.runtime.timeline.push({ type: preflight.sourceDrift ? 'candidate_refreshed' : 'candidate_created', missionId, candidateId, commitSha, sourceHead: preflight.sourceHead, at: nowIso() });
+      }, { missionId, candidateId, commitSha, sourceDrift: preflight.sourceDrift, evidenceId: evidence.id });
+      return { candidate, evidenceId: evidence.id, requiresRevalidation: preflight.sourceDrift };
+    } catch (error) {
+      if (refCreated && !isStateCommitAuditOutcomeUnknown(error)) {
+        const cleanup = await git(project.repoPath, ['update-ref', '-d', ref, commitSha], { allowFailure: true });
+        if (cleanup.code !== 0) throw candidateRollbackError(error, cleanup, ref, commitSha);
       }
-      target.candidateIds.push(candidateId);
-      target.activeCandidateId = candidateId;
-      target.updatedAt = nowIso();
-      if (preflight.sourceDrift) {
-        target.phase = 'validation';
-        target.status = 'ready';
-        target.validation = { status: 'pending', evidenceIds: [], commitSha };
-        target.review = { status: 'pending', evidenceIds: [], findings: [], commitSha };
-        target.semanticReview = { status: 'pending', evidenceIds: [], findings: [], commitSha };
-        target.currentSourceIdentity = { ...target.currentSourceIdentity, head: preflight.sourceHead, branch: preflight.sourceBranch || null, dirty: false, dirtyPaths: [] };
-      } else {
-        target.phase = 'candidate';
-        target.status = 'candidate-ready';
-      }
-      state.runtime.timeline.push({ type: preflight.sourceDrift ? 'candidate_refreshed' : 'candidate_created', missionId, candidateId, commitSha, sourceHead: preflight.sourceHead, at: nowIso() });
-    }, { missionId, candidateId, commitSha, sourceDrift: preflight.sourceDrift, evidenceId: evidence.id });
-    return { candidate, evidenceId: evidence.id, requiresRevalidation: preflight.sourceDrift };
+      throw error;
+    }
   }
 
   async status({ missionId, candidateId }) {
