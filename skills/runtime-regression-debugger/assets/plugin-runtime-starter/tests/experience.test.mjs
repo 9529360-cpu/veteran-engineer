@@ -22,7 +22,30 @@ test('candidate experience is quarantined until activation and challenge removes
   }
 });
 
-test('conflicting active experiences in same equivalence class are isolated', async () => {
+test('active experiences without an equivalence class remain independent and limit truncation is not a conflict', async () => {
+  const root = await tempDir('veteran-exp-unclassified-');
+  try {
+    const store = await new StateStore({ root }).init();
+    const service = new ExperienceService({ store });
+    const records = [];
+    for (const statement of ['Use owner A', 'Run validation B', 'Preserve contract C']) {
+      const item = await service.commit({ projectId: 'p1', mechanism: 'review', statement, kind: 'rule' });
+      await service.review({ experienceId: item.id, action: 'activate' });
+      records.push(item);
+    }
+    const full = await service.query({ projectId: 'p1', mechanism: 'review', recordUsage: false });
+    assert.deepEqual(full.items.map((item) => item.id), records.map((item) => item.id));
+    assert.equal(full.excludedConflicts, 0);
+
+    const limited = await service.query({ projectId: 'p1', mechanism: 'review', limit: 2, recordUsage: false });
+    assert.equal(limited.items.length, 2);
+    assert.equal(limited.excludedConflicts, 0);
+  } finally {
+    await cleanup(root);
+  }
+});
+
+test('conflicting active experiences in same explicit equivalence class are isolated', async () => {
   const root = await tempDir('veteran-exp-conflict-');
   try {
     const store = await new StateStore({ root }).init();
