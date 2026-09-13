@@ -53,6 +53,8 @@ def main() -> int:
     parser.add_argument("--threshold", type=float, default=85.0)
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
+    if not 0.0 <= args.threshold <= 100.0:
+        raise RuntimeError("--threshold must be between 0 and 100")
 
     path = pathlib.Path(args.input_json)
     try:
