@@ -27,10 +27,10 @@ test('local-json doctor treats PostgreSQL driver as optional capability', async 
   }
 });
 
-test('PostgreSQL selection requires exact driver and does not leak connection secrets', async () => {
+test('PostgreSQL selection normalizes backend kind, requires exact driver, and does not leak connection secrets', async () => {
   const runtimeRoot = await tempDir('veteran-installer-capability-postgres-');
   const env = {
-    VETERAN_ENGINEER_STATE_BACKEND: 'postgres',
+    VETERAN_ENGINEER_STATE_BACKEND: ' PoStGrEs ',
     VETERAN_ENGINEER_POSTGRES_URL: 'postgresql://user:supersecret@example.invalid/db',
     VETERAN_ENGINEER_STATE_INSTANCE: 'capability-test',
     VETERAN_ENGINEER_POSTGRES_POOL_MAX: '7'
@@ -38,6 +38,8 @@ test('PostgreSQL selection requires exact driver and does not leak connection se
   try {
     const missing = await inspectPostgresStateCapability({ runtimeRoot, env });
     assert.equal(missing.ok, false);
+    assert.equal(missing.selected, 'postgres');
+    assert.equal(missing.postgresSelected, true);
     assert.equal(missing.config.valid, true);
     assert.equal(missing.driver.installed, false);
     assert.equal(missing.checks.find((item) => item.name === 'postgres-driver').optional, false);
