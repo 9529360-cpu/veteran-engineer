@@ -4,6 +4,7 @@ import { assertPathsWithinScope, changedPaths, git, sourceIdentity } from './git
 import { MissionService } from './mission-service.mjs';
 import { nowIso, randomId } from './util.mjs';
 import { resolveWorkerConfig } from './worker-adapter.mjs';
+import { ProjectBootstrapExecutor, normalizeBootstrapAuthorization } from './bootstrap-executor.mjs';
 
 function packetFor(project, mission, task, waveBase, experience = { items: [], precedence: 'Current repository/runtime evidence outranks project experience.' }) {
   return {
@@ -29,7 +30,7 @@ function packetFor(project, mission, task, waveBase, experience = { items: [], p
 }
 
 export class WorkerOrchestrator {
-  constructor({ store, projectService, missionService, worktreeManager, workerAdapter, evidenceService, experienceService = null }) {
+  constructor({ store, projectService, missionService, worktreeManager, workerAdapter, evidenceService, experienceService = null, bootstrapExecutor = null }) {
     this.store = store;
     this.projectService = projectService;
     this.missionService = missionService;
@@ -37,17 +38,28 @@ export class WorkerOrchestrator {
     this.workerAdapter = workerAdapter;
     this.evidenceService = evidenceService;
     this.experienceService = experienceService;
+    this.bootstrapExecutor = bootstrapExecutor || new ProjectBootstrapExecutor();
   }
 
-  async execute({ missionId, runWorkers = false }) {
+  async execute({ missionId, runWorkers = false, bootstrapAuthorization = null }) {
+    const normalizedBootstrapAuthorization = normalizeBootstrapAuthorization(bootstrapAuthorization);
+    if (normalizedBootstrapAuthorization && !runWorkers) {
+      throw Object.assign(new Error('Bootstrap execution is only supported when mission_execute runs workers'), { code: 'BOOTSTRAP_EXECUTION_REQUIRES_RUN_WORKERS' });
+    }
     const { mission, tasks } = await this.missionService.status({ missionId });
     if (mission.status === 'cancelled') throw Object.assign(new Error('Mission is cancelled'), { code: 'MISSION_CANCELLED' });
     if (mission.phase !== 'execution') return { missionId, phase: mission.phase, message: 'Execution phase already complete' };
-    const project = await this.projectService.get(mission.projectId);
+    let project = await this.projectService.get(mission.projectId);
     const live = await sourceIdentity(project.repoPath);
     if (live.dirty) throw Object.assign(new Error('Dirty source checkout blocks first dispatch/execution'), { code: 'DIRTY_SOURCE_BLOCKED', details: live.dirtyPaths });
     if (mission.nextWaveIndex === 0 && live.head !== mission.baseSourceIdentity.head) {
       throw Object.assign(new Error('Mission base is stale before first dispatch'), { code: 'MISSION_BASE_STALE', details: { planned: mission.baseSourceIdentity.head, live: live.head } });
+    }
+    if (normalizedBootstrapAuthorization) {
+      project = await this.projectService.snapshot({ projectId: project.id });
+      if (project.sourceIdentity.dirty || project.sourceIdentity.head !== live.head) {
+        throw Object.assign(new Error('Project environment snapshot changed source identity before bootstrap execution'), { code: 'BOOTSTRAP_SOURCE_IDENTITY_STALE', details: { expectedHead: live.head, actualHead: project.sourceIdentity.head, dirty: project.sourceIdentity.dirty } });
+      }
     }
     const waveIds = mission.waves[mission.nextWaveIndex] || [];
     if (!waveIds.length) {
@@ -114,8 +126,30 @@ export class WorkerOrchestrator {
       let worktree = null;
       const dispatchId = randomId('dispatch');
       try {
-        const packet = packetFor(project, mission, task, waveBase, experience);
         worktree = await this.worktreeManager.createTaskWorktree(project, mission, task, waveBase);
+        let bootstrap = null;
+        let bootstrapEvidenceId = null;
+        if (normalizedBootstrapAuthorization) {
+          try {
+            bootstrap = await this.bootstrapExecutor.prepare({ worktreePath: worktree.path, plan: project.bootstrapPlan, authorization: normalizedBootstrapAuthorization });
+            const evidence = await this.evidenceService.record({
+              projectId: project.id, missionId, taskId: task.id, type: 'bootstrap',
+              summary: bootstrap, sourceIdentity: { head: waveBase },
+              metadata: { planContract: project.bootstrapPlan?.contract || null }
+            });
+            bootstrapEvidenceId = evidence.id;
+          } catch (error) {
+            const safeDetails = error?.details && typeof error.details === 'object' ? error.details : null;
+            const evidence = await this.evidenceService.record({
+              projectId: project.id, missionId, taskId: task.id, type: 'bootstrap-failure',
+              summary: { code: error?.code || 'BOOTSTRAP_FAILED', message: String(error?.message || error).slice(0, 500), details: safeDetails },
+              sourceIdentity: { head: waveBase }, metadata: { planContract: project.bootstrapPlan?.contract || null }
+            });
+            error.bootstrapEvidenceId = evidence.id;
+            throw error;
+          }
+        }
+        const packet = packetFor(project, mission, task, waveBase, experience);
         const packetPath = path.join(this.store.artifactsDir, 'worker-packets', `${dispatchId}.json`);
         await fs.mkdir(path.dirname(packetPath), { recursive: true });
         await fs.writeFile(packetPath, `${JSON.stringify(packet, null, 2)}\n`, { mode: 0o600 });
@@ -128,15 +162,15 @@ export class WorkerOrchestrator {
           target.attempts += 1;
           target.updatedAt = nowIso();
           target.admission = null;
-          target.dispatches.push({ id: dispatchId, waveBase, worktreePath: worktree.path, packetPath, packet, status: runWorkers ? 'executing' : 'ready', createdAt: nowIso() });
+          target.dispatches.push({ id: dispatchId, waveBase, worktreePath: worktree.path, packetPath, packet, bootstrapEvidenceId, status: runWorkers ? 'executing' : 'ready', createdAt: nowIso() });
           state.missions[missionId].status = runWorkers ? 'executing' : 'ready';
           state.runtime.timeline.push({ type: 'worker_dispatched', missionId, taskId: task.id, dispatchId, runWorkers, at: nowIso() });
         }, { missionId, taskId: task.id, dispatchId, runWorkers, admissionId: admission.id });
-        prepared.push({ task: { ...task, attempts: task.attempts + 1 }, packet, packetPath, worktree, dispatchId });
+        prepared.push({ task: { ...task, attempts: task.attempts + 1 }, packet, packetPath, worktree, dispatchId, bootstrap, bootstrapEvidenceId });
       } catch (error) {
         if (worktree) await this.worktreeManager.removeTaskWorktree(project, mission, task).catch(() => {});
         await this.#releaseAdmissions({ ...admission, taskIds: [task.id] }, 'task-preparation-failed');
-        preparationFailures.push({ taskId: task.id, code: error.code || 'ERROR', message: error.message });
+        preparationFailures.push({ taskId: task.id, code: error.code || 'ERROR', message: error.message, bootstrapEvidenceId: error.bootstrapEvidenceId || null });
       }
     }
     if (!runWorkers) return { missionId, waveIndex: mission.nextWaveIndex, waveBase, dispatched: prepared.map(({ task, packet, packetPath, worktree, dispatchId }) => ({ taskId: task.id, dispatchId, worktreePath: worktree.path, packetPath, packet })), preparationFailures };
@@ -225,7 +259,7 @@ export class WorkerOrchestrator {
     }
 
     await this.#advanceWaveIfComplete(missionId, mission.nextWaveIndex);
-    return { missionId, waveIndex: mission.nextWaveIndex, waveBase, results: results.map((result) => ({ taskId: result.task.id, ok: result.ok, commitSha: result.commitSha || null, error: result.ok ? null : { code: result.error.code || 'ERROR', message: result.error.message } })), preparationFailures };
+    return { missionId, waveIndex: mission.nextWaveIndex, waveBase, results: results.map((result) => ({ taskId: result.task.id, ok: result.ok, commitSha: result.commitSha || null, bootstrap: result.bootstrap || null, bootstrapEvidenceId: result.bootstrapEvidenceId || null, error: result.ok ? null : { code: result.error.code || 'ERROR', message: result.error.message } })), preparationFailures };
   }
 
   async #reserveAdmissions({ missionId, projectId, waveIndex, runWorkers }) {
@@ -334,11 +368,13 @@ export class WorkerOrchestrator {
     return this.store.transaction('worker_retry_scheduled', (state) => {
       const task = state.tasks[`${missionId}:${taskId}`];
       if (!task) throw Object.assign(new Error(`Unknown task ${taskId}`), { code: 'TASK_NOT_FOUND' });
+      const mission = state.missions[missionId];
+      if (!mission) throw Object.assign(new Error(`Unknown mission: ${missionId}`), { code: 'MISSION_NOT_FOUND' });
+      if (mission.status === 'cancelled') throw Object.assign(new Error('Cancelled missions cannot schedule worker retries'), { code: 'MISSION_CANCELLED' });
       if (!['failed', 'interrupted', 'cancelled'].includes(task.status)) throw Object.assign(new Error('Only failed/interrupted/cancelled tasks can be retried'), { code: 'TASK_RETRY_INVALID' });
       task.status = 'planned';
       task.admission = null;
       task.updatedAt = nowIso();
-      const mission = state.missions[missionId];
       mission.status = 'ready';
       mission.interruption = null;
       mission.updatedAt = nowIso();
