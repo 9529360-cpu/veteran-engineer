@@ -9,16 +9,28 @@ import {
   stopValidationService
 } from './product-validation-runner.mjs';
 import { normalizeValidationArtifacts, collectValidationArtifacts } from './validation-artifact-collector.mjs';
+import { normalizeBrowserValidation, runBrowserValidation } from './browser-validation-provider.mjs';
 
 function normalizeCapability(raw) {
-  if (!raw || typeof raw !== 'object' || !raw.name || !Array.isArray(raw.command) || raw.command.length === 0) return null;
+  if (!raw || typeof raw !== 'object' || !raw.name) return null;
+  const browser = normalizeBrowserValidation(raw.browser);
+  const hasCommand = Array.isArray(raw.command) && raw.command.length > 0;
+  if (!hasCommand && !browser) return null;
+  if (hasCommand && browser) {
+    throw Object.assign(new Error('Validation capability must choose command or browser execution, not both'), { code: 'VALIDATION_CAPABILITY_AMBIGUOUS' });
+  }
+  const service = normalizeProductService(raw.service);
+  if (browser && !browser.baseUrl && !service?.readiness?.url) {
+    throw Object.assign(new Error('Browser validation requires browser.baseUrl or service readiness URL'), { code: 'BROWSER_BASE_URL_REQUIRED' });
+  }
   return {
     name: String(raw.name),
     description: String(raw.description || ''),
-    command: raw.command.map(String),
+    command: hasCommand ? raw.command.map(String) : null,
     cwd: raw.cwd ? String(raw.cwd) : '.',
     timeoutMs: Number.isFinite(Number(raw.timeoutMs ?? 120_000)) ? Math.max(1000, Number(raw.timeoutMs ?? 120_000)) : 120_000,
-    service: normalizeProductService(raw.service),
+    service,
+    browser,
     artifacts: normalizeValidationArtifacts(raw.artifacts)
   };
 }
@@ -76,7 +88,7 @@ export class ValidationService {
         throw error;
       }
       if (!Array.isArray(rawCommand) || rawCommand.length === 0) throw new Error('rawCommand must be a non-empty argv array');
-      selected = { name: 'raw', description: 'Explicit raw validation', command: rawCommand.map(String), cwd: '.', timeoutMs: 120_000, service: null, artifacts: [] };
+      selected = { name: 'raw', description: 'Explicit raw validation', command: rawCommand.map(String), cwd: '.', timeoutMs: 120_000, service: null, browser: null, artifacts: [] };
     }
     if (!selected) throw Object.assign(new Error(`Unknown validation capability: ${capability}`), { code: 'VALIDATION_CAPABILITY_NOT_FOUND' });
 
@@ -104,6 +116,7 @@ export class ValidationService {
     let readiness = null;
     let cleanup = null;
     let failureStage = null;
+    let browserSummary = null;
     let artifactCollection = { attachments: [], summary: null };
     let artifactCollectionError = null;
     try {
@@ -125,9 +138,38 @@ export class ValidationService {
         }
       }
       if (!failureStage) {
-        const [command, ...args] = selected.command;
-        result = await runProcess(command, args, { cwd, timeoutMs: selected.timeoutMs, allowFailure: true });
-        if (result.code !== 0) failureStage = 'validation-command';
+        if (selected.browser) {
+          try {
+            const browserCwd = await resolveWorktreeCwd(wt, selected.browser.cwd, 'Browser provider');
+            browserSummary = await runBrowserValidation(selected.browser, {
+              cwd: browserCwd,
+              serviceReadinessUrl: selected.service?.readiness?.url || null
+            });
+            result = {
+              code: browserSummary.passed ? 0 : 1,
+              signal: null,
+              stdout: browserSummary.summary || '',
+              stderr: browserSummary.passed ? '' : (browserSummary.failureCode || 'Browser validation failed')
+            };
+            if (!browserSummary.passed) failureStage = 'browser-validation';
+          } catch (error) {
+            browserSummary = {
+              contract: selected.browser.contract,
+              passed: false,
+              failureCode: error?.code || 'BROWSER_VALIDATION_FAILED',
+              summary: String(error?.message || error).slice(0, 1000),
+              assertions: [],
+              currentUrl: null,
+              diagnostics: null
+            };
+            result = { code: 1, signal: null, stdout: '', stderr: browserSummary.failureCode };
+            failureStage = 'browser-validation';
+          }
+        } else {
+          const [command, ...args] = selected.command;
+          result = await runProcess(command, args, { cwd, timeoutMs: selected.timeoutMs, allowFailure: true });
+          if (result.code !== 0) failureStage = 'validation-command';
+        }
       }
     } finally {
       if (serviceRun) cleanup = await stopValidationService(serviceRun, selected.service.shutdownGraceMs);
@@ -172,7 +214,7 @@ export class ValidationService {
       projectId,
       missionId: mission?.id || missionId,
       type: 'validation',
-      summary: { capability: selected.name, passed, exitCode: result.code, commitSha, failureStage, service: serviceSummary, artifacts: artifactSummary },
+      summary: { capability: selected.name, passed, exitCode: result.code, commitSha, failureStage, service: serviceSummary, browser: browserSummary, artifacts: artifactSummary },
       sourceIdentity: { head: commitSha },
       artifact: validationArtifact({ result, serviceRun }),
       attachments: artifactCollection.attachments,
@@ -188,6 +230,6 @@ export class ValidationService {
         state.runtime.timeline.push({ type: 'validation_completed', missionId, at: nowIso(), passed, evidenceId: evidence.id, commitSha });
       }, { missionId, passed, capability: selected.name, commitSha, failureStage });
     }
-    return { passed, capability: selected.name, commitSha, evidenceId: evidence.id, exitCode: result.code, failureStage, service: serviceSummary, artifacts: artifactSummary };
+    return { passed, capability: selected.name, commitSha, evidenceId: evidence.id, exitCode: result.code, failureStage, service: serviceSummary, browser: browserSummary, artifacts: artifactSummary };
   }
 }
