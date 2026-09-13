@@ -368,11 +368,13 @@ export class WorkerOrchestrator {
     return this.store.transaction('worker_retry_scheduled', (state) => {
       const task = state.tasks[`${missionId}:${taskId}`];
       if (!task) throw Object.assign(new Error(`Unknown task ${taskId}`), { code: 'TASK_NOT_FOUND' });
+      const mission = state.missions[missionId];
+      if (!mission) throw Object.assign(new Error(`Unknown mission: ${missionId}`), { code: 'MISSION_NOT_FOUND' });
+      if (mission.status === 'cancelled') throw Object.assign(new Error('Cancelled missions cannot schedule worker retries'), { code: 'MISSION_CANCELLED' });
       if (!['failed', 'interrupted', 'cancelled'].includes(task.status)) throw Object.assign(new Error('Only failed/interrupted/cancelled tasks can be retried'), { code: 'TASK_RETRY_INVALID' });
       task.status = 'planned';
       task.admission = null;
       task.updatedAt = nowIso();
-      const mission = state.missions[missionId];
       mission.status = 'ready';
       mission.interruption = null;
       mission.updatedAt = nowIso();

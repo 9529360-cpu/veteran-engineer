@@ -8,7 +8,7 @@ const MAX_SECRET_BYTES = 64 * 1024;
 const PROVIDER_ID = /^[a-z][a-z0-9._-]*$/;
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const PROTECTED_TARGET_ENV = new Set([
-  'PATH', 'Path', 'PATHEXT', 'SystemRoot', 'WINDIR', 'COMSPEC', 'SHELL',
+  'PATH', 'PATHEXT', 'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'SHELL',
   'HOME', 'USERPROFILE', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'GIT_TERMINAL_PROMPT',
   'NODE_OPTIONS', 'NODE_PATH', 'PYTHONPATH', 'PYTHONHOME', 'RUBYOPT', 'RUBYLIB',
   'PERL5OPT', 'LD_PRELOAD', 'LD_LIBRARY_PATH', 'DYLD_INSERT_LIBRARIES', 'DYLD_LIBRARY_PATH'
@@ -19,6 +19,10 @@ function codedError(message, code, details = null) {
   error.code = code;
   if (details) error.details = details;
   return error;
+}
+
+function canonicalTargetEnv(value) {
+  return String(value).toUpperCase();
 }
 
 function normalizeReference(raw, index) {
@@ -34,7 +38,7 @@ function normalizeReference(raw, index) {
   if (!name || name.length > MAX_REFERENCE_NAME_LENGTH || name.includes('\0')) {
     throw codedError(`Credential reference ${index + 1} has an invalid name`, 'CREDENTIAL_REFERENCE_INVALID');
   }
-  if (!ENV_NAME.test(targetEnv) || PROTECTED_TARGET_ENV.has(targetEnv)) {
+  if (!ENV_NAME.test(targetEnv) || PROTECTED_TARGET_ENV.has(canonicalTargetEnv(targetEnv))) {
     throw codedError(`Credential reference ${index + 1} has an invalid or protected targetEnv`, 'CREDENTIAL_TARGET_INVALID', { targetEnv });
   }
   return Object.freeze({ contract: CREDENTIAL_REFERENCE_CONTRACT, provider, name, targetEnv });
@@ -57,10 +61,11 @@ export function normalizeCredentialReferences(raw, { legacyEnvironmentNames = []
   const targets = new Set();
   return combined.map((item, index) => {
     const reference = normalizeReference(item, index);
-    if (targets.has(reference.targetEnv)) {
+    const targetKey = canonicalTargetEnv(reference.targetEnv);
+    if (targets.has(targetKey)) {
       throw codedError(`Credential target ${reference.targetEnv} is duplicated`, 'CREDENTIAL_TARGET_DUPLICATE', { targetEnv: reference.targetEnv });
     }
-    targets.add(reference.targetEnv);
+    targets.add(targetKey);
     return reference;
   });
 }

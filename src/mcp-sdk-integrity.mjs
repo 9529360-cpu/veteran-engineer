@@ -19,24 +19,35 @@ async function readJson(file) {
 export async function inspectMcpSdkIntegrity(runtimeRoot) {
   const root = path.resolve(runtimeRoot);
   const packages = {};
-  let present = 0;
+  let detected = 0;
   for (const [name, expected] of Object.entries(PINNED_MCP_PACKAGES)) {
     const file = path.join(root, 'node_modules', ...name.split('/'), 'package.json');
     const loaded = await readJson(file);
+    const missing = loaded.error?.code === 'ENOENT';
+    const packageDetected = !missing;
     const version = loaded.value?.version || null;
-    if (version) present += 1;
-    packages[name] = { expected, version, present: Boolean(version), path: file };
+    if (packageDetected) detected += 1;
+    packages[name] = {
+      expected,
+      version,
+      detected: packageDetected,
+      present: Boolean(version),
+      readError: loaded.error && !missing ? (loaded.error.code || 'PACKAGE_JSON_INVALID') : null,
+      path: file
+    };
   }
 
   const graphErrors = [];
-  if (present > 0) {
+  if (detected > 0) {
     for (const [name, item] of Object.entries(packages)) {
-      if (!item.present) graphErrors.push(`${name} is missing`);
+      if (!item.detected) graphErrors.push(`${name} is missing`);
+      else if (item.readError) graphErrors.push(`${name} package metadata is unreadable or invalid (${item.readError})`);
+      else if (!item.present) graphErrors.push(`${name} package metadata is missing a version`);
       else if (item.version !== item.expected) graphErrors.push(`${name} expected ${item.expected}, found ${item.version}`);
     }
   }
   const graph = {
-    status: present === 0 ? 'unavailable' : (graphErrors.length ? 'invalid' : 'verified'),
+    status: detected === 0 ? 'unavailable' : (graphErrors.length ? 'invalid' : 'verified'),
     packages,
     errors: graphErrors
   };
