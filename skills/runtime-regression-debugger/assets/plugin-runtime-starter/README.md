@@ -1,86 +1,104 @@
 # Veteran Engineer
 
-Veteran Engineer is one cross-host engineering plugin: one policy Skill, one durable runtime/control plane, and thin host adapters for Codex, Hermes, generic MCP hosts, and future integrations.
+Veteran Engineer is one cross-host engineering plugin: one engineering-policy Skill, one shared Mission/MCP runtime, one durable control plane, and thin host adapters for Codex, Hermes, generic MCP hosts, and future integrations.
 
-This `0.3.0` tree is a behavioral reconstruction of the last saved development checkpoint after the original exported ZIP was lost. The repository is now the implementation source of truth. The bundled `runtime-regression-debugger` Skill and its architecture references remain the engineering-policy authority; current repository/runtime evidence and executable gates outrank historical claims.
+The GitHub repository `9529360-cpu/veteran-engineer` is the implementation source of truth. Current repository/runtime evidence and executable gates outrank old exported artifacts, historical claims, or remembered checkpoints.
 
 ## Current checkpoint
 
-The current mainline preserves an exact **34-tool MCP surface** and the pinned official MCP SDK graph:
+Version remains `0.3.0`. State schema remains `3`. The public MCP surface remains exactly **34 tools**.
+
+Protocol support is intentionally split:
+
+- official TypeScript SDK path: modern `2026-07-28` and legacy `2025-11-25`;
+- standalone fallback: legacy `2025-11-25` only;
+- a modern pin never silently falls back;
+- `VETERAN_MCP_REQUIRE_SDK=1` fails closed when the pinned official SDK graph is unavailable or invalid.
+
+The pinned base dependency graph is:
 
 - `@modelcontextprotocol/client@2.0.0`
 - `@modelcontextprotocol/server@2.0.0`
 - `@modelcontextprotocol/core@2.0.0`
 - `zod@4.2.0`
 
-GitHub CI runs two ordered gates on Node 20 after installing the exact optional SDK graph:
+Current mainline validation after the PostgreSQL hosted-state milestone proves:
 
-1. `npm run check`: **62 tests / 62 PASS / 0 SKIP / 0 FAIL**;
-2. a real Docker engine-backed container-worker smoke through the actual `WorkerAdapter` path.
+1. `npm run check`: **67 syntax files**, exact **34-tool** surface, protocol constants, pinned SDK graph/lock integrity, runtime-starter mirror parity, and **70/70 Node tests PASS**;
+2. a real Docker engine-backed confined `WorkerAdapter` smoke;
+3. a real PostgreSQL engine-backed state-backend integration gate, followed by the real modern MCP handshake while PostgreSQL is the active state backend.
 
-Static validation currently verifies **59 syntax files**, the exact 34-tool surface, modern `2026-07-28` protocol, legacy `2025-11-25` protocol, SDK graph, and lockfile integrity. The Docker gate resolves a test image to a RepoDigest before Veteran sees it and proves worktree access, packet access, rootfs/Git-metadata/network isolation, cancellation cleanup, and timeout cleanup against a real engine.
+The bundled recovery seed under `skills/runtime-regression-debugger/assets/plugin-runtime-starter/` is part of the product contract. The main validation gate now compares the mirrored runtime file set and file contents against the repository runtime so root/starter drift fails CI instead of becoming a future recovery surprise.
 
-## Safety and authority
+## Mission and authority model
 
-Veteran keeps the user checkout out of the multi-agent mutation surface. Mission and task work happen in isolated Git worktrees. Workers may propose writes, but the runtime validates declared scopes, rejects symlink traversal, owns task commits, and integrates serially into the isolated mission branch.
+The runtime keeps the user checkout outside the multi-agent mutation surface. Mission and task work occurs in isolated Git worktrees. Workers may propose writes, but the runtime owns task identity, packet identity, HEAD authority, actual-write verification, task commits, deterministic serial integration, proof binding, and final candidate identity.
 
-The runtime never automatically merges the user's branch, pushes, deploys, publishes, rotates credentials, or performs irreversible release actions. A proof-fresh immutable candidate advances into an explicit `finalize` phase that produces a durable merge proposal with `automaticMerge:false`, `automaticPush:false`, and `requiresOperatorAction:true`. Source drift supersedes the proposal and forces candidate refresh plus revalidation/re-review.
+The mission lifecycle is:
 
-Repository/runtime evidence outranks remembered experience. Candidate experience is quarantined until review/activation. Unknown idempotent outcomes require reconciliation and are never replayed blindly. Validation normally runs only operator-defined argv capabilities; arbitrary raw validation additionally requires both operator policy and explicit per-call confirmation.
+`execution -> validation -> deterministic review -> semantic review -> immutable candidate -> finalize`
 
-## MCP protocol modes
+Finalize does not merge or push. A proof-fresh candidate produces a durable merge proposal containing candidate/source/proof identity with:
 
-Veteran exposes exactly 34 intention-level MCP tools from one shared registry.
+- `automaticMerge:false`
+- `automaticPush:false`
+- `requiresOperatorAction:true`
 
-| Runtime path | MCP era | Protocol | Opening behavior |
-| --- | --- | --- | --- |
-| Official TypeScript SDK v2 | modern + legacy | `2026-07-28` + `2025-11-25` | modern `server/discover`; legacy `initialize` |
-| Standalone offline fallback | legacy only | `2025-11-25` | `initialize` only |
-
-The standalone fallback intentionally does **not** partially clone the 2026 wire. `server/discover` is rejected there as an unknown method. The official path fails closed on a partial SDK graph, version drift, or broken/missing lockfile integrity.
-
-Hard modern gate:
-
-```bash
-npm run mcp:handshake:modern
-```
-
-A modern pin never falls back. The suite separately verifies that an official modern client in `auto` mode can negotiate down to the standalone legacy fallback and that `VETERAN_MCP_REQUIRE_SDK=1` never silently degrades.
-
-## State backend contracts and durability
-
-Local durable JSON remains the default state authority. It owns the proven cross-process lock, atomic file replacement, backup recovery, audit hash chain, requestId idempotency, and startup reconciliation of orphaned `started` outcomes to `unknown`.
-
-The runtime consumes two explicit internal backend contracts:
-
-- `veteran-state-backend-v1`: `init`, `read`, `transaction`, `recordTimeline`, `verifyAudit`, plus execution-local artifacts/worktrees paths;
-- `veteran-state-transaction-v1`: `readSnapshot()` and `compareAndCommit(expectedRevision, ...)`.
-
-`createVeteranApp` fails closed unless an injected backend satisfies both contracts. Local JSON is the first conforming implementation; no hosted database has been introduced yet.
-
-Snapshot revisions are opaque content tokens. Local JSON checks the expected revision **inside the existing cross-process state lock**, so compare-and-commit admission is atomic with respect to other runtime mutations. A stale revision raises `STATE_REVISION_CONFLICT` before state or audit mutation. Concurrent contenders using the same revision admit exactly one winner.
-
-The former state/audit partial-failure gap is now explicit and recoverable. Every durable state mutation records a unique state-commit identity in state, and its audit entry carries the same identity. If state replacement succeeds but audit append or acknowledgement becomes ambiguous, the operation reports an unknown durable outcome instead of pretending normal success/failure. Startup and the next mutation reconcile the latest state commit against the verified append-only audit chain: a missing entry is repaired exactly once, an already-appended entry is accepted without duplication, and malformed/tampered/mismatched history fails closed.
-
-Request admission also carries an internal attempt identity. An ambiguous `request_started` commit can resume only the invocation that actually owns that reservation. If a handler mutation may already have committed, the request becomes `unknown` rather than being falsely recorded as failed. If only request-completion audit acknowledgement is ambiguous, Veteran returns success only after reconciliation proves the durable request record is already `completed`.
-
-Fault-injection tests exercise both crash windows—after state commit before audit, and after audit append before acknowledgement—while preserving state schema version 3 and backward verification of pre-marker audit entries.
+Source or mission drift supersedes the proposal and forces candidate refresh plus revalidation/re-review. Stable retries reuse the same proposal; missing finalize evidence after a partial failure is repaired rather than inventing a new authority.
 
 ## Worker execution boundaries
 
-A worker packet is durable runtime evidence stored outside the task worktree. Global worker admission is reserved atomically before worker preparation.
-
 The built-in Codex preset uses `codex exec --sandbox workspace-write --ephemeral` and rejects dangerous sandbox/approval bypass flags.
 
-The built-in `container` worker is fail-closed: Docker/Podman only, digest-pinned images, network disabled, read-only rootfs, `cap-drop ALL`, `no-new-privileges`, bounded resources, bounded `noexec,nosuid` `/tmp`, only the isolated task worktree writable, read-only `.git` control file and task packet, allowlist-only environment, and named-container cleanup on cancel/timeout/client exit.
+The built-in `container` worker is fail-closed and requires Docker or Podman, a digest-pinned image, disabled network, read-only root filesystem, all Linux capabilities dropped, `no-new-privileges`, bounded resources, bounded `noexec,nosuid` `/tmp`, controlled mounts, and allowlist-only environment forwarding.
 
-Real-engine validation exposed an ownership boundary that contract-only tests could not prove: a host-created `0600` task packet is unreadable to an unrelated image-default UID. Veteran therefore defaults confined containers to the host process numeric UID:GID when available, preserving private packet mode and avoiding root-owned worktree output. An explicit operator `user` remains authoritative.
+Only the isolated task worktree is writable. The task packet and `.git` control file are read-only from the container. Confined containers default to the host numeric UID:GID when available so private `0600` task packets remain readable without producing root-owned worktree output. An explicit operator `user` remains authoritative.
 
-Container isolation is defense-in-depth; post-execution HEAD, symlink-containment, write-scope, commit, and integration gates remain mandatory. `custom-unconfined` workers still require explicit operator opt-in and remain blocked for high/critical/broad-write tasks.
+Container isolation is defense-in-depth. Post-execution HEAD, symlink containment, declared write scope, commit ownership, and serial integration checks remain mandatory. `custom-unconfined` still requires explicit operator opt-in and remains blocked for high/critical/broad-write tasks.
 
-## Installation model
+## Durable state contracts
 
-The default shared runtime root is `~/plugins/veteran-engineer`. Durable runtime state is separate at `~/.veteran-engineer/state`, and installer ownership metadata lives outside the runtime tree.
+Veteran now has three explicit internal state-backend contracts:
+
+- `veteran-state-backend-v1`: base runtime state surface;
+- `veteran-state-transaction-v1`: opaque revisions plus `readSnapshot()` / `compareAndCommit()`;
+- `veteran-state-durability-v1`: durable commit-outcome reconciliation plus `reconcilePendingAudit()`.
+
+`createVeteranApp` fails closed unless an injected backend satisfies all three contracts.
+
+### Local JSON
+
+Local JSON remains the default backend. It retains cross-process locking, atomic state-file replacement, backup recovery, append-only audit hash chain, requestId idempotency, commit/audit reconciliation, and startup conversion of orphaned `started` request outcomes to `unknown`.
+
+A state mutation carries a durable `stateCommitId`. If state replacement succeeds but audit append/acknowledgement becomes ambiguous, Veteran reports an unknown durable outcome rather than pretending normal success or failure. Startup and the next mutation reconcile the latest state commit against the verified audit chain. Missing audit is repaired exactly once; an already-appended entry is accepted without duplication; malformed/tampered/mismatched history fails closed.
+
+### PostgreSQL hosted backend
+
+PostgreSQL is the first hosted transactional backend. It is opt-in; Local JSON remains the default.
+
+Select it with either programmatic `stateBackendConfig` or these environment variables:
+
+```bash
+export VETERAN_ENGINEER_STATE_BACKEND=postgres
+export VETERAN_ENGINEER_POSTGRES_URL='postgresql://user:password@host/database'
+export VETERAN_ENGINEER_STATE_INSTANCE='stable-runtime-instance-key'
+# optional, 1..32; default 4
+export VETERAN_ENGINEER_POSTGRES_POOL_MAX=4
+```
+
+The hosted backend requires the exact runtime capability `pg@8.23.0`. The base package/lock graph deliberately remains the already-verified MCP dependency graph; operators enabling PostgreSQL must install that exact driver in the shared runtime before launch. CI proves the hosted path by installing `pg@8.23.0`, starting a digest-pinned real PostgreSQL container, running backend conformance/durability/concurrency tests, then running the real modern MCP handshake with PostgreSQL selected.
+
+PostgreSQL state and audit append commit in one SQL transaction. Each durable state identity is serialized at the database boundary, state rows use `FOR UPDATE`, CAS revisions remain explicit, and post-COMMIT acknowledgement loss is reconciled by durable commit identity before Veteran decides whether replay is safe. Integration proof includes two independent backend instances/connection pools targeting the same `instanceKey` without lost updates or audit divergence.
+
+## Request idempotency and unknown outcomes
+
+Every mutating MCP operation requires a `requestId`. Reuse with a different operation/payload is rejected. Completed requests replay their recorded result; failed requests replay failure; `unknown` outcomes are never replayed blindly.
+
+Admission carries an internal attempt identity. If request admission itself becomes ambiguous, only the invocation that owns the durable reservation may continue after reconciliation. If a handler mutation may already have committed, the request becomes `unknown`, not falsely `failed`. If only completion acknowledgement is ambiguous, Veteran returns success only after durable state proves the request is already `completed`.
+
+## Cross-host installation
+
+The default shared runtime root is `~/plugins/veteran-engineer`. Durable runtime state is separate at `~/.veteran-engineer/state`, and installer ownership metadata lives at `~/.veteran-engineer/installer.json`.
 
 ```bash
 node bin/veteran-engineer.mjs hosts
@@ -91,19 +109,28 @@ node bin/veteran-engineer.mjs status
 node bin/veteran-engineer.mjs doctor
 ```
 
-Codex, Hermes, generic MCP, and trusted external adapters bind the same shared runtime; hosts do not fork the engineering core.
+Codex, Hermes, generic MCP, and trusted external adapters bind the same shared runtime; hosts do not fork the engineering core. Repair/upgrade stages a fresh distribution and preserves an existing `node_modules` tree, so installed runtime capabilities are not silently discarded during distribution refresh.
 
 ## Development validation
+
+Base gate:
 
 ```bash
 npm ci --include=optional
 npm run check
 ```
 
-Real Docker worker proof on an engine-capable host:
+Real container worker proof:
 
 ```bash
 VETERAN_CONTAINER_SMOKE_IMAGE='registry/image@sha256:<digest>' npm run test:container-smoke
+```
+
+Real PostgreSQL backend proof requires `pg@8.23.0` plus `VETERAN_TEST_POSTGRES_URL`:
+
+```bash
+npm install --no-save --package-lock=false pg@8.23.0
+VETERAN_TEST_POSTGRES_URL='postgresql://...' npm run test:postgres
 ```
 
 Protocol checks:
@@ -116,6 +143,20 @@ node scripts/mcp-handshake.mjs --mode auto --require-sdk --force-fallback
 
 Fallback results are never counted as modern-protocol proof.
 
-## Version policy
+## Convergence status
 
-The protocol, Mission finalize/merge-proposal, confined-container-worker, real engine-backed container proof, state-backend contract, transactional compare-and-commit, and state/audit reconciliation milestones are implemented on the `0.3.0` development line. Versioning/release remains a separate product decision.
+The current architecture has been reviewed across the earlier Mission finalize, worker sandbox, real-engine worker, state-backend, transactional CAS, commit/audit reconciliation, durable-outcome capability, and hosted PostgreSQL milestones.
+
+The convergence pass found and closed concrete issues rather than merely re-reading documentation:
+
+- an earlier experimental PostgreSQL lockfile was not accepted because it broke the existing official MCP SDK integrity gate;
+- the first PostgreSQL audit query sorted a text alias and would order sequence `10` before `2`; real concurrency tests exposed it and the query now orders by the numeric database column;
+- root/runtime-starter synchronization is now executable CI policy instead of a documentation promise;
+- hosted PostgreSQL now has cross-instance concurrency evidence, not only same-process/same-pool evidence;
+- README and handoff authority are refreshed to the actual mainline checkpoint.
+
+No convergence review found a reason to weaken the 34-tool compatibility surface, change state schema 3, relax fail-closed behavior, or move merge/push/deploy authority into the runtime.
+
+## Deliberate deferrals
+
+`0.3.0` remains a development line. Packaging the PostgreSQL driver into a future release dependency graph is a separate distribution/versioning decision; today it is an explicit hosted capability prerequisite. Production deployment/release, managed database migrations beyond the current v1 schema bootstrap, and automatic operator merge/push remain intentionally out of scope.
