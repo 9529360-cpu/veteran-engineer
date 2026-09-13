@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { LocalJsonStateBackend } from './local-json-state-backend.mjs';
 import { assertStateBackend } from './state-backend-contract.mjs';
+import { assertTransactionalStateBackend } from './state-backend-transaction-contract.mjs';
 import { ProjectService } from './project-service.mjs';
 import { MissionService } from './mission-service.mjs';
 import { ExperienceService } from './experience-service.mjs';
@@ -30,8 +31,8 @@ const MUTATING_TOOLS = new Set([
 export async function createVeteranApp({ stateRoot, stateBackend = null, protocolMode = MCP_TRANSPORT_MODES.STANDALONE_FALLBACK, configPath } = {}) {
   if (!stateRoot) throw new Error('stateRoot is required');
   const backend = stateBackend || new LocalJsonStateBackend({ root: path.resolve(stateRoot) });
-  assertStateBackend(backend);
-  const store = assertStateBackend(await backend.init());
+  assertTransactionalStateBackend(assertStateBackend(backend));
+  const store = assertTransactionalStateBackend(assertStateBackend(await backend.init()));
   const { config: operatorConfig, path: operatorConfigPath } = await loadOperatorConfig({ stateRoot, configPath });
   const projectService = new ProjectService({ store, operatorConfig });
   const evidenceService = new EvidenceService({ store });
