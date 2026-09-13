@@ -116,6 +116,9 @@ REFERENCE_RULES = {
     "frontend-react": "references/stack-react-nextjs.md",
     "frontend-other": "references/stack-web-frameworks.md",
     "mobile": "references/mobile-product-engineering.md",
+    "desktop-runtime": "references/runtime-lifecycle-patterns.md",
+    "desktop-shell": "references/host-shell-platform-patterns.md",
+    "desktop-packaging": "references/release-promotion-patterns.md",
     "node-backend": "references/stack-node-typescript.md",
     "python-web": "references/stack-python-fastapi.md",
     "data-primary": "references/stack-postgres-redis.md",
@@ -428,6 +431,12 @@ def suggested_references(detected: dict[str, set[str]], monorepo: bool) -> set[s
         refs.add(REFERENCE_RULES["frontend-other"])
     if detected.get("mobile"):
         refs.add(REFERENCE_RULES["mobile"])
+    desktop = detected.get("desktop-runtime", set())
+    if desktop:
+        refs.add(REFERENCE_RULES["desktop-runtime"])
+        refs.add(REFERENCE_RULES["desktop-shell"])
+    if desktop.intersection({"Electron Builder", "Electron Forge"}):
+        refs.add(REFERENCE_RULES["desktop-packaging"])
     for category in ("node-backend", "python-web", "messaging-workflows", "containers-kubernetes", "jvm", "dotnet", "go-services", "legacy-web"):
         if detected.get(category):
             refs.add(REFERENCE_RULES[category])
