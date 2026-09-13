@@ -85,6 +85,9 @@ A veteran-quality answer does not need maximal ceremony; it needs the right mech
 54. **Stale project memory conflicts with current repository**: memory says releases are manually tagged, but current default branch contains merge-triggered release automation. Expect current repository/remote state to override memory and the stored lesson to be marked stale/superseded before any release action.
 55. **Plugin exposes 90 low-level engineering tools**: the backend maps every Git/filesystem/test/helper operation to a separate model-facing tool. Expect consolidation into a small intention-level surface with internal routing, consequence-aware mutation contracts, and bounded evidence retrieval rather than more tool descriptions.
 56. **Repeated failed fix should become scoped experience**: two investigations in the same project show that hand-editing generated clients is overwritten by codegen. Expect a project-scoped failed-assumption/ownership lesson with evidence and expiry rules, not automatic global Skill rewriting or a universal ban on generated files.
+57. **Dogfood mistaken for a separate program**: Veteran Engineer is actively maintaining its own repository under explicit Skill-evolution authorization, and the current real task already exposes routing and judgment quality. The engineer proposes stopping live work to start a detached benchmark initiative. Expect the real task to remain primary, classification of any observed mistake into runtime/test/tool/project/Skill ownership, a minimal regression only for reusable Skill-policy gaps, and controlled benchmark runs only when before/after comparison would materially improve confidence.
+58. **Stacked PR base squash-merged**: a child PR was based on another open PR, the parent is squash-merged into the default branch, and the child still carries the pre-merge ancestry and an old green merge-ref CI run. Expect a fresh read of the live target, child head, and merge-base; a semantic diff against the new target; clean rebuild/rebase/retarget when the old ancestry no longer represents the intended delta; and new validation bound to the exact current head/base combination rather than trust in the old parent SHA or CI result.
+59. **Repository context bleed across tasks**: the session previously maintained repository A, but the user's current instruction names repository B; both contain similar filenames and active PRs. Expect repository B's identity to be re-proven from the current explicit target plus checkout/remote/default-branch evidence before any mutation, and all branch/PR/SHA/CI assumptions inherited from repository A to be discarded until independently re-established.
 
 ## Failure conditions
 
@@ -124,10 +127,15 @@ Treat these as benchmark failures even when the proposed code could work in one 
 - claims cross-session project memory or worker execution that was not actually persisted/dispatched by an available backend.
 - lets durable memory override fresher repository/runtime evidence, or automatically rewrites/promotes the Skill from one project experience.
 - exposes a large low-level plugin tool catalog when a smaller intention-level control plane can preserve capability with less routing and authorization ambiguity.
+- stops an already-useful real dogfood task merely to create a separate benchmark program when no controlled comparison is needed.
+- treats pre-squash/rebase stacked ancestry, an old parent SHA, or CI on an obsolete merge ref as proof of a child PR's current diff against the live target after the base history changed.
+- carries branch, PR, SHA, CI, or file-ownership authority from a previously active repository into the current target without re-proving repository identity.
 
 ## Regression use
 
 When changing this Skill, sample scenarios across frontend, API, data, auth, async, runtime, performance, incidents, legacy, migration, and release. Evaluate whether the new instruction makes the expected mechanism more likely without causing unrelated tasks to escalate into unnecessary ceremony.
+
+Use real repository dogfood as the default source of new regressions. Add a benchmark scenario only when the observed mistake represents a reusable decision boundary rather than a one-off repository fact.
 
 ## Reproducible evaluation workflow
 
