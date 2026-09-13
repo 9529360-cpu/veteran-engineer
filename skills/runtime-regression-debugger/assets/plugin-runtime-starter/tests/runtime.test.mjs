@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { StateStore } from '../src/state-store.mjs';
+import { LocalJsonStateBackend } from '../src/local-json-state-backend.mjs';
 import { ExperienceService } from '../src/experience-service.mjs';
 import { RuntimeService } from '../src/runtime-service.mjs';
 import { MCP_TRANSPORT_MODES } from '../src/mcp-protocol-capability.mjs';
@@ -58,6 +59,65 @@ test('app-level requestId replays completed mutations and rejects payload confli
     const state = await app.store.read();
     assert.equal(Object.values(state.projects).length, 1);
     assert.equal(state.requests['req-project-open'].status, 'completed');
+  } finally {
+    await cleanup(fixture.root);
+  }
+});
+
+test('app marks request unknown instead of failed when handler state commit audit outcome is ambiguous', async () => {
+  const { createGitRepo } = await import('./helpers.mjs');
+  const { createVeteranApp } = await import('../src/app.mjs');
+  const fixture = await createGitRepo();
+  let armed = false;
+  try {
+    const backend = new LocalJsonStateBackend({
+      root: fixture.stateRoot,
+      faultInjector: async (stage, commit) => {
+        if (armed && stage === 'after_state_commit_before_audit' && commit.eventType === 'project_opened') {
+          armed = false;
+          throw Object.assign(new Error('injected project audit gap'), { code: 'INJECTED_PROJECT_AUDIT_GAP' });
+        }
+      }
+    });
+    const app = await createVeteranApp({ stateRoot: fixture.stateRoot, stateBackend: backend });
+    armed = true;
+    const args = { requestId: 'req-project-ambiguous', repoPath: fixture.repo };
+    await assert.rejects(app.callTool('project_open', args), (error) => error.code === 'REQUEST_OUTCOME_UNKNOWN');
+    const state = await app.store.read();
+    assert.equal(Object.values(state.projects).length, 1);
+    assert.equal(state.requests['req-project-ambiguous'].status, 'unknown');
+    assert.equal((await app.store.verifyAudit()).ok, true);
+    await assert.rejects(app.callTool('project_open', args), (error) => error.code === 'REQUEST_OUTCOME_UNKNOWN');
+  } finally {
+    await cleanup(fixture.root);
+  }
+});
+
+test('app safely returns success when request completion audit ambiguity reconciles to completed', async () => {
+  const { createGitRepo } = await import('./helpers.mjs');
+  const { createVeteranApp } = await import('../src/app.mjs');
+  const fixture = await createGitRepo();
+  let armed = false;
+  try {
+    const backend = new LocalJsonStateBackend({
+      root: fixture.stateRoot,
+      faultInjector: async (stage, commit) => {
+        if (armed && stage === 'after_state_commit_before_audit' && commit.eventType === 'request_completed') {
+          armed = false;
+          throw Object.assign(new Error('injected completion audit gap'), { code: 'INJECTED_COMPLETION_AUDIT_GAP' });
+        }
+      }
+    });
+    const app = await createVeteranApp({ stateRoot: fixture.stateRoot, stateBackend: backend });
+    armed = true;
+    const args = { requestId: 'req-project-completion-gap', repoPath: fixture.repo };
+    const result = await app.callTool('project_open', args);
+    const state = await app.store.read();
+    assert.equal(state.requests['req-project-completion-gap'].status, 'completed');
+    assert.deepEqual(state.requests['req-project-completion-gap'].result, result);
+    assert.equal((await app.store.verifyAudit()).ok, true);
+    const replay = await app.callTool('project_open', args);
+    assert.deepEqual(replay, result);
   } finally {
     await cleanup(fixture.root);
   }
