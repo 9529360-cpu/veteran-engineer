@@ -27,7 +27,7 @@ export function assertDurableOutcomeStateBackend(backend) {
 
 export function isStateCommitAuditOutcomeUnknown(error) {
   return error?.code === STATE_COMMIT_AUDIT_OUTCOME_UNKNOWN
-    && error?.stateCommitted === true
+    && (error?.stateCommitted === true || error?.stateCommitted === 'unknown')
     && error?.auditOutcome === 'unknown'
     && error?.requiresReconciliation === true;
 }
