@@ -8,6 +8,7 @@ import {
   waitForValidationReadiness,
   stopValidationService
 } from './product-validation-runner.mjs';
+import { normalizeValidationArtifacts, collectValidationArtifacts } from './validation-artifact-collector.mjs';
 
 function normalizeCapability(raw) {
   if (!raw || typeof raw !== 'object' || !raw.name || !Array.isArray(raw.command) || raw.command.length === 0) return null;
@@ -17,7 +18,8 @@ function normalizeCapability(raw) {
     command: raw.command.map(String),
     cwd: raw.cwd ? String(raw.cwd) : '.',
     timeoutMs: Number.isFinite(Number(raw.timeoutMs ?? 120_000)) ? Math.max(1000, Number(raw.timeoutMs ?? 120_000)) : 120_000,
-    service: normalizeProductService(raw.service)
+    service: normalizeProductService(raw.service),
+    artifacts: normalizeValidationArtifacts(raw.artifacts)
   };
 }
 
@@ -74,7 +76,7 @@ export class ValidationService {
         throw error;
       }
       if (!Array.isArray(rawCommand) || rawCommand.length === 0) throw new Error('rawCommand must be a non-empty argv array');
-      selected = { name: 'raw', description: 'Explicit raw validation', command: rawCommand.map(String), cwd: '.', timeoutMs: 120_000, service: null };
+      selected = { name: 'raw', description: 'Explicit raw validation', command: rawCommand.map(String), cwd: '.', timeoutMs: 120_000, service: null, artifacts: [] };
     }
     if (!selected) throw Object.assign(new Error(`Unknown validation capability: ${capability}`), { code: 'VALIDATION_CAPABILITY_NOT_FOUND' });
 
@@ -102,6 +104,8 @@ export class ValidationService {
     let readiness = null;
     let cleanup = null;
     let failureStage = null;
+    let artifactCollection = { attachments: [], summary: null };
+    let artifactCollectionError = null;
     try {
       const cwd = await resolveWorktreeCwd(wt, selected.cwd);
       if (selected.service) {
@@ -127,6 +131,21 @@ export class ValidationService {
       }
     } finally {
       if (serviceRun) cleanup = await stopValidationService(serviceRun, selected.service.shutdownGraceMs);
+      if (selected.artifacts?.length) {
+        try {
+          artifactCollection = await collectValidationArtifacts(wt, selected.artifacts);
+          if (!artifactCollection.summary.complete && !failureStage) {
+            failureStage = 'artifact-collection';
+            result = { code: 1, signal: null, stdout: result.stdout || '', stderr: 'Required validation evidence artifacts were not produced.' };
+          }
+        } catch (error) {
+          artifactCollectionError = { code: error?.code || 'VALIDATION_ARTIFACT_COLLECTION_FAILED', message: String(error?.message || error).slice(0, 1000) };
+          if (!failureStage) {
+            failureStage = 'artifact-collection';
+            result = { code: 1, signal: null, stdout: result.stdout || '', stderr: artifactCollectionError.message };
+          }
+        }
+      }
       await git(project.repoPath, ['worktree', 'remove', '--force', wt], { allowFailure: true });
       await fs.rm(wt, { recursive: true, force: true });
     }
@@ -145,13 +164,18 @@ export class ValidationService {
       stderrTruncated: serviceRun.logs.stderrTruncated,
       cleanup
     } : null;
+    const artifactSummary = selected.artifacts?.length ? {
+      ...(artifactCollection.summary || { configured: true, complete: false, requiredMissing: false, files: 0, bytes: 0, items: [] }),
+      error: artifactCollectionError
+    } : null;
     const evidence = await this.evidenceService.record({
       projectId,
       missionId: mission?.id || missionId,
       type: 'validation',
-      summary: { capability: selected.name, passed, exitCode: result.code, commitSha, failureStage, service: serviceSummary },
+      summary: { capability: selected.name, passed, exitCode: result.code, commitSha, failureStage, service: serviceSummary, artifacts: artifactSummary },
       sourceIdentity: { head: commitSha },
       artifact: validationArtifact({ result, serviceRun }),
+      attachments: artifactCollection.attachments,
       metadata: { candidateId }
     });
     if (missionId) {
@@ -164,6 +188,6 @@ export class ValidationService {
         state.runtime.timeline.push({ type: 'validation_completed', missionId, at: nowIso(), passed, evidenceId: evidence.id, commitSha });
       }, { missionId, passed, capability: selected.name, commitSha, failureStage });
     }
-    return { passed, capability: selected.name, commitSha, evidenceId: evidence.id, exitCode: result.code, failureStage, service: serviceSummary };
+    return { passed, capability: selected.name, commitSha, evidenceId: evidence.id, exitCode: result.code, failureStage, service: serviceSummary, artifacts: artifactSummary };
   }
 }
