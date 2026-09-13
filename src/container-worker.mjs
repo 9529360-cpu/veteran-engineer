@@ -30,6 +30,14 @@ function containerName({ packetPath, mission, task }) {
   return raw.slice(0, 63).replace(/[-_.]+$/g, '') || `veteran-${Date.now()}`;
 }
 
+function containerUser(config) {
+  if (config.user !== undefined && config.user !== null && String(config.user).length) return String(config.user);
+  if (typeof process.getuid === 'function' && typeof process.getgid === 'function') {
+    return `${process.getuid()}:${process.getgid()}`;
+  }
+  return null;
+}
+
 export function validateContainerWorkerConfig(config) {
   const engine = String(config?.engine || 'docker');
   if (!ENGINES.has(engine)) {
@@ -66,6 +74,7 @@ export function buildContainerInvocation({ config, worktreePath, packetPath, tas
   const memoryMb = validated.memoryMb === undefined ? 1024 : positiveNumber(validated.memoryMb, 'memoryMb', { integer: true });
   const cpus = validated.cpus === undefined ? 1 : positiveNumber(validated.cpus, 'cpus');
   const name = containerName({ packetPath, mission, task });
+  const user = containerUser(validated);
   const args = [
     'run', '--rm',
     '--name', name,
@@ -87,8 +96,8 @@ export function buildContainerInvocation({ config, worktreePath, packetPath, tas
     '--env', `VETERAN_MISSION_ID=${mission.id}`
   ];
   for (const key of validated.envAllowlist || []) args.push('--env', key);
-  if (validated.user) args.push('--user', String(validated.user));
+  if (user) args.push('--user', user);
   if (validated.stdin !== undefined) args.push('--interactive');
   args.push(validated.image, ...validated.containerCommand);
-  return { command: validated.engine, args, container: { engine: validated.engine, name } };
+  return { command: validated.engine, args, container: { engine: validated.engine, name, user } };
 }
