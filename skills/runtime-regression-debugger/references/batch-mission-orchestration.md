@@ -8,6 +8,7 @@ Use this when the request is broader than one local fix: large backlog cleanup, 
 - Build a dependency-aware work graph
 - Prefer throughput by safe parallelism, not by lowering evidence quality
 - Split work by ownership and write-set boundaries
+- Coordinate with external parallel developers
 - Create worker packets another AI can execute independently
 - Integrate in waves
 - Keep shared truth fresh across parallel workers
@@ -99,6 +100,18 @@ Useful partition dimensions:
 - test harness additions versus product code when the test contract is already defined.
 
 Central files are conflict magnets: root manifests, lockfiles, shared schemas, route registries, migration indexes, generated aggregators, deployment manifests, and global config. Assign one integration owner for them.
+
+## Coordinate with external parallel developers
+
+Workers inside one mission are not the only source of collision. Another human, ChatGPT session, automation, or independently managed branch can mutate the same repository without appearing in the current work graph.
+
+Before the first write when parallel external work is known or plausible, refresh the live default branch and inspect the strongest available collaboration evidence: open pull requests and their changed files, active feature branches or recent branch heads, recently landed commits, and any explicit owner/reservation notes. Build only the temporary coordination map needed for the task:
+
+`actor/branch -> semantic owner -> current write set -> central files reserved -> dependency on our work`
+
+Do not infer non-overlap from branch names, issue titles, or different task wording. Compare concrete changed paths and semantic ownership. Prefer a disjoint owner/file set when useful work can proceed there. If both efforts must change the same authority or central file, make the dependency explicit and use one integration owner; stack deliberately on the authoritative branch when appropriate rather than creating competing main-based edits that will later be reconciled by accident.
+
+Refresh this collision map again immediately before pushing/opening a PR and before integration. If another actor entered the planned write set, recompute the boundary instead of pushing through the conflict. When external branch/PR visibility is unavailable, narrow the mutation to the smallest isolated owner and avoid central conflict magnets until coordination evidence is available.
 
 ## Create worker packets another AI can execute independently
 
