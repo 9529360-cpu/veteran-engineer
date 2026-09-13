@@ -12,6 +12,45 @@ function attachmentExtension(name) {
   return /^\.[a-z0-9]{1,12}$/.test(ext) ? ext : '.bin';
 }
 
+function buildEvidenceRecord({
+  id,
+  projectId,
+  missionId = null,
+  taskId = null,
+  type,
+  summary,
+  sourceIdentity = null,
+  runtimeIdentity = null,
+  artifactPointer = null,
+  artifactHash = null,
+  attachments = [],
+  metadata = {}
+}) {
+  return {
+    id,
+    projectId,
+    missionId,
+    taskId,
+    type,
+    summary: typeof summary === 'string' ? summary.slice(0, 4000) : stableStringify(summary).slice(0, 4000),
+    sourceIdentity,
+    runtimeIdentity,
+    artifactPointer,
+    artifactHash,
+    attachments,
+    metadata,
+    createdAt: nowIso()
+  };
+}
+
+function attachEvidenceRecord(state, record) {
+  state.evidence[record.id] = record;
+  if (record.taskId && record.missionId) {
+    const task = state.tasks[`${record.missionId}:${record.taskId}`];
+    if (task && !task.evidenceIds.includes(record.id)) task.evidenceIds.push(record.id);
+  }
+}
+
 async function cleanupUncommittedFiles(paths) {
   await Promise.allSettled(paths.map((full) => fs.rm(full, { force: true })));
 }
@@ -19,6 +58,31 @@ async function cleanupUncommittedFiles(paths) {
 export class EvidenceService {
   constructor({ store }) {
     this.store = store;
+  }
+
+  prepareMetadataRecord({ projectId, missionId = null, taskId = null, type, summary, sourceIdentity = null, runtimeIdentity = null, metadata = {} }) {
+    return buildEvidenceRecord({
+      id: randomId('evidence'),
+      projectId,
+      missionId,
+      taskId,
+      type,
+      summary,
+      sourceIdentity,
+      runtimeIdentity,
+      artifactPointer: null,
+      artifactHash: null,
+      attachments: [],
+      metadata
+    });
+  }
+
+  attachPreparedRecord(state, record) {
+    if (!record || typeof record !== 'object' || !record.id || record.artifactPointer !== null || record.artifactHash !== null || !Array.isArray(record.attachments) || record.attachments.length !== 0) {
+      throw new TypeError('prepared evidence record must be metadata-only');
+    }
+    attachEvidenceRecord(state, record);
+    return record;
   }
 
   async record({ projectId, missionId = null, taskId = null, type, summary, sourceIdentity = null, runtimeIdentity = null, artifact = null, attachments = [], metadata = {} }) {
@@ -56,21 +120,20 @@ export class EvidenceService {
       };
     });
     const attachmentRecords = normalizedAttachments.map((item) => item.record);
-    const record = {
+    const record = buildEvidenceRecord({
       id,
       projectId,
       missionId,
       taskId,
       type,
-      summary: typeof summary === 'string' ? summary.slice(0, 4000) : stableStringify(summary).slice(0, 4000),
+      summary,
       sourceIdentity,
       runtimeIdentity,
       artifactPointer,
       artifactHash,
       attachments: attachmentRecords,
-      metadata,
-      createdAt: nowIso()
-    };
+      metadata
+    });
 
     const createdFiles = [];
     try {
@@ -85,11 +148,7 @@ export class EvidenceService {
         await fs.writeFile(full, attachment.content, { mode: 0o600 });
       }
       await this.store.transaction('evidence_recorded', (state) => {
-        state.evidence[id] = record;
-        if (taskId && missionId) {
-          const task = state.tasks[`${missionId}:${taskId}`];
-          if (task && !task.evidenceIds.includes(id)) task.evidenceIds.push(id);
-        }
+        attachEvidenceRecord(state, record);
       }, { evidenceId: id, type, projectId, missionId, taskId, attachmentCount: attachmentRecords.length });
       return record;
     } catch (error) {
