@@ -46,6 +46,12 @@ ROUTES = {
     "experimentation": ["references/product-analytics-experimentation.md", "references/full-stack-product-engineering.md"],
     "ab-test": ["references/product-analytics-experimentation.md"],
     "feature-rollout": ["references/product-analytics-experimentation.md", "references/operability-control-plane-contract.md"],
+    "product-requirements": ["references/product-requirements-engineering.md", "references/full-stack-product-engineering.md"],
+    "prd": ["references/product-requirements-engineering.md", "references/full-stack-product-engineering.md"],
+    "user-story": ["references/product-requirements-engineering.md"],
+    "acceptance-criteria": ["references/product-requirements-engineering.md", "references/engineering-evidence-gates.md"],
+    "requirement-discovery": ["references/product-requirements-engineering.md", "references/product-analysis-engineering.md"],
+    "scope-definition": ["references/product-requirements-engineering.md"],
     "lifecycle": ["references/temporal-debugging-state-transitions.md", "references/runtime-lifecycle-patterns.md"],
     "async": ["references/temporal-debugging-state-transitions.md", "references/async-edge-job-patterns.md"],
     "concurrency": ["references/temporal-debugging-state-transitions.md", "references/causal-debugging-experiment-design.md", "references/distributed-systems-consistency.md"],
@@ -92,8 +98,8 @@ ROUTES = {
     "deletion": ["references/lifecycle-closure-design-to-deletion.md"],
     "multi-repo": ["references/cross-repo-contract-mesh.md", "references/staff-engineering-execution.md"],
     "cross-repo": ["references/cross-repo-contract-mesh.md", "references/staff-engineering-execution.md"],
-    "requirements": ["references/full-stack-product-engineering.md"],
-    "scope": ["references/full-stack-product-engineering.md"],
+    "requirements": ["references/product-requirements-engineering.md", "references/full-stack-product-engineering.md"],
+    "scope": ["references/product-requirements-engineering.md", "references/full-stack-product-engineering.md"],
     "navigation": ["references/project-takeover-engineering.md"],
     "search": ["references/project-takeover-engineering.md"],
     "generated": ["references/project-takeover-engineering.md", "references/semantic-diff-behavior-change.md"],
@@ -113,6 +119,7 @@ ROUTES = {
 ALIASES = {
     "publish": "release", "publishing": "release", "github-release": "release", "release-tag": "release", "autopublish": "release", "auto-publish": "release", "deployment": "release", "deploy": "release", "monorepository": "monorepo", "workspaces": "workspace", "ast-refactor": "codemod", "mass-refactor": "large-refactor", "infrastructure-as-code": "iac", "opentofu": "terraform", "pulumi": "iac", "full-stack": "fullstack", "full_stack": "fullstack", "crosslayer": "cross-layer", "vertical-slice": "delivery", "end-to-end": "delivery", "requirement": "requirements", "repo-search": "navigation", "code-search": "navigation", "generated-code": "generated", "code-generation": "codegen", "final-audit": "final-review", "db": "database", "payments": "payment", "jobs": "queue", "race": "concurrency", "cause": "causality", "fsm": "state-machine", "state": "state-machine", "test": "validation", "tests": "validation", "proof": "evidence", "provider": "dependency", "vendor": "dependency", "retire": "deletion", "multirepo": "multi-repo", "kafka": "broker", "rabbitmq": "broker", "2pc": "distributed-transaction", "saga": "distributed-transaction", "ebpf": "profiling", "bpftrace": "profiling", "slo": "error-budget", "decommission": "simplification", "rescue": "system-rescue", "interface-design": "ui", "ui-design": "ui", "screen-design": "ui", "ux-design": "ux", "product-designer": "product-design", "design-tokens": "design-system", "responsive-ui": "responsive-design", "product-intelligence": "product-analysis", "competitive-analysis": "competitor-analysis", "competitor-research": "competitor-analysis", "blackbox-analysis": "black-box-analysis", "black-box-research": "black-box-analysis", "product-comparison": "competitor-analysis", "product-version-diff": "product-diff", "feature-map": "capability-map", "api-observation": "product-network-analysis", "technology-fingerprint": "technical-fingerprint",
     "analytics": "product-analytics", "product-metrics": "product-analytics", "event-tracking": "instrumentation", "telemetry-plan": "instrumentation", "funnel": "funnel-analysis", "retention": "retention-analysis", "experiment": "experimentation", "a-b-test": "ab-test", "a/b-test": "ab-test", "ab-testing": "ab-test", "feature-flag-rollout": "feature-rollout", "measured-rollout": "feature-rollout",
+    "product-spec": "product-requirements", "product-specification": "product-requirements", "requirements-engineering": "product-requirements", "requirements-discovery": "requirement-discovery", "story": "user-story", "user-stories": "user-story", "acceptance": "acceptance-criteria", "acceptance-test": "acceptance-criteria", "scope-definition": "scope-definition", "scoping": "scope-definition",
 }
 
 def split_csv(value: str) -> list[str]:
