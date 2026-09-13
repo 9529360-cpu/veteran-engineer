@@ -9,6 +9,10 @@ Profiles:
 
 The web exporter intentionally does not invent app IDs, OAuth configuration, remote MCP
 URLs, or Secure MCP Tunnel provisioning. Those remain workspace/app configuration.
+
+Archives are deterministic: checkout mtimes and ordinary umask differences do not affect
+the output bytes. Symlinks are rejected instead of followed so packaging cannot escape
+the declared Skill/runtime/app-manifest source boundaries.
 """
 
 from __future__ import annotations
@@ -17,30 +21,34 @@ import argparse
 import json
 import pathlib
 import shutil
+import stat
 import tempfile
 import zipfile
 
 SKIP_NAMES = {"__pycache__", ".DS_Store", "node_modules", ".git"}
 LOCAL_PROFILES = {"desktop", "codex"}
 ALL_PROFILES = LOCAL_PROFILES | {"web"}
+ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 
 
 def copy_filtered(src: pathlib.Path, dst: pathlib.Path, *, exclude_runtime_asset: bool = False) -> None:
     src = src.resolve()
-    for path in src.rglob("*"):
-        rel = path.relative_to(src)
+    for source in src.rglob("*"):
+        rel = source.relative_to(src)
         if any(part in SKIP_NAMES for part in rel.parts):
             continue
-        if path.suffix == ".pyc":
+        if source.suffix == ".pyc":
             continue
         if exclude_runtime_asset and rel.parts[:2] == ("assets", "plugin-runtime-starter"):
             continue
+        if source.is_symlink():
+            raise RuntimeError(f"plugin export refuses symbolic link: {rel.as_posix()}")
         target = dst / rel
-        if path.is_dir():
+        if source.is_dir():
             target.mkdir(parents=True, exist_ok=True)
-        elif path.is_file():
+        elif source.is_file():
             target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(path, target)
+            shutil.copyfile(source, target)
 
 
 def load_json(path: pathlib.Path) -> dict:
@@ -99,11 +107,13 @@ def build_web_profile(skill_root: pathlib.Path, runtime: pathlib.Path, plugin_ro
     manifest.pop("mcpServers", None)
     manifest["skills"] = "./skills/"
     if app_manifest is not None:
+        if app_manifest.is_symlink():
+            raise RuntimeError("plugin export refuses symbolic link app manifest")
         if not app_manifest.is_file():
             raise RuntimeError(f"app manifest does not exist: {app_manifest}")
         # The app manifest is caller/workspace supplied. Treat it as opaque platform
         # configuration instead of guessing a schema that can change independently.
-        shutil.copy2(app_manifest, plugin_root / ".app.json")
+        shutil.copyfile(app_manifest, plugin_root / ".app.json")
         manifest["apps"] = "./.app.json"
     else:
         manifest.pop("apps", None)
@@ -113,10 +123,11 @@ def build_web_profile(skill_root: pathlib.Path, runtime: pathlib.Path, plugin_ro
 
 
 def validate_export(root: pathlib.Path, profile: str) -> None:
-    skill = root / "skills" / "runtime-regression-debugger" / "SKILL.md"
+    skill_root = root / "skills" / "runtime-regression-debugger"
+    skill = skill_root / "SKILL.md"
     manifest_path = root / ".codex-plugin" / "plugin.json"
-    required = [skill, manifest_path, root / "veteran-distribution.json"]
-    missing = [str(p.relative_to(root)) for p in required if not p.is_file()]
+    required = [skill, skill_root / "agents" / "openai.yaml", manifest_path, root / "veteran-distribution.json"]
+    missing = [str(path.relative_to(root)) for path in required if not path.is_file()]
     if missing:
         raise RuntimeError("plugin export missing required files: " + ", ".join(missing))
 
@@ -140,7 +151,7 @@ def validate_export(root: pathlib.Path, profile: str) -> None:
             root / "src" / "worktree-manager.mjs",
             root / "tests" / "worker-execution.test.mjs",
         ]
-        local_missing = [str(p.relative_to(root)) for p in local_required if not p.is_file()]
+        local_missing = [str(path.relative_to(root)) for path in local_required if not path.is_file()]
         if local_missing:
             raise RuntimeError("local plugin export missing runtime files: " + ", ".join(local_missing))
         if manifest.get("mcpServers") != "./.mcp.json":
@@ -153,7 +164,7 @@ def validate_export(root: pathlib.Path, profile: str) -> None:
             raise RuntimeError(".mcp.json must declare veteran-engineer")
     else:
         forbidden = [root / ".mcp.json", root / "mcp" / "server.mjs", root / "src" / "mcp-server.mjs"]
-        present = [str(p.relative_to(root)) for p in forbidden if p.exists()]
+        present = [str(path.relative_to(root)) for path in forbidden if path.exists()]
         if present:
             raise RuntimeError("web plugin must not embed local MCP/runtime surfaces: " + ", ".join(present))
         if "mcpServers" in manifest:
@@ -163,6 +174,38 @@ def validate_export(root: pathlib.Path, profile: str) -> None:
             raise RuntimeError("web app reference must be declared through ./.app.json")
         if not app_path.exists() and "apps" in manifest:
             raise RuntimeError("web plugin manifest references an app but .app.json is missing")
+
+
+def normalized_archive_mode(path: pathlib.Path) -> int:
+    permissions = 0o755 if path.stat().st_mode & 0o111 else 0o644
+    return stat.S_IFREG | permissions
+
+
+def write_deterministic_archive(plugin_root: pathlib.Path, output: pathlib.Path) -> None:
+    if output.exists():
+        output.unlink()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+        for source in sorted(plugin_root.rglob("*"), key=lambda item: item.relative_to(plugin_root).as_posix()):
+            if source.is_symlink():
+                raise RuntimeError(
+                    "plugin export refuses symbolic link in staged bundle: "
+                    + source.relative_to(plugin_root).as_posix()
+                )
+            if not source.is_file():
+                continue
+            relative = source.relative_to(plugin_root)
+            archive_name = (pathlib.PurePosixPath("veteran-engineer") / pathlib.PurePosixPath(relative.as_posix())).as_posix()
+            info = zipfile.ZipInfo(archive_name, date_time=ZIP_TIMESTAMP)
+            info.create_system = 3
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = normalized_archive_mode(source) << 16
+            info.flag_bits |= 0x800
+            archive.writestr(
+                info,
+                source.read_bytes(),
+                compress_type=zipfile.ZIP_DEFLATED,
+                compresslevel=9,
+            )
 
 
 def main() -> int:
@@ -194,13 +237,7 @@ def main() -> int:
         else:
             build_web_profile(skill_root, runtime, plugin_root, app_manifest)
         validate_export(plugin_root, args.profile)
-
-        if output.exists():
-            output.unlink()
-        with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
-            for path in sorted(plugin_root.rglob("*")):
-                if path.is_file():
-                    zf.write(path, pathlib.Path("veteran-engineer") / path.relative_to(plugin_root))
+        write_deterministic_archive(plugin_root, output)
 
     print(output)
     return 0
