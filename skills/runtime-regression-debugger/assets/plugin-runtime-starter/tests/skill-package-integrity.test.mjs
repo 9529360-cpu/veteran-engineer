@@ -24,6 +24,8 @@ test('Skill package references, metadata, and benchmark scenarios stay coherent'
 }, async () => {
   const skillPath = path.join(skillRoot, 'SKILL.md');
   const skill = await fs.readFile(skillPath, 'utf8');
+  const skillLines = skill.split('\n').length;
+  assert.ok(skillLines <= 500, `SKILL.md must remain a compact control plane (<= 500 lines); got ${skillLines}`);
 
   const frontmatter = skill.match(/^---\n([\s\S]*?)\n---\n/);
   assert.ok(frontmatter, 'SKILL.md must have YAML frontmatter');
