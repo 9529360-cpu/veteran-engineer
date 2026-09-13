@@ -35,6 +35,8 @@ test('installer doctor fails closed on selected PostgreSQL prerequisites before 
     assert.equal(report.runtime.stateBackend.postgresSelected, true);
     assert.equal(report.runtime.stateBackend.config.valid, true);
     assert.equal(report.runtime.stateBackend.driver.installed, false);
+    assert.equal(report.runtime.stateBackend.driver.loadable, false);
+    assert.equal(report.runtime.stateBackend.driver.ready, false);
     assert.equal(report.runtime.stateBackend.driver.requiredVersion, '8.23.0');
     assert.equal(report.runtime.checks.find((item) => item.name === 'state:postgres-driver')?.optional, false);
     assert.equal(report.runtime.checks.find((item) => item.name === 'mcp-legacy-handshake')?.skipped, true);
