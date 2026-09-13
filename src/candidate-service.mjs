@@ -111,7 +111,9 @@ export class CandidateService {
     const id = candidateId || mission.activeCandidateId;
     if (!id) return { missionId, candidate: null };
     const candidate = state.runtime.candidates?.[id];
-    if (!candidate) throw Object.assign(new Error(`Unknown candidate ${id}`), { code: 'CANDIDATE_NOT_FOUND' });
+    if (!candidate || candidate.missionId !== missionId) {
+      throw Object.assign(new Error(`Unknown candidate ${id}`), { code: 'CANDIDATE_NOT_FOUND' });
+    }
     return { missionId, candidate };
   }
 }

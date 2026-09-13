@@ -42,7 +42,7 @@ export function normalizeValidationArtifacts(raw) {
 
 function insideRoot(root, candidate) {
   const rel = path.relative(root, candidate);
-  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
 }
 
 async function collectEntry(root, absolute, relative, state, declaration) {
