@@ -68,3 +68,60 @@ jobs:
 
       - name: Run real container worker smoke
         run: npm run test:container-smoke
+
+  postgres-smoke:
+    name: PostgreSQL state backend smoke
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VETERAN_TEST_POSTGRES_URL: postgresql://veteran:veteran@127.0.0.1:5432/veteran
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --include=optional
+
+      - name: Start digest-pinned PostgreSQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull postgres:16-alpine
+          IMAGE="$(docker image inspect postgres:16-alpine --format '{{index .RepoDigests 0}}')"
+          case "$IMAGE" in
+            *@sha256:*) ;;
+            *) echo "Failed to resolve digest-pinned PostgreSQL image" >&2; exit 1 ;;
+          esac
+          echo "Using $IMAGE"
+          docker run -d --name veteran-postgres \
+            -e POSTGRES_USER=veteran \
+            -e POSTGRES_PASSWORD=veteran \
+            -e POSTGRES_DB=veteran \
+            -p 5432:5432 \
+            "$IMAGE"
+          for attempt in $(seq 1 30); do
+            if docker exec veteran-postgres pg_isready -U veteran -d veteran >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs veteran-postgres >&2
+          exit 1
+
+      - name: Run PostgreSQL contract and durability integration
+        run: npm run test:postgres
+
+      - name: Prove PostgreSQL selection through the real MCP path
+        env:
+          VETERAN_ENGINEER_STATE_BACKEND: postgres
+          VETERAN_ENGINEER_POSTGRES_URL: ${{ env.VETERAN_TEST_POSTGRES_URL }}
+          VETERAN_ENGINEER_STATE_INSTANCE: ci-mcp-${{ github.run_id }}-${{ github.run_attempt }}
+        run: npm run mcp:handshake:modern

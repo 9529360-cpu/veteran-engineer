@@ -29,6 +29,13 @@ export class RuntimeService {
       version: RUNTIME_VERSION,
       stateSchemaVersion: STATE_SCHEMA_VERSION,
       stateRoot: this.store.root,
+      stateBackend: {
+        kind: this.store.backendKind || 'legacy-state-store',
+        contract: this.store.backendContract || null,
+        transactionContract: this.store.transactionContract || null,
+        durabilityContract: this.store.durabilityContract || null,
+        instanceKey: this.store.backendKind === 'postgres' ? this.store.instanceKey : null
+      },
       stateReadable: Boolean(state),
       audit: { ok: audit.ok, entries: audit.entries },
       mcp: protocolCapability(this.protocolMode),
@@ -80,7 +87,7 @@ export class RuntimeService {
     const state = await this.store.read();
     const unknownRequests = Object.values(state.requests || {}).filter((item) => item.status === 'unknown').map((item) => item.requestId);
     const experienceAudit = await this.experienceService.audit({ projectId });
-    const backupPresent = await pathExists(this.store.backupPath);
+    const backupPresent = this.store.backupPath ? await pathExists(this.store.backupPath) : null;
     const result = { unknownRequests, experienceAudit, backupPresent, at: nowIso() };
     await this.store.transaction('runtime_maintenance', (working) => {
       working.runtime.maintenance.lastRun = result.at;

@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { LocalJsonStateBackend } from './local-json-state-backend.mjs';
+import { createStateBackend } from './state-backend-factory.mjs';
 import { assertStateBackend } from './state-backend-contract.mjs';
 import { assertTransactionalStateBackend } from './state-backend-transaction-contract.mjs';
 import { assertDurableOutcomeStateBackend, isStateCommitAuditOutcomeUnknown } from './state-backend-durability-contract.mjs';
@@ -54,9 +54,20 @@ function assertAppStateBackend(backend) {
   return assertDurableOutcomeStateBackend(assertTransactionalStateBackend(assertStateBackend(backend)));
 }
 
-export async function createVeteranApp({ stateRoot, stateBackend = null, protocolMode = MCP_TRANSPORT_MODES.STANDALONE_FALLBACK, configPath } = {}) {
+export async function createVeteranApp({
+  stateRoot,
+  stateBackend = null,
+  stateBackendConfig = null,
+  stateBackendEnv = process.env,
+  protocolMode = MCP_TRANSPORT_MODES.STANDALONE_FALLBACK,
+  configPath
+} = {}) {
   if (!stateRoot) throw new Error('stateRoot is required');
-  const backend = stateBackend || new LocalJsonStateBackend({ root: path.resolve(stateRoot) });
+  const backend = stateBackend || createStateBackend({
+    stateRoot: path.resolve(stateRoot),
+    config: stateBackendConfig,
+    env: stateBackendEnv
+  });
   assertAppStateBackend(backend);
   const store = assertAppStateBackend(await backend.init());
   const { config: operatorConfig, path: operatorConfigPath } = await loadOperatorConfig({ stateRoot, configPath });
