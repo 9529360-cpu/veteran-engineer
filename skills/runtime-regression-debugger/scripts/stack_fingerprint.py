@@ -50,6 +50,10 @@ JS_TECH = {
         "webextension-polyfill": "WebExtension Polyfill", "wxt": "WXT", "plasmo": "Plasmo",
         "@crxjs/vite-plugin": "CRXJS", "web-ext": "web-ext",
     },
+    "cli": {
+        "commander": "Commander", "yargs": "Yargs", "cac": "CAC",
+        "@oclif/core": "oclif", "clipanion": "Clipanion", "ink": "Ink",
+    },
     "node-backend": {
         "express": "Express", "fastify": "Fastify", "@nestjs/core": "NestJS",
         "koa": "Koa", "hono": "Hono", "elysia": "Elysia", "@trpc/server": "tRPC",
@@ -94,6 +98,10 @@ PY_TECH = {
         "fastapi": "FastAPI", "starlette": "Starlette", "django": "Django", "flask": "Flask",
         "uvicorn": "Uvicorn", "gunicorn": "Gunicorn", "pydantic": "Pydantic",
     },
+    "cli": {
+        "click": "Click", "typer": "Typer", "textual": "Textual",
+        "prompt-toolkit": "prompt_toolkit",
+    },
     "data": {
         "sqlalchemy": "SQLAlchemy", "alembic": "Alembic", "psycopg": "PostgreSQL",
         "psycopg2": "PostgreSQL", "psycopg2-binary": "PostgreSQL", "asyncpg": "PostgreSQL",
@@ -121,6 +129,7 @@ REFERENCE_RULES = {
     "frontend-other": "references/stack-web-frameworks.md",
     "mobile": "references/mobile-product-engineering.md",
     "browser-extension": "references/browser-extension-product-engineering.md",
+    "cli": "references/cli-tui-product-engineering.md",
     "desktop-runtime": "references/runtime-lifecycle-patterns.md",
     "desktop-shell": "references/host-shell-platform-patterns.md",
     "desktop-packaging": "references/release-promotion-patterns.md",
@@ -331,6 +340,10 @@ def detect_go(files_by_name: dict[str, list[pathlib.Path]], detected: dict[str, 
         "gorm.io/gorm": "GORM", "github.com/redis/go-redis": "Redis",
         "github.com/segmentio/kafka-go": "Kafka", "github.com/nats-io/nats.go": "NATS",
     }
+    cli_mapping = {
+        "github.com/spf13/cobra": "Cobra", "github.com/urfave/cli": "urfave/cli",
+        "github.com/charmbracelet/bubbletea": "Bubble Tea",
+    }
     for path in files_by_name.get("go.mod", [])[:20]:
         text = read_manifest(path).lower()
         for needle, label in mapping.items():
@@ -338,6 +351,18 @@ def detect_go(files_by_name: dict[str, list[pathlib.Path]], detected: dict[str, 
                 detected["go-services"].add(label)
                 if "postgres" in label.lower() or "redis" in label.lower():
                     detected["data"].add("PostgreSQL" if "postgres" in label.lower() else "Redis")
+        for needle, label in cli_mapping.items():
+            if needle.lower() in text:
+                detected["cli"].add(label)
+
+
+def detect_rust_cli(files_by_name: dict[str, list[pathlib.Path]], detected: dict[str, set[str]]) -> None:
+    mapping = {"clap": "Clap", "ratatui": "Ratatui", "crossterm": "Crossterm"}
+    for path in files_by_name.get("Cargo.toml", [])[:30]:
+        text = read_manifest(path).lower()
+        for dependency, label in mapping.items():
+            if re.search(rf"(?m)^\s*{re.escape(dependency)}\s*=", text):
+                detected["cli"].add(label)
 
 
 def detect_jvm(files_by_name: dict[str, list[pathlib.Path]], detected: dict[str, set[str]], languages: set[str], managers: set[str]) -> None:
@@ -449,6 +474,8 @@ def suggested_references(detected: dict[str, set[str]], monorepo: bool) -> set[s
         refs.add(REFERENCE_RULES["mobile"])
     if detected.get("browser-extension"):
         refs.add(REFERENCE_RULES["browser-extension"])
+    if detected.get("cli"):
+        refs.add(REFERENCE_RULES["cli"])
     desktop = detected.get("desktop-runtime", set())
     if desktop:
         refs.add(REFERENCE_RULES["desktop-runtime"])
@@ -541,6 +568,7 @@ def main() -> int:
     detect_dotnet(paths, detected, languages, managers)
     detect_legacy_web(files_by_name, detected, languages, managers)
     detect_mobile(paths, files_by_name, detected, languages, managers)
+    detect_rust_cli(files_by_name, detected)
 
     if "Cargo.toml" in files_by_name:
         languages.add("Rust")
