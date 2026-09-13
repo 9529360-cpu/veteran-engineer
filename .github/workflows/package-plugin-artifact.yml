@@ -58,7 +58,7 @@ jobs:
             --profile "$PROFILE" \
             --output "dist/veteran-engineer-${PROFILE}.zip"
 
-      - name: Prove reproducibility and symlink rejection
+      - name: Prove reproducibility and fail-closed packaging boundaries
         shell: bash
         env:
           PROFILE: ${{ matrix.profile }}
@@ -89,6 +89,18 @@ jobs:
           grep -q "refuses symbolic link" dist/symlink-test.stderr
           rm -f "$LINK_PATH" dist/should-not-exist.zip dist/symlink-test.stdout dist/symlink-test.stderr
 
+          if python3 skills/runtime-regression-debugger/scripts/export_plugin_bundle.py \
+            skills/runtime-regression-debugger \
+            --profile "$PROFILE" \
+            --output skills/runtime-regression-debugger/should-not-exist.zip \
+            >dist/self-output.stdout 2>dist/self-output.stderr; then
+            echo "Exporter unexpectedly allowed output inside the Skill root" >&2
+            exit 1
+          fi
+          grep -q "outside the Skill root" dist/self-output.stderr
+          test ! -e skills/runtime-regression-debugger/should-not-exist.zip
+          rm -f dist/self-output.stdout dist/self-output.stderr
+
           if [ "$PROFILE" = "web" ]; then
             printf '%s\n' '{"app":"approved-ci-reference"}' > dist/app.json
             python3 skills/runtime-regression-debugger/scripts/export_plugin_bundle.py \
@@ -97,9 +109,12 @@ jobs:
               --app-manifest dist/app.json \
               --output dist/web-with-app-positive.zip
             python3 - <<'PY'
+          import json
           import zipfile
           with zipfile.ZipFile('dist/web-with-app-positive.zip') as archive:
               assert 'veteran-engineer/.app.json' in archive.namelist()
+              app = json.loads(archive.read('veteran-engineer/.app.json'))
+              assert app == {'app': 'approved-ci-reference'}
           PY
 
             ln -s app.json dist/app-link.json
@@ -113,8 +128,22 @@ jobs:
               exit 1
             fi
             grep -q "refuses symbolic link app manifest" dist/app-symlink.stderr
-            rm -f dist/app.json dist/app-link.json dist/web-with-app-positive.zip \
-              dist/web-with-app-symlink.zip dist/app-symlink.stdout dist/app-symlink.stderr
+
+            printf '%s\n' '{not-json' > dist/app-invalid.json
+            if python3 skills/runtime-regression-debugger/scripts/export_plugin_bundle.py \
+              skills/runtime-regression-debugger \
+              --profile web \
+              --app-manifest dist/app-invalid.json \
+              --output dist/web-with-invalid-app.zip \
+              >dist/app-invalid.stdout 2>dist/app-invalid.stderr; then
+              echo "Exporter unexpectedly accepted malformed app manifest JSON" >&2
+              exit 1
+            fi
+            grep -q "invalid JSON file" dist/app-invalid.stderr
+
+            rm -f dist/app.json dist/app-link.json dist/app-invalid.json \
+              dist/web-with-app-positive.zip dist/web-with-app-symlink.zip dist/web-with-invalid-app.zip \
+              dist/app-symlink.stdout dist/app-symlink.stderr dist/app-invalid.stdout dist/app-invalid.stderr
           fi
 
       - name: Verify archive boundary and checksum
