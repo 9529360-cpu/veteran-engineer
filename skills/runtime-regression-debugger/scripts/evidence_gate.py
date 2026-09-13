@@ -69,6 +69,11 @@ def main() -> int:
     args = parser.parse_args()
 
     surfaces = split_csv(args.surfaces)
+    if not surfaces:
+        parser.error("--surfaces must include at least one known surface")
+    unknown_surfaces = sorted(surfaces - set(SURFACE_REQUIREMENTS))
+    if unknown_surfaces:
+        parser.error("unknown surfaces: " + ",".join(unknown_surfaces))
     evidence = split_csv(args.evidence)
     required = set() if args.no_baseline else set(BASELINE)
     matched = {}
