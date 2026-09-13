@@ -3,11 +3,17 @@ import fs from 'node:fs/promises';
 import { HOST_ADAPTER_API_VERSION } from '../../constants.mjs';
 import { pathExists } from '../../util.mjs';
 import { writeJsonAtomic, readJson } from '../util.mjs';
-import { resolveSurfaceProfile } from '../../surface-capabilities.mjs';
+import { requireSurfaceCapability, resolveSurfaceProfile } from '../../surface-capabilities.mjs';
 
 function selectedSurfaceProfile(context) {
   const recorded = context.previousBinding?.binding?.surfaceProfile || context.previousBinding?.surfaceProfile || null;
-  return resolveSurfaceProfile(context.options.surfaceProfile || recorded || 'local-stdio').id;
+  const profile = resolveSurfaceProfile(context.options.surfaceProfile || recorded || 'local-stdio');
+  return requireSurfaceCapability(
+    profile,
+    'transport',
+    'stdioMcp',
+    `Generic MCP descriptors require a stdio-capable surface; ${profile.id} does not provide transport.stdioMcp`
+  ).id;
 }
 
 function descriptorFor(context) {
