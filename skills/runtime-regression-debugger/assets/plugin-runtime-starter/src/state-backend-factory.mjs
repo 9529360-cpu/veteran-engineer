@@ -24,7 +24,10 @@ function parsePoolMax(value) {
 }
 
 export function resolveStateBackendConfig({ config = null, env = process.env } = {}) {
-  if (config) {
+  if (config !== null && config !== undefined) {
+    if (typeof config !== 'object' || Array.isArray(config)) {
+      throw configError('Programmatic state backend config must be an object');
+    }
     if (config.kind === STATE_BACKEND_KINDS.LOCAL_JSON) return { kind: STATE_BACKEND_KINDS.LOCAL_JSON };
     if (config.kind === STATE_BACKEND_KINDS.POSTGRES) {
       if (typeof config.connectionString !== 'string' || !config.connectionString.trim()) throw configError('PostgreSQL state backend requires connectionString');
