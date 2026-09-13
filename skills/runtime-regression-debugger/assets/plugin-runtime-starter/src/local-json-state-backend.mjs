@@ -31,8 +31,7 @@ export class LocalJsonStateBackend extends StateStore {
       if (actualRevision !== expectedRevision) {
         throw stateRevisionConflict({ expectedRevision, actualRevision });
       }
-      const result = await mutator(state);
-      return { result, revision: revisionFor(state) };
+      return mutator(state);
     }, auditSummary);
   }
 }
