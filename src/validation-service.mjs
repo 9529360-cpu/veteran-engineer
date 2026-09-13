@@ -10,14 +10,18 @@ import {
 } from './product-validation-runner.mjs';
 import { normalizeValidationArtifacts, collectValidationArtifacts } from './validation-artifact-collector.mjs';
 import { normalizeBrowserValidation, runBrowserValidation } from './browser-validation-provider.mjs';
+import { CredentialBroker } from './credential-broker.mjs';
+import { normalizeObservabilityValidation, runObservabilityValidation } from './observability-validation-provider.mjs';
 
 function normalizeCapability(raw) {
   if (!raw || typeof raw !== 'object' || !raw.name) return null;
   const browser = normalizeBrowserValidation(raw.browser);
+  const observability = normalizeObservabilityValidation(raw.observability);
   const hasCommand = Array.isArray(raw.command) && raw.command.length > 0;
-  if (!hasCommand && !browser) return null;
-  if (hasCommand && browser) {
-    throw Object.assign(new Error('Validation capability must choose command or browser execution, not both'), { code: 'VALIDATION_CAPABILITY_AMBIGUOUS' });
+  const modes = [hasCommand, Boolean(browser), Boolean(observability)].filter(Boolean).length;
+  if (modes === 0) return null;
+  if (modes > 1) {
+    throw Object.assign(new Error('Validation capability must choose exactly one of command, browser, or observability execution'), { code: 'VALIDATION_CAPABILITY_AMBIGUOUS' });
   }
   const service = normalizeProductService(raw.service);
   if (browser && !browser.baseUrl && !service?.readiness?.url) {
@@ -31,6 +35,7 @@ function normalizeCapability(raw) {
     timeoutMs: Number.isFinite(Number(raw.timeoutMs ?? 120_000)) ? Math.max(1000, Number(raw.timeoutMs ?? 120_000)) : 120_000,
     service,
     browser,
+    observability,
     artifacts: normalizeValidationArtifacts(raw.artifacts)
   };
 }
@@ -64,12 +69,13 @@ function validationArtifact({ result, serviceRun }) {
 }
 
 export class ValidationService {
-  constructor({ store, projectService, missionService, worktreeManager, evidenceService }) {
+  constructor({ store, projectService, missionService, worktreeManager, evidenceService, credentialBroker = null }) {
     this.store = store;
     this.projectService = projectService;
     this.missionService = missionService;
     this.worktreeManager = worktreeManager;
     this.evidenceService = evidenceService;
+    this.credentialBroker = credentialBroker || new CredentialBroker();
   }
 
   async capabilities({ projectId }) {
@@ -88,7 +94,7 @@ export class ValidationService {
         throw error;
       }
       if (!Array.isArray(rawCommand) || rawCommand.length === 0) throw new Error('rawCommand must be a non-empty argv array');
-      selected = { name: 'raw', description: 'Explicit raw validation', command: rawCommand.map(String), cwd: '.', timeoutMs: 120_000, service: null, browser: null, artifacts: [] };
+      selected = { name: 'raw', description: 'Explicit raw validation', command: rawCommand.map(String), cwd: '.', timeoutMs: 120_000, service: null, browser: null, observability: null, artifacts: [] };
     }
     if (!selected) throw Object.assign(new Error(`Unknown validation capability: ${capability}`), { code: 'VALIDATION_CAPABILITY_NOT_FOUND' });
 
@@ -117,6 +123,7 @@ export class ValidationService {
     let cleanup = null;
     let failureStage = null;
     let browserSummary = null;
+    let observabilitySummary = null;
     let artifactCollection = { attachments: [], summary: null };
     let artifactCollectionError = null;
     try {
@@ -138,7 +145,35 @@ export class ValidationService {
         }
       }
       if (!failureStage) {
-        if (selected.browser) {
+        if (selected.observability) {
+          try {
+            const observabilityCwd = await resolveWorktreeCwd(wt, selected.observability.cwd, 'Observability provider');
+            observabilitySummary = await runObservabilityValidation(selected.observability, {
+              cwd: observabilityCwd,
+              expectedSourceHead: commitSha,
+              credentialBroker: this.credentialBroker
+            });
+            result = {
+              code: observabilitySummary.passed ? 0 : 1,
+              signal: null,
+              stdout: observabilitySummary.summary || '',
+              stderr: observabilitySummary.passed ? '' : (observabilitySummary.failureCode || 'Observability validation failed')
+            };
+            if (!observabilitySummary.passed) failureStage = 'observability-validation';
+          } catch (error) {
+            observabilitySummary = {
+              contract: selected.observability.contract,
+              passed: false,
+              failureCode: error?.code || 'OBSERVABILITY_VALIDATION_FAILED',
+              summary: String(error?.message || error).slice(0, 1000),
+              observedSourceHead: null,
+              checks: [],
+              diagnostics: null
+            };
+            result = { code: 1, signal: null, stdout: '', stderr: observabilitySummary.failureCode };
+            failureStage = 'observability-validation';
+          }
+        } else if (selected.browser) {
           try {
             const browserCwd = await resolveWorktreeCwd(wt, selected.browser.cwd, 'Browser provider');
             browserSummary = await runBrowserValidation(selected.browser, {
@@ -214,7 +249,7 @@ export class ValidationService {
       projectId,
       missionId: mission?.id || missionId,
       type: 'validation',
-      summary: { capability: selected.name, passed, exitCode: result.code, commitSha, failureStage, service: serviceSummary, browser: browserSummary, artifacts: artifactSummary },
+      summary: { capability: selected.name, passed, exitCode: result.code, commitSha, failureStage, service: serviceSummary, browser: browserSummary, observability: observabilitySummary, artifacts: artifactSummary },
       sourceIdentity: { head: commitSha },
       artifact: validationArtifact({ result, serviceRun }),
       attachments: artifactCollection.attachments,
@@ -230,6 +265,6 @@ export class ValidationService {
         state.runtime.timeline.push({ type: 'validation_completed', missionId, at: nowIso(), passed, evidenceId: evidence.id, commitSha });
       }, { missionId, passed, capability: selected.name, commitSha, failureStage });
     }
-    return { passed, capability: selected.name, commitSha, evidenceId: evidence.id, exitCode: result.code, failureStage, service: serviceSummary, browser: browserSummary, artifacts: artifactSummary };
+    return { passed, capability: selected.name, commitSha, evidenceId: evidence.id, exitCode: result.code, failureStage, service: serviceSummary, browser: browserSummary, observability: observabilitySummary, artifacts: artifactSummary };
   }
 }
