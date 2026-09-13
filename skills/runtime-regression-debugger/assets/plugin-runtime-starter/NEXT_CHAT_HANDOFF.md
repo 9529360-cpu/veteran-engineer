@@ -34,34 +34,42 @@ GitHub CI runs on PRs and pushes to `main` with ordered gates:
 1. `npm ci --include=optional && npm run check`
 2. real Docker engine-backed `WorkerAdapter` smoke
 
-Current mainline evidence at merge `c2762d30055988bd48b5df00c482f852753b208b`:
+Current mainline evidence at merge `045414c7f2592856a35c4ab01c9f9a79c9f6cea3`:
 
-- static/syntax/manifest gate: PASS (**54 syntax files**)
+- static/syntax/manifest gate: PASS (**59 syntax files**)
 - exact MCP tool count: **34**
 - official SDK graph + lockfile integrity: VERIFIED
-- full Node suite: **46 total / 46 PASS / 0 SKIP / 0 FAIL**
+- full Node suite: **56 total / 56 PASS / 0 SKIP / 0 FAIL**
 - official pinned `2026-07-28` stdio handshake: PASS
 - official modern client auto-negotiation against forced standalone legacy fallback: PASS
 - modern pin against standalone fallback: expected failure PASS
 - `VETERAN_MCP_REQUIRE_SDK=1`: no silent fallback PASS
-- real Docker engine availability: PASS
-- digest-pinned test image resolution: PASS
-- real confined worker execution through `WorkerAdapter`: PASS
-- task packet read with host mode `0600`: PASS
-- task-worktree write: PASS
-- read-only rootfs: PASS
-- Git control-file write block: PASS
-- outbound network block: PASS
-- operator-cancel cleanup: PASS
-- timeout cleanup: PASS
+- real Docker engine-backed WorkerAdapter smoke: PASS
 - root/starter mirrors for changed source/tests/scripts: synchronized
+
+State-specific proof now includes:
+
+- `veteran-state-backend-v1` base contract: PASS
+- Local JSON conformance: PASS
+- concurrent transaction serialization without lost updates: PASS
+- failed mutator commits neither state nor audit event: PASS
+- timeline durability + audit verification: PASS
+- restart orphaned request `started -> unknown`: PASS
+- `veteran-state-transaction-v1`: PASS
+- stable opaque snapshot revisions: PASS
+- successful compare-and-commit changes revision: PASS
+- stale revision fails before state/audit mutation: PASS
+- two contenders on one revision admit exactly one winner: PASS
+- injected backend contract enforcement at app startup: PASS
 
 Important milestone merge SHAs:
 
 - Mission finalize / merge proposal: `36ff039fd4119e237e8319a45703619e448e12bb`
 - Confined container worker: `d22faf4ce618dce76a4c3d01903ea9ffdf9ee5dd`
 - Checkpoint/Actions v7 refresh: `a015e21fc1fd394ed012cbfc98a907b2f85dad8b`
-- Real Docker engine-backed worker proof + host UID/GID fix: `c2762d30055988bd48b5df00c482f852753b208b`
+- Real Docker worker proof + host UID/GID fix: `c2762d30055988bd48b5df00c482f852753b208b`
+- State backend v1 contract + conformance: `17fdd364cc88ebd9f490dbbcd0ed0b0f44180e05`
+- Transactional state compare-and-commit: `045414c7f2592856a35c4ab01c9f9a79c9f6cea3`
 
 ## Mission lifecycle
 
@@ -75,25 +83,46 @@ Finalize never merges or pushes. A proof-fresh candidate produces a durable merg
 
 The runtime owns task worktrees, HEAD authority, actual-write verification, task commits, and deterministic serial integration. Worker HEAD mutation is rejected. Task packets live outside task worktrees.
 
-### Codex preset
+The Codex preset uses `codex exec --sandbox workspace-write --ephemeral`; dangerous sandbox/approval bypass flags are rejected. `custom-unconfined` requires explicit operator opt-in and remains blocked for high/critical/broad-write tasks.
 
-Uses `codex exec --sandbox workspace-write --ephemeral`; dangerous sandbox/approval bypass flags are rejected.
+The built-in `container` worker remains at the WorkerAdapter boundary. It requires Docker/Podman, digest-pinned images, no network, read-only rootfs, `cap-drop ALL`, `no-new-privileges`, bounded resources, bounded `noexec,nosuid` `/tmp`, only task-worktree writable, read-only task `.git` control file and packet, allowlist-only environment, no arbitrary engine flags/mounts, unique names, and cleanup on cancel/timeout/client exit.
 
-### Custom workers
-
-`custom-unconfined` requires explicit operator opt-in and remains blocked for high/critical/broad-write tasks.
-
-### Confined container worker
-
-The built-in `container` worker remains at the WorkerAdapter boundary so the orchestrator stays host-neutral. Fail-closed rules include Docker/Podman only, digest-pinned images, no network, read-only rootfs, `cap-drop ALL`, `no-new-privileges`, bounded pids/memory/cpu, bounded `noexec,nosuid` `/tmp`, only task-worktree writable, read-only task `.git` control file and task packet, allowlist-only environment, engine-control env rejection, no arbitrary mounts/engine flags, unique names, and cleanup on cancel/timeout/client exit.
-
-The permanent CI gate now proves this against a real Docker engine. That gate exposed a real ownership bug: host `0600` packets were unreadable to an unrelated image-default UID. Veteran now defaults confined containers to the host process numeric UID:GID when available, preserving private packet mode and avoiding root-owned worktree output. An explicit operator `user` still overrides the default.
+The permanent real-engine CI gate exposed and closed the host packet UID boundary: confined containers default to the host process numeric UID:GID when available so host `0600` packets remain private/readable and worktree output is not root-owned. Explicit operator `user` still overrides this default.
 
 Container isolation is defense-in-depth; post-execution HEAD, symlink-containment, write-scope, commit, and integration gates remain mandatory.
 
-## Durable state and experience
+## Durable state architecture
 
-Current authority remains local durable JSON under the runtime state root with cross-process locking, atomic replacement, backup recovery, audit hash chain, persistent requestId idempotency, unknown-outcome reconciliation, and durable projects/missions/tasks/evidence/experience/candidates/merge proposals.
+Local JSON remains the default authority and its proven storage algorithm has not been replaced. It provides cross-process locking, atomic state-file replacement, backup recovery, audit hash chain, persistent requestId idempotency, unknown-outcome reconciliation, and durable projects/missions/tasks/evidence/experience/candidates/merge proposals.
+
+Two internal contracts now guard future state backends:
+
+### `veteran-state-backend-v1`
+
+Required runtime-facing surface:
+
+- `init()`
+- `read()`
+- `transaction()`
+- `recordTimeline()`
+- `verifyAudit()`
+- execution-local `artifactsDir`
+- execution-local `worktreesDir`
+
+`LocalJsonStateBackend extends StateStore` is the first conforming implementation. `createVeteranApp` accepts backend injection but fails closed on contract violations.
+
+### `veteran-state-transaction-v1`
+
+Required transactional extension:
+
+- `readSnapshot()` -> `{ state, revision }`
+- `compareAndCommit(expectedRevision, eventType, mutator, auditSummary)`
+
+Revisions are opaque. Local JSON computes a content revision and checks it inside the existing state lock. Stale revisions raise `STATE_REVISION_CONFLICT` before state/audit mutation. Concurrent CAS contenders on one revision produce one winner and one conflict. A successful caller must re-read to get the next revision; the runtime does not invent a speculative post-commit token.
+
+Important limitation that must remain explicit: local `StateStore.transaction()` atomically replaces the state file and then appends the audit entry. State-file commit plus audit append is **not** currently one atomic storage transaction. Do not claim otherwise. This is the next state-semantics gap to address before a hosted backend is treated as production-equivalent.
+
+## Experience
 
 Reviewed **active** experience may influence Planner/Worker/semantic Reviewer. Candidate/challenged/rejected/retired experience is quarantined. Current repository/runtime evidence always outranks experience.
 
@@ -102,8 +131,7 @@ Reviewed **active** experience may influence Planner/Worker/semantic Reviewer. C
 - Shared runtime default: `~/plugins/veteran-engineer`
 - Durable state default: `~/.veteran-engineer/state`
 - Installer metadata: `~/.veteran-engineer/installer.json`
-- Codex, Hermes, and generic MCP adapters all use the same runtime.
-- External trusted adapters must pass API/id/filename validation.
+- Codex, Hermes, generic MCP, and trusted external adapters all use the same runtime.
 - Repair/upgrade preserves an existing `node_modules` tree so official SDK capability does not silently disappear.
 
 ## Authority invariants
@@ -119,6 +147,7 @@ Reviewed **active** experience may influence Planner/Worker/semantic Reviewer. C
 9. AI validation defaults to operator-defined capabilities, not arbitrary shell.
 10. Modern MCP support requires a real pinned official-SDK proof.
 11. Container isolation does not replace runtime ownership gates.
+12. Future state backends must pass base + transactional contracts and the same conformance semantics; storage shape alone is insufficient.
 
 ## Packaging resilience
 
@@ -128,14 +157,14 @@ The bundled Skill must continue to contain `assets/plugin-runtime-starter/` as t
 
 Keep `0.3.0` until a separate version/release decision is made. Preserve the exact 34-tool public MCP surface unless a separate compatibility decision explicitly changes it.
 
-The container engine proof gap is closed. The next architectural candidate is **hosted/transactional state**, but do not begin with a storage rewrite. First define and prove a narrow state-backend contract that preserves current semantics:
+The backend-interface and compare/commit prerequisites are closed. **Do not add a hosted database yet.** The next state milestone is to define and prove commit-outcome / audit partial-failure semantics around the existing local ordering:
 
-1. atomic compare/commit boundary for runtime mutations;
-2. requestId idempotency including `unknown` outcome reconciliation;
-3. append-only audit-chain ordering and integrity;
-4. cross-process/global worker admission correctness;
-5. backup/recovery or equivalent durable snapshot semantics;
-6. local JSON remains the default backend and passes the same conformance suite;
-7. no host-specific state fork and no MCP surface expansion solely for storage.
+1. distinguish durable state commit from audit append completion;
+2. ensure a crash/failure between those stages is detectable and reconcilable rather than silently reported as a normal success;
+3. keep requestId `unknown` behavior conservative under ambiguous commit outcomes;
+4. preserve append-only audit ordering and tamper detection;
+5. preserve backup/recovery semantics;
+6. add fault-injection/conformance tests before changing persistence implementation;
+7. local JSON remains the default backend throughout this work.
 
-Only after the backend contract and conformance tests exist should a hosted transactional implementation be considered. Bounded external connectors remain a later candidate.
+Only after those semantics are explicit and executable should a hosted transactional implementation be considered. Bounded external connectors remain a later candidate.
