@@ -2,6 +2,8 @@
 
 Use this when entering an unfamiliar, large, polyglot, generated-code-heavy, or troubled repository, or when asked to own a system without a guided tour.
 
+When a plugin/runtime backend is available and the operator provides an authorized Git URL instead of a local checkout, use its bounded remote project acquisition path rather than asking for a manual clone. Treat the acquired checkout as current source authority, not durable architectural memory, and refresh repository truth before consequential work.
+
 ## Contents
 
 - Start from the operating contract

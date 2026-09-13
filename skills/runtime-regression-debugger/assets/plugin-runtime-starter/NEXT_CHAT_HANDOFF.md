@@ -41,12 +41,12 @@ Mainline CI has three real gates:
 
 Current base gate proves:
 
-- **67 syntax files**
+- **70 syntax files**
 - exact **34-tool** MCP surface
 - protocol constants correct
 - official SDK graph + lockfile integrity verified
 - runtime/starter mirror parity enforced by `scripts/check.mjs`
-- **70 total / 70 PASS / 0 SKIP / 0 FAIL** Node tests
+- **78 total / 78 PASS / 0 SKIP / 0 FAIL** Node tests
 
 PostgreSQL integration separately proves the shared base/transaction semantics, durability behavior, commit acknowledgement reconciliation, tamper rejection, audit repair, and concurrent writes from independent backend instances/connection pools sharing one durable `instanceKey`.
 
@@ -67,12 +67,30 @@ The active implementation now contains:
 11. explicit PostgreSQL hosted backend with real engine proof
 12. root/runtime-starter parity as an executable CI invariant
 13. convergence audit across the previous milestones
+14. runtime-managed remote repository onboarding through the existing `project_open` intent
+15. hashed idempotency payload fingerprints with legacy replay compatibility
 
 Important recent mainline milestone:
 
 - hosted PostgreSQL merge: `d874544261676535a0a0aadec06b9089d3cbed27` (`#12`)
 
 When this handoff is read after later commits, refresh `main` before trusting any SHA/count here.
+
+## Remote repository onboarding
+
+`project_open` accepts exactly one of `repoPath` or `repoUrl`. With `repoUrl`, the runtime owns a deterministic managed checkout beneath the execution-local state root and returns the same project identity when that remote is opened again.
+
+Safety contract:
+
+- no embedded HTTPS credentials, query strings, or fragments; use the operator's Git credential helper or SSH agent for private access;
+- no recursive submodule acquisition on clone;
+- concurrent opens of the same remote are serialized;
+- reused checkouts fetch origin and only fast-forward their tracked branch;
+- dirty, detached, or locally diverged managed source checkouts fail closed;
+- credential-bearing origin URLs from local repositories are sanitized before durable state storage;
+- workers still mutate only isolated Mission/task worktrees, never the managed source checkout.
+
+`refreshRemote=false` exists only as an explicit offline/stale reuse opt-out. Default behavior refreshes remote truth before the project is opened.
 
 ## Mission authority and finalize
 
@@ -187,7 +205,7 @@ PostgreSQL semantics:
 
 ## Request idempotency
 
-Every mutating MCP request requires `requestId`.
+Every mutating MCP request requires `requestId`. New runtime records keep only a `sha256:<digest>` payload fingerprint; they do not persist raw request JSON. Legacy raw fingerprints are still accepted for replay compatibility.
 
 - same id + different operation/payload -> conflict
 - completed -> replay stored result
@@ -234,17 +252,17 @@ The convergence pass found concrete defects and closed them:
 3. Root/runtime-starter synchronization used to be a convention only. It is now enforced by the main validation gate.
 4. Hosted state originally had same-process/pool concurrency proof. The convergence gate now also proves two independent backend instances/pools against the same durable identity.
 5. README and handoff were one milestone behind implementation. They are now current.
+6. Remote repository takeover used to require an already-cloned local path. `project_open(repoUrl=...)` now acquires and safely refreshes a runtime-managed checkout without expanding the MCP tool count.
 
 The audit did not find evidence that finalize auto-merges/pushes, that workers own Git commits, that unknown outcomes replay blindly, that standalone fallback pretends to be modern MCP, or that Local JSON stopped being the default.
 
-## Exact next decision
+## Next product decisions
 
-There is no mandatory correctness feature queued behind this checkpoint. Keep the product converged unless new evidence or a concrete product requirement appears.
+There is no mandatory correctness feature queued behind this checkpoint. Continue only from concrete product requirements or evidence. Candidate next moves include:
 
-The next major action should be a deliberate product/release decision, not another automatic feature wave. Candidate decisions:
-
-- keep developing on `0.3.0`; or
-- prepare a versioned release candidate and package hosted PostgreSQL capability more formally.
+- keep developing on `0.3.0` and harden repository onboarding against additional real providers/credential setups;
+- prepare a versioned release candidate and package hosted PostgreSQL capability more formally; or
+- add another bounded host/repository connector without exposing raw shell/Git primitives.
 
 If packaging PostgreSQL into the base dependency graph is chosen, regenerate and verify the lockfile with real npm tooling; do not hand-edit it. Preserve the official MCP dependency integrity proof.
 

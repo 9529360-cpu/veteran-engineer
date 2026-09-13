@@ -59,6 +59,27 @@ test('app-level requestId replays completed mutations and rejects payload confli
     const state = await app.store.read();
     assert.equal(Object.values(state.projects).length, 1);
     assert.equal(state.requests['req-project-open'].status, 'completed');
+    assert.match(state.requests['req-project-open'].fingerprint, /^sha256:[0-9a-f]{64}$/);
+    assert.equal(state.requests['req-project-open'].fingerprint.includes(fixture.repo), false);
+  } finally {
+    await cleanup(fixture.root);
+  }
+});
+
+test('app accepts legacy raw idempotency fingerprints for replay compatibility', async () => {
+  const { createGitRepo } = await import('./helpers.mjs');
+  const { createVeteranApp } = await import('../src/app.mjs');
+  const { completeRequest } = await import('../src/idempotency.mjs');
+  const { stableStringify } = await import('../src/util.mjs');
+  const fixture = await createGitRepo();
+  try {
+    const app = await createVeteranApp({ stateRoot: fixture.stateRoot });
+    const payload = { repoPath: fixture.repo };
+    await beginRequest(app.store, 'legacy-project-open', 'project_open', stableStringify(payload), 'legacy-admission');
+    const legacyResult = { id: 'legacy-project', repoPath: fixture.repo };
+    await completeRequest(app.store, 'legacy-project-open', legacyResult);
+    const replay = await app.callTool('project_open', { requestId: 'legacy-project-open', ...payload });
+    assert.deepEqual(replay, legacyResult);
   } finally {
     await cleanup(fixture.root);
   }

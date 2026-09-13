@@ -19,7 +19,7 @@ V2 provides:
 - actual-write-set enforcement after workers run;
 - task commit creation and deterministic serial integration into the Mission branch;
 - worker and integration evidence capture;
-- candidate-only automatic failure learning;
+- optional reviewed project-scoped experience candidates that never rewrite the Skill;
 - resumable mission export;
 - stdio MCP with one shared tool registry across protocol modes;
 - real MCP handshake regression coverage, including an end-to-end `mission_execute(runWorkers=true)` smoke path;
@@ -53,6 +53,23 @@ Keep the public surface intention-level. The current `0.3.0` runtime locks an ex
 
 Do not expose generic Git, shell, or arbitrary-filesystem tools merely because the runtime executes workers internally. A new public tool must represent an operator intent with bounded authority and evidence, not a thin wrapper around a primitive.
 
+## Repository acquisition
+
+`project_open` accepts exactly one source authority: an existing local `repoPath` or an authorized `repoUrl`. When only a repository URL is supplied, acquire it into the runtime-managed project root instead of asking the operator to perform a manual clone. Keep that checkout outside worker write surfaces; Mission/task work still occurs only in isolated worktrees.
+
+Remote acquisition must fail closed:
+
+- accept credential-free HTTPS, SSH, SSH scp-style, and local `file://` Git URLs;
+- reject query/fragment credentials and embedded HTTPS passwords/tokens; rely on the operator's Git credential helper or SSH agent for private repositories;
+- clone without recursive submodules and with hooks disabled;
+- derive a deterministic managed checkout identity from the normalized remote;
+- serialize concurrent acquisition of the same remote;
+- on reuse, fetch and advance only by fast-forward; never `reset --hard` a dirty, detached, or locally diverged managed checkout;
+- allow an explicit `refreshRemote=false` only when the operator intentionally accepts an offline/stale reuse;
+- sanitize stored local-origin URLs so credentials do not enter durable project state.
+
+Treat a managed checkout as source authority for that invocation, not as long-term project memory. Re-read repository truth on every consequential task.
+
 ## Worker execution boundary
 
 `mission_execute` has two modes:
@@ -79,6 +96,8 @@ Dependent waves branch from the updated Mission integration head. Do not auto-me
 
 ## Persistence boundary
 
+Do not persist raw mutating tool payloads merely to implement idempotency. Store a one-way payload fingerprint plus the minimum outcome metadata needed for replay/conflict detection; preserve compatibility with older fingerprint formats during migration. A request ledger is an authority/recovery mechanism, not a second copy of potentially sensitive operator input.
+
 Local JSON remains the default local-host control-plane store with cross-process file locking, atomic replacement, backup recovery, and an audit hash chain. The bundled runtime also includes an explicit PostgreSQL hosted backend behind the same base, transaction, and durable-outcome contracts. Do not branch Mission/MCP semantics on backend kind.
 
 For hosted or multi-instance writers, keep serialization at the database authority boundary, require opaque compare-and-commit revisions, commit state plus audit in one database transaction, and reconcile lost COMMIT acknowledgement by durable commit identity rather than blind retry. Prove concurrency with independently constructed backend instances/connection pools targeting the same durable identity. Read `references/hosted-state-backend-engineering.md` before changing these semantics.
@@ -101,12 +120,12 @@ Worker authorization remains narrower than release/production authorization. Nev
 
 ## Experience governance
 
-Runtime failures may create candidate lessons, never automatically active rules. Current repository/runtime truth supersedes stored project memory.
+Project-scoped experience records are optional reviewed runtime evidence, not Skill learning and never a self-modification path. Runtime failures may create quarantined candidates, but nothing becomes active without review, and current repository/runtime truth always supersedes stored project evidence.
 
 ## Current convergence and next evolution
 
-The bundled `0.3.0` starter already includes proof-fresh finalize proposals without automatic merge/push, confined container workers, layered state-backend contracts, Local JSON durability reconciliation, and an opt-in PostgreSQL hosted backend with real-engine and cross-instance concurrency evidence. Normal validation also enforces root/runtime-starter parity when the starter is embedded in the repository.
+The bundled `0.3.0` starter already includes proof-fresh finalize proposals without automatic merge/push, confined container workers, layered state-backend contracts, Local JSON durability reconciliation, an opt-in PostgreSQL hosted backend with real-engine and cross-instance concurrency evidence, and runtime-managed remote repository acquisition with credential-safe fast-forward-only reuse. Normal validation also enforces root/runtime-starter parity when the starter is embedded in the repository.
 
-Keep those gates stable before opening another feature wave. The next major step should be a deliberate product/release decision, such as a versioned release candidate, formal packaging of optional hosted capabilities, or a bounded new connector. Do not reopen a completed milestone merely because an old roadmap item still exists; refresh repository truth first.
+Keep those gates stable before opening another feature wave. The next major step should be evidence-driven product work, such as a versioned release candidate, formal packaging of optional hosted capabilities, or another bounded repository/host connector. Do not reopen a completed milestone merely because an old roadmap item still exists; refresh repository truth first.
 
 Do not add autonomous production mutation before the validation, recovery, approval, and release-authority model is proven.

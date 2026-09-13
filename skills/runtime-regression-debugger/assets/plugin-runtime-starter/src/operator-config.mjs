@@ -9,9 +9,10 @@ export async function loadOperatorConfig({ stateRoot, configPath = process.env.V
   return { path: target, config: { defaults: parsed.defaults || {}, projects: parsed.projects || {} } };
 }
 
-export function projectPolicy(operatorConfig, repoPath) {
+export function projectPolicy(operatorConfig, repoPath, remoteUrl = null) {
   const defaults = operatorConfig?.defaults || {};
-  const specific = operatorConfig?.projects?.[repoPath] || operatorConfig?.projects?.[repoPath.replaceAll('\\', '/')] || {};
+  const projects = operatorConfig?.projects || {};
+  const specific = projects[repoPath] || projects[repoPath.replaceAll('\\', '/')] || (remoteUrl ? projects[remoteUrl] : null) || {};
   return {
     validationCapabilities: specific.validationCapabilities || defaults.validationCapabilities || [],
     workerPolicy: {
