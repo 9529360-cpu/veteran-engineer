@@ -2,13 +2,11 @@
 
 ## Authority and provenance
 
-The historical pre-reconstruction `0.3.0` ZIP is lost and cannot be recovered byte-for-byte. The active authority is now the GitHub repository:
+The historical pre-reconstruction `0.3.0` ZIP is lost and cannot be recovered byte-for-byte. The active implementation authority is the GitHub repository:
 
 `9529360-cpu/veteran-engineer`
 
-Judge the product by current repository/runtime evidence, tests, schemas, and the bundled `runtime-regression-debugger` Skill. Do not compare current test counts directly with the historical `106/106` claim.
-
-Product invariant:
+Judge the product by current repository/runtime evidence, executable gates, and the bundled `runtime-regression-debugger` Skill. Product invariant:
 
 `Skill/policy + shared Mission/MCP runtime -> thin host adapter -> host registration`
 
@@ -27,73 +25,59 @@ Do not fork the engineering core for Codex, Hermes, generic MCP, or future hosts
   - `@modelcontextprotocol/core@2.0.0`
   - `zod@4.2.0`
 
-The official path verifies installed versions plus `package-lock.json` package entries and npm integrity. Missing/partial/drifted graphs fail closed. The dependency-free standalone fallback remains deliberately legacy-only and must not fake `server/discover` or modern negotiation.
-
-Hard modern gate:
-
-```bash
-npm run mcp:handshake:modern
-```
-
-A modern pin never falls back.
+The official path verifies installed versions plus `package-lock.json` entries and npm integrity. Missing/partial/drifted graphs fail closed. Standalone fallback remains deliberately legacy-only. A modern pin never falls back.
 
 ## Current executable evidence
 
-GitHub CI runs on PRs and pushes to `main` with Node 20:
+GitHub CI runs on PRs and pushes to `main` with ordered gates:
 
-```bash
-npm ci --include=optional
-npm run check
-```
+1. `npm ci --include=optional && npm run check`
+2. real Docker engine-backed `WorkerAdapter` smoke
 
-Current mainline evidence after the Mission finalize and container-worker milestones:
+Current mainline evidence at merge `c2762d30055988bd48b5df00c482f852753b208b`:
 
-- static/syntax/manifest gate: PASS
-- exact MCP tool count: 34
+- static/syntax/manifest gate: PASS (**54 syntax files**)
+- exact MCP tool count: **34**
 - official SDK graph + lockfile integrity: VERIFIED
-- full Node suite: **45 total / 45 PASS / 0 SKIP / 0 FAIL**
+- full Node suite: **46 total / 46 PASS / 0 SKIP / 0 FAIL**
 - official pinned `2026-07-28` stdio handshake: PASS
 - official modern client auto-negotiation against forced standalone legacy fallback: PASS
 - modern pin against standalone fallback: expected failure PASS
 - `VETERAN_MCP_REQUIRE_SDK=1`: no silent fallback PASS
-- runtime starter mirrors for changed core source/tests: blob-identical at merge time
+- real Docker engine availability: PASS
+- digest-pinned test image resolution: PASS
+- real confined worker execution through `WorkerAdapter`: PASS
+- task packet read with host mode `0600`: PASS
+- task-worktree write: PASS
+- read-only rootfs: PASS
+- Git control-file write block: PASS
+- outbound network block: PASS
+- operator-cancel cleanup: PASS
+- timeout cleanup: PASS
+- root/starter mirrors for changed source/tests/scripts: synchronized
 
 Important milestone merge SHAs:
 
 - Mission finalize / merge proposal: `36ff039fd4119e237e8319a45703619e448e12bb`
 - Confined container worker: `d22faf4ce618dce76a4c3d01903ea9ffdf9ee5dd`
+- Checkpoint/Actions v7 refresh: `a015e21fc1fd394ed012cbfc98a907b2f85dad8b`
+- Real Docker engine-backed worker proof + host UID/GID fix: `c2762d30055988bd48b5df00c482f852753b208b`
 
 ## Mission lifecycle
 
-The mission state machine now covers:
+The mission state machine covers:
 
 `execution -> validation -> deterministic review -> semantic review -> immutable candidate -> finalize`
 
-Finalize does **not** merge or push. A proof-fresh candidate produces a durable merge proposal containing:
-
-- candidate ID/SHA/ref;
-- expected source HEAD and target branch;
-- mission head;
-- bound validation/review/semantic-review proof;
-- `automaticMerge:false`;
-- `automaticPush:false`;
-- `requiresOperatorAction:true`.
-
-Stable retries reuse the durable proposal. If proposal persistence succeeds but evidence recording fails, a retry repairs the missing evidence without creating a second proposal. Source drift supersedes the active proposal, refreshes the immutable candidate, and forces revalidation/re-review before another proposal can be emitted.
-
-The runtime never moves the user's branch during candidate creation, refresh, or finalize.
+Finalize never merges or pushes. A proof-fresh candidate produces a durable merge proposal containing candidate/ref/source/proof identity, `automaticMerge:false`, `automaticPush:false`, and `requiresOperatorAction:true`. Stable retries reuse the proposal; missing finalize evidence after a partial failure is repaired on retry. Source drift supersedes the proposal, refreshes the candidate, and forces revalidation/re-review.
 
 ## Worker execution model
 
-The runtime owns task worktrees, task commits, actual-write verification, and deterministic serial integration. Worker HEAD mutation is rejected. Task packets live outside task worktrees.
+The runtime owns task worktrees, HEAD authority, actual-write verification, task commits, and deterministic serial integration. Worker HEAD mutation is rejected. Task packets live outside task worktrees.
 
 ### Codex preset
 
-The built-in Codex preset uses:
-
-`codex exec --sandbox workspace-write --ephemeral`
-
-Dangerous sandbox/approval bypass flags are rejected.
+Uses `codex exec --sandbox workspace-write --ephemeral`; dangerous sandbox/approval bypass flags are rejected.
 
 ### Custom workers
 
@@ -101,41 +85,15 @@ Dangerous sandbox/approval bypass flags are rejected.
 
 ### Confined container worker
 
-A built-in `container` worker is implemented at the WorkerAdapter boundary so the orchestrator remains host-neutral.
+The built-in `container` worker remains at the WorkerAdapter boundary so the orchestrator stays host-neutral. Fail-closed rules include Docker/Podman only, digest-pinned images, no network, read-only rootfs, `cap-drop ALL`, `no-new-privileges`, bounded pids/memory/cpu, bounded `noexec,nosuid` `/tmp`, only task-worktree writable, read-only task `.git` control file and task packet, allowlist-only environment, engine-control env rejection, no arbitrary mounts/engine flags, unique names, and cleanup on cancel/timeout/client exit.
 
-Fail-closed rules:
+The permanent CI gate now proves this against a real Docker engine. That gate exposed a real ownership bug: host `0600` packets were unreadable to an unrelated image-default UID. Veteran now defaults confined containers to the host process numeric UID:GID when available, preserving private packet mode and avoiding root-owned worktree output. An explicit operator `user` still overrides the default.
 
-- engine restricted to Docker or Podman;
-- image must be pinned to an exact `@sha256:<64 hex>` digest;
-- no network;
-- read-only root filesystem;
-- `cap-drop ALL`;
-- `no-new-privileges`;
-- bounded pids/memory/cpu;
-- bounded `noexec,nosuid` tmpfs for `/tmp`;
-- only the isolated task worktree is writable;
-- task `.git` control file is overmounted read-only and the linked external gitdir is not mounted;
-- task packet is read-only;
-- environment is allowlist-only;
-- Docker/Podman control environment variables are rejected;
-- no arbitrary engine flags or extra mounts;
-- every invocation receives a unique bounded container name;
-- cancel, timeout, and engine-client close perform best-effort `rm -f` cleanup.
-
-The runtime still applies its post-execution HEAD, symlink-containment, write-scope, commit, and integration gates. Container isolation does not become a new state authority.
-
-Current tests validate the generated container contract and policy behavior. A real Docker/Podman engine-backed smoke test has not yet been promoted into the permanent CI gate; do not claim that proof until it exists.
+Container isolation is defense-in-depth; post-execution HEAD, symlink-containment, write-scope, commit, and integration gates remain mandatory.
 
 ## Durable state and experience
 
-Current state remains local durable JSON under the runtime state root with:
-
-- cross-process lock ownership;
-- atomic replacement and backup recovery;
-- audit hash chain;
-- persistent requestId idempotency;
-- `unknown` outcome reconciliation instead of blind replay;
-- durable projects/missions/tasks/evidence/experience/candidates/merge proposals.
+Current authority remains local durable JSON under the runtime state root with cross-process locking, atomic replacement, backup recovery, audit hash chain, persistent requestId idempotency, unknown-outcome reconciliation, and durable projects/missions/tasks/evidence/experience/candidates/merge proposals.
 
 Reviewed **active** experience may influence Planner/Worker/semantic Reviewer. Candidate/challenged/rejected/retired experience is quarantined. Current repository/runtime evidence always outranks experience.
 
@@ -145,7 +103,7 @@ Reviewed **active** experience may influence Planner/Worker/semantic Reviewer. C
 - Durable state default: `~/.veteran-engineer/state`
 - Installer metadata: `~/.veteran-engineer/installer.json`
 - Codex, Hermes, and generic MCP adapters all use the same runtime.
-- External trusted adapters must pass adapter API/id/filename validation.
+- External trusted adapters must pass API/id/filename validation.
 - Repair/upgrade preserves an existing `node_modules` tree so official SDK capability does not silently disappear.
 
 ## Authority invariants
@@ -160,22 +118,24 @@ Reviewed **active** experience may influence Planner/Worker/semantic Reviewer. C
 8. Unconfined custom workers cannot run high/critical/broad-write tasks.
 9. AI validation defaults to operator-defined capabilities, not arbitrary shell.
 10. Modern MCP support requires a real pinned official-SDK proof.
-11. Container isolation is defense-in-depth; runtime post-execution ownership gates remain mandatory.
+11. Container isolation does not replace runtime ownership gates.
 
 ## Packaging resilience
 
-The bundled Skill must continue to contain `assets/plugin-runtime-starter/` as the recovery seed. Core runtime files/tests changed for product behavior must remain synchronized with that starter. `scripts/export_plugin_bundle.py` is the supported bundle export path and must avoid recursive starter duplication.
+The bundled Skill must continue to contain `assets/plugin-runtime-starter/` as the recovery seed. Core runtime files/tests/scripts changed for product behavior must remain synchronized with that starter. `scripts/export_plugin_bundle.py` remains the supported bundle export path and must avoid recursive starter duplication.
 
 ## Exact next target
 
-Keep `0.3.0` until a separate version/release decision is made.
+Keep `0.3.0` until a separate version/release decision is made. Preserve the exact 34-tool public MCP surface unless a separate compatibility decision explicitly changes it.
 
-The next practical target is to close the remaining proof gap for the new confined worker by adding a **real Docker engine-backed CI smoke gate** that:
+The container engine proof gap is closed. The next architectural candidate is **hosted/transactional state**, but do not begin with a storage rewrite. First define and prove a narrow state-backend contract that preserves current semantics:
 
-1. obtains a digest-pinned test image identity at runtime;
-2. executes a harmless worker through the actual `WorkerAdapter` container path;
-3. proves task-worktree writes succeed while network/rootfs/Git metadata escape attempts fail;
-4. proves cancellation/timeout cleanup leaves no named container behind;
-5. skips/fails explicitly based on runner capability rather than pretending a contract-only unit test is engine proof.
+1. atomic compare/commit boundary for runtime mutations;
+2. requestId idempotency including `unknown` outcome reconciliation;
+3. append-only audit-chain ordering and integrity;
+4. cross-process/global worker admission correctness;
+5. backup/recovery or equivalent durable snapshot semantics;
+6. local JSON remains the default backend and passes the same conformance suite;
+7. no host-specific state fork and no MCP surface expansion solely for storage.
 
-After that, the next architectural candidates are hosted/transactional state and bounded external connectors. Preserve the exact 34-tool public MCP surface unless a separate compatibility decision explicitly changes it.
+Only after the backend contract and conformance tests exist should a hosted transactional implementation be considered. Bounded external connectors remain a later candidate.
