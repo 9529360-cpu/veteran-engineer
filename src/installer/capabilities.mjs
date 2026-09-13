@@ -4,7 +4,7 @@ import { POSTGRES_DRIVER_VERSION } from '../postgres-state-backend.mjs';
 import { resolveStateBackendConfig, STATE_BACKEND_KINDS } from '../state-backend-factory.mjs';
 
 function selectedKind(env) {
-  return String(env?.VETERAN_ENGINEER_STATE_BACKEND || STATE_BACKEND_KINDS.LOCAL_JSON).trim();
+  return String(env?.VETERAN_ENGINEER_STATE_BACKEND || STATE_BACKEND_KINDS.LOCAL_JSON).trim().toLowerCase();
 }
 
 async function readPostgresDriver(runtimeRoot) {
