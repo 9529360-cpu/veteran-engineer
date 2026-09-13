@@ -48,7 +48,7 @@ test('handoff_export carries live readiness instead of treating mission phase as
       };
     });
 
-    let exported = await app.callTool('handoff_export', { missionId });
+    let exported = await app.callTool('handoff_export', { requestId: 'handoff-fresh', missionId });
     assert.equal(exported.handoff.readiness.ready, true);
     assert.equal(exported.handoff.readiness.operatorActionRequired, true);
     assert.equal(exported.handoff.nextSafeAction, 'operator-merge');
@@ -61,7 +61,7 @@ test('handoff_export carries live readiness instead of treating mission phase as
     await git(repo, ['add', 'late-drift.txt']);
     await git(repo, ['commit', '-m', 'late drift']);
 
-    exported = await app.callTool('handoff_export', { missionId });
+    exported = await app.callTool('handoff_export', { requestId: 'handoff-stale', missionId });
     assert.equal(exported.handoff.readiness.ready, false);
     assert.equal(exported.handoff.readiness.operatorActionRequired, false);
     assert.equal(exported.handoff.nextSafeAction, 'candidate-refresh');
