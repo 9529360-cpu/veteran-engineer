@@ -2,6 +2,7 @@ import path from 'node:path';
 import { LocalJsonStateBackend } from './local-json-state-backend.mjs';
 import { assertStateBackend } from './state-backend-contract.mjs';
 import { assertTransactionalStateBackend } from './state-backend-transaction-contract.mjs';
+import { assertDurableOutcomeStateBackend, isStateCommitAuditOutcomeUnknown } from './state-backend-durability-contract.mjs';
 import { ProjectService } from './project-service.mjs';
 import { MissionService } from './mission-service.mjs';
 import { ExperienceService } from './experience-service.mjs';
@@ -28,10 +29,6 @@ const MUTATING_TOOLS = new Set([
   'experience_compact', 'runtime_cleanup', 'runtime_maintenance', 'handoff_export'
 ]);
 
-function isAmbiguousStateCommit(error) {
-  return error?.code === 'STATE_COMMIT_AUDIT_OUTCOME_UNKNOWN' && error?.stateCommitted === true;
-}
-
 function requestOutcomeUnknown(requestId, cause) {
   const error = new Error('Mutation may have committed but its durable audit outcome requires reconciliation; the request will not be replayed blindly.');
   error.code = 'REQUEST_OUTCOME_UNKNOWN';
@@ -45,7 +42,6 @@ function requestOutcomeUnknown(requestId, cause) {
 }
 
 async function tryReconcileStateCommit(store) {
-  if (typeof store.reconcilePendingAudit !== 'function') return false;
   try {
     await store.reconcilePendingAudit();
     return true;
@@ -54,11 +50,15 @@ async function tryReconcileStateCommit(store) {
   }
 }
 
+function assertAppStateBackend(backend) {
+  return assertDurableOutcomeStateBackend(assertTransactionalStateBackend(assertStateBackend(backend)));
+}
+
 export async function createVeteranApp({ stateRoot, stateBackend = null, protocolMode = MCP_TRANSPORT_MODES.STANDALONE_FALLBACK, configPath } = {}) {
   if (!stateRoot) throw new Error('stateRoot is required');
   const backend = stateBackend || new LocalJsonStateBackend({ root: path.resolve(stateRoot) });
-  assertTransactionalStateBackend(assertStateBackend(backend));
-  const store = assertTransactionalStateBackend(assertStateBackend(await backend.init()));
+  assertAppStateBackend(backend);
+  const store = assertAppStateBackend(await backend.init());
   const { config: operatorConfig, path: operatorConfigPath } = await loadOperatorConfig({ stateRoot, configPath });
   const projectService = new ProjectService({ store, operatorConfig });
   const evidenceService = new EvidenceService({ store });
@@ -122,7 +122,7 @@ export async function createVeteranApp({ stateRoot, stateBackend = null, protoco
     try {
       begin = await beginRequest(store, requestId, name, fingerprint, admissionId);
     } catch (error) {
-      if (isAmbiguousStateCommit(error)) {
+      if (isStateCommitAuditOutcomeUnknown(error)) {
         const reconciled = await tryReconcileStateCommit(store);
         if (!reconciled) throw requestOutcomeUnknown(requestId, error);
         const state = await store.read();
@@ -143,7 +143,7 @@ export async function createVeteranApp({ stateRoot, stateBackend = null, protoco
     try {
       result = await handler(payload);
     } catch (error) {
-      if (isAmbiguousStateCommit(error)) {
+      if (isStateCommitAuditOutcomeUnknown(error)) {
         await tryReconcileStateCommit(store);
         await markRequestUnknown(store, requestId, error).catch(() => {});
         throw requestOutcomeUnknown(requestId, error);
@@ -156,7 +156,7 @@ export async function createVeteranApp({ stateRoot, stateBackend = null, protoco
       await completeRequest(store, requestId, result);
       return result;
     } catch (error) {
-      if (isAmbiguousStateCommit(error)) {
+      if (isStateCommitAuditOutcomeUnknown(error)) {
         const reconciled = await tryReconcileStateCommit(store);
         if (reconciled) {
           const state = await store.read();
