@@ -17,7 +17,7 @@ const MAX_STEP_TIMEOUT_MS = 10 * 60_000;
 const DEFAULT_STEP_TIMEOUT_MS = 5 * 60_000;
 const FORBIDDEN_ALLOWLIST_ENV = new Set(['HOME', 'USERPROFILE', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'GIT_TERMINAL_PROMPT']);
 const SAFE_ENV_KEYS = [
-  'PATH', 'Path', 'PATHEXT', 'SystemRoot', 'WINDIR', 'COMSPEC',
+  'PATHEXT', 'SystemRoot', 'WINDIR', 'COMSPEC',
   'TMPDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL', 'LC_CTYPE', 'SHELL'
 ];
 
@@ -199,11 +199,42 @@ function runStep(command, args, { cwd, env, timeoutMs }) {
   });
 }
 
-async function isolatedEnvironment(credentialBroker, credentialRefs) {
+function pathWithin(root, candidate) {
+  const relative = path.relative(root, candidate);
+  return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+}
+
+async function isolatedExecutablePath(worktreePath, environment) {
+  const rawPath = typeof environment?.PATH === 'string'
+    ? environment.PATH
+    : (typeof environment?.Path === 'string' ? environment.Path : '');
+  const worktreeResolved = path.resolve(worktreePath);
+  const worktreeReal = await fs.realpath(worktreeResolved).catch(() => worktreeResolved);
+  const entries = [];
+  const seen = new Set();
+  for (const rawEntry of rawPath.split(path.delimiter)) {
+    const entry = rawEntry.trim();
+    if (!entry || !path.isAbsolute(entry)) continue;
+    const resolved = path.resolve(entry);
+    const real = await fs.realpath(resolved).catch(() => resolved);
+    if (pathWithin(worktreeReal, real)) continue;
+    const identity = process.platform === 'win32' ? real.toLowerCase() : real;
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+    entries.push(resolved);
+  }
+  if (!entries.length) {
+    throw codedError('Bootstrap execution host PATH contains no safe absolute executable directories', 'BOOTSTRAP_HOST_PATH_UNSAFE');
+  }
+  return entries.join(path.delimiter);
+}
+
+async function isolatedEnvironment(credentialBroker, credentialRefs, worktreePath, environment) {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'veteran-bootstrap-home-'));
   try {
     const env = {};
-    for (const key of SAFE_ENV_KEYS) if (typeof process.env[key] === 'string') env[key] = process.env[key];
+    for (const key of SAFE_ENV_KEYS) if (typeof environment?.[key] === 'string') env[key] = environment[key];
+    env.PATH = await isolatedExecutablePath(worktreePath, environment);
     env.HOME = home;
     env.USERPROFILE = home;
     env.XDG_CONFIG_HOME = path.join(home, '.config');
@@ -233,8 +264,9 @@ function stepDiagnostic(step, result) {
 }
 
 export class ProjectBootstrapExecutor {
-  constructor({ stepTimeoutMs = DEFAULT_STEP_TIMEOUT_MS, credentialBroker = null } = {}) {
+  constructor({ stepTimeoutMs = DEFAULT_STEP_TIMEOUT_MS, credentialBroker = null, environment = process.env } = {}) {
     this.credentialBroker = credentialBroker || new CredentialBroker();
+    this.environment = environment;
     this.stepTimeoutMs = Math.max(1000, Math.min(MAX_STEP_TIMEOUT_MS, Number(stepTimeoutMs) || DEFAULT_STEP_TIMEOUT_MS));
   }
 
@@ -250,7 +282,7 @@ export class ProjectBootstrapExecutor {
       return { contract: PROJECT_BOOTSTRAP_EXECUTION_CONTRACT, status: 'not-needed', planHash, sourceHead: baseHead, steps: [] };
     }
 
-    const { env, home, credentialTargets } = await isolatedEnvironment(this.credentialBroker, normalizedAuthorization.credentialRefs);
+    const { env, home, credentialTargets } = await isolatedEnvironment(this.credentialBroker, normalizedAuthorization.credentialRefs, worktreePath, this.environment);
     const results = [];
     try {
       for (const step of steps) {
