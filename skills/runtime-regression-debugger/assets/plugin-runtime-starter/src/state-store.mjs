@@ -189,6 +189,7 @@ export class StateStore {
       }
       return parsed;
     } catch (error) {
+      if (error?.code === 'STATE_SCHEMA_UNSUPPORTED') throw error;
       if (!(await pathExists(this.backupPath))) throw error;
       const recovered = JSON.parse(await fs.readFile(this.backupPath, 'utf8'));
       if (recovered.schemaVersion !== STATE_SCHEMA_VERSION) throw error;
