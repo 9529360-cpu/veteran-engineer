@@ -54,6 +54,13 @@ JS_TECH = {
         "commander": "Commander", "yargs": "Yargs", "cac": "CAC",
         "@oclif/core": "oclif", "clipanion": "Clipanion", "ink": "Ink",
     },
+    "sdk-library": {
+        "@hey-api/openapi-ts": "Hey API OpenAPI generator",
+        "@openapitools/openapi-generator-cli": "OpenAPI Generator CLI",
+        "openapi-typescript": "openapi-typescript",
+        "orval": "Orval",
+        "swagger-typescript-api": "swagger-typescript-api",
+    },
     "node-backend": {
         "express": "Express", "fastify": "Fastify", "@nestjs/core": "NestJS",
         "koa": "Koa", "hono": "Hono", "elysia": "Elysia", "@trpc/server": "tRPC",
@@ -102,6 +109,9 @@ PY_TECH = {
         "click": "Click", "typer": "Typer", "textual": "Textual",
         "prompt-toolkit": "prompt_toolkit",
     },
+    "sdk-library": {
+        "openapi-python-client": "OpenAPI Python client generator",
+    },
     "data": {
         "sqlalchemy": "SQLAlchemy", "alembic": "Alembic", "psycopg": "PostgreSQL",
         "psycopg2": "PostgreSQL", "psycopg2-binary": "PostgreSQL", "asyncpg": "PostgreSQL",
@@ -130,6 +140,7 @@ REFERENCE_RULES = {
     "mobile": "references/mobile-product-engineering.md",
     "browser-extension": "references/browser-extension-product-engineering.md",
     "cli": "references/cli-tui-product-engineering.md",
+    "sdk-library": "references/sdk-library-product-engineering.md",
     "desktop-runtime": "references/runtime-lifecycle-patterns.md",
     "desktop-shell": "references/host-shell-platform-patterns.md",
     "desktop-packaging": "references/release-promotion-patterns.md",
@@ -204,6 +215,11 @@ def collect_package_json(path: pathlib.Path) -> dict[str, Any] | None:
         if isinstance(value, dict):
             deps.update(str(k) for k in value)
     scripts = data.get("scripts") if isinstance(data.get("scripts"), dict) else {}
+    private = data.get("private") is True
+    has_types = any(isinstance(data.get(field), str) and data.get(field) for field in ("types", "typings"))
+    library_surface = not private and (
+        "exports" in data or has_types or isinstance(data.get("publishConfig"), dict)
+    )
     return {
         "name": data.get("name"),
         "deps": deps,
@@ -211,6 +227,7 @@ def collect_package_json(path: pathlib.Path) -> dict[str, Any] | None:
         "node_engine": (data.get("engines") or {}).get("node") if isinstance(data.get("engines"), dict) else None,
         "package_manager": data.get("packageManager"),
         "workspaces": bool(data.get("workspaces")),
+        "library_surface": library_surface,
     }
 
 
@@ -365,6 +382,21 @@ def detect_rust_cli(files_by_name: dict[str, list[pathlib.Path]], detected: dict
                 detected["cli"].add(label)
 
 
+def detect_library_packages(files_by_name: dict[str, list[pathlib.Path]], detected: dict[str, set[str]]) -> None:
+    for path in files_by_name.get("Cargo.toml", [])[:30]:
+        text = read_manifest(path)
+        if re.search(r"(?m)^\s*\[lib\]\s*$", text):
+            detected["sdk-library"].add("Rust library crate")
+
+    for name, paths in files_by_name.items():
+        if not name.lower().endswith((".csproj", ".fsproj", ".vbproj")):
+            continue
+        for path in paths[:30]:
+            text = read_manifest(path).lower()
+            if re.search(r"<ispackable>\s*true\s*</ispackable>", text):
+                detected["sdk-library"].add("NuGet packable library")
+
+
 def detect_jvm(files_by_name: dict[str, list[pathlib.Path]], detected: dict[str, set[str]], languages: set[str], managers: set[str]) -> None:
     manifests = []
     for name in ("pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"):
@@ -476,6 +508,8 @@ def suggested_references(detected: dict[str, set[str]], monorepo: bool) -> set[s
         refs.add(REFERENCE_RULES["browser-extension"])
     if detected.get("cli"):
         refs.add(REFERENCE_RULES["cli"])
+    if detected.get("sdk-library"):
+        refs.add(REFERENCE_RULES["sdk-library"])
     desktop = detected.get("desktop-runtime", set())
     if desktop:
         refs.add(REFERENCE_RULES["desktop-runtime"])
@@ -539,6 +573,8 @@ def main() -> int:
         if not info:
             continue
         detect_from_deps(info["deps"], JS_TECH, detected)
+        if info["library_surface"]:
+            detected["sdk-library"].add("JavaScript/TypeScript package surface")
         if info["workspaces"]:
             monorepo = True
         pm = info.get("package_manager")
@@ -569,6 +605,7 @@ def main() -> int:
     detect_legacy_web(files_by_name, detected, languages, managers)
     detect_mobile(paths, files_by_name, detected, languages, managers)
     detect_rust_cli(files_by_name, detected)
+    detect_library_packages(files_by_name, detected)
 
     if "Cargo.toml" in files_by_name:
         languages.add("Rust")
