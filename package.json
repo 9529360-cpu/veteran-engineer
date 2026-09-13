@@ -16,7 +16,8 @@
     "test:container-smoke": "node scripts/container-smoke.mjs",
     "check": "node scripts/check.mjs && npm test",
     "mcp:handshake": "node scripts/mcp-handshake.mjs",
-    "mcp:handshake:modern": "node scripts/mcp-handshake.mjs --require-sdk --require-server-sdk --mode modern-pinned --stateful"
+    "mcp:handshake:modern": "node scripts/mcp-handshake.mjs --require-sdk --require-server-sdk --mode modern-pinned --stateful",
+    "test:postgres": "node --test tests/postgres-state-backend.integration.mjs"
   },
   "engines": {
     "node": ">=20"
@@ -25,6 +26,7 @@
     "@modelcontextprotocol/client": "2.0.0",
     "@modelcontextprotocol/core": "2.0.0",
     "@modelcontextprotocol/server": "2.0.0",
+    "pg": "8.23.0",
     "zod": "4.2.0"
   }
 }
