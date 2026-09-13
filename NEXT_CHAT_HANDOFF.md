@@ -34,12 +34,12 @@ GitHub CI runs on PRs and pushes to `main` with ordered gates:
 1. `npm ci --include=optional && npm run check`
 2. real Docker engine-backed `WorkerAdapter` smoke
 
-Current mainline evidence at merge `045414c7f2592856a35c4ab01c9f9a79c9f6cea3`:
+Current mainline evidence at merge `91df0cd8a3138947e53672b584cc39bd3504f23d`:
 
 - static/syntax/manifest gate: PASS (**59 syntax files**)
 - exact MCP tool count: **34**
 - official SDK graph + lockfile integrity: VERIFIED
-- full Node suite: **56 total / 56 PASS / 0 SKIP / 0 FAIL**
+- full Node suite: **62 total / 62 PASS / 0 SKIP / 0 FAIL**
 - official pinned `2026-07-28` stdio handshake: PASS
 - official modern client auto-negotiation against forced standalone legacy fallback: PASS
 - modern pin against standalone fallback: expected failure PASS
@@ -57,10 +57,16 @@ State-specific proof now includes:
 - restart orphaned request `started -> unknown`: PASS
 - `veteran-state-transaction-v1`: PASS
 - stable opaque snapshot revisions: PASS
-- successful compare-and-commit changes revision: PASS
 - stale revision fails before state/audit mutation: PASS
 - two contenders on one revision admit exactly one winner: PASS
-- injected backend contract enforcement at app startup: PASS
+- durable state commit / missing audit is detected: PASS
+- restart repairs a missing audit exactly once: PASS
+- audit appended / acknowledgement lost is recognized without duplication: PASS
+- a later mutation reconciles the prior audit gap before proceeding: PASS
+- audit mismatch/tamper remains fail-closed: PASS
+- ambiguous request admission resumes only the owning attempt: PASS
+- ambiguous handler commit becomes request `unknown`, not false `failed`: PASS
+- ambiguous request-completion audit returns success only after durable reconciliation proves `completed`: PASS
 
 Important milestone merge SHAs:
 
@@ -70,6 +76,7 @@ Important milestone merge SHAs:
 - Real Docker worker proof + host UID/GID fix: `c2762d30055988bd48b5df00c482f852753b208b`
 - State backend v1 contract + conformance: `17fdd364cc88ebd9f490dbbcd0ed0b0f44180e05`
 - Transactional state compare-and-commit: `045414c7f2592856a35c4ab01c9f9a79c9f6cea3`
+- State commit/audit partial-failure reconciliation: `91df0cd8a3138947e53672b584cc39bd3504f23d`
 
 ## Mission lifecycle
 
@@ -93,9 +100,9 @@ Container isolation is defense-in-depth; post-execution HEAD, symlink-containmen
 
 ## Durable state architecture
 
-Local JSON remains the default authority and its proven storage algorithm has not been replaced. It provides cross-process locking, atomic state-file replacement, backup recovery, audit hash chain, persistent requestId idempotency, unknown-outcome reconciliation, and durable projects/missions/tasks/evidence/experience/candidates/merge proposals.
+Local JSON remains the default authority and its proven storage algorithm has not been replaced. It provides cross-process locking, atomic state-file replacement, backup recovery, append-only audit hash chain, persistent requestId idempotency, unknown-outcome reconciliation, and durable projects/missions/tasks/evidence/experience/candidates/merge proposals.
 
-Two internal contracts now guard future state backends:
+Two internal contracts currently guard future state backends:
 
 ### `veteran-state-backend-v1`
 
@@ -120,7 +127,21 @@ Required transactional extension:
 
 Revisions are opaque. Local JSON computes a content revision and checks it inside the existing state lock. Stale revisions raise `STATE_REVISION_CONFLICT` before state/audit mutation. Concurrent CAS contenders on one revision produce one winner and one conflict. A successful caller must re-read to get the next revision; the runtime does not invent a speculative post-commit token.
 
-Important limitation that must remain explicit: local `StateStore.transaction()` atomically replaces the state file and then appends the audit entry. State-file commit plus audit append is **not** currently one atomic storage transaction. Do not claim otherwise. This is the next state-semantics gap to address before a hosted backend is treated as production-equivalent.
+### State commit / audit outcome semantics
+
+Every new local durable state mutation now stores `runtime.durability.lastStateCommit` with a unique commit identity, commit timestamp, event type, and audit summary. The matching audit entry includes the same `stateCommitId`.
+
+If state replacement is durable but audit append or acknowledgement becomes ambiguous, the transaction raises `STATE_COMMIT_AUDIT_OUTCOME_UNKNOWN` with `stateCommitted:true`; it does not pretend the transaction definitely failed. Startup, explicit `reconcilePendingAudit()`, and the next mutation reconcile the latest commit against the verified audit chain before progressing:
+
+- matching entry already exists -> accept without duplication;
+- entry is missing -> append exactly once;
+- duplicate/mismatch/malformed/tampered chain -> fail closed with audit integrity error.
+
+`verifyAudit()` also detects when the current state's latest commit has no matching audit record.
+
+At the request layer, each `request_started` reservation carries an internal admission attempt identity. Only the invocation whose admission identity matches the durable reservation may resume after an ambiguous admission commit. A handler mutation with an ambiguous durable outcome is marked request `unknown`, never `failed`. A completion-stage ambiguity returns the known result only after reconciliation proves the durable request record is already `completed`.
+
+Existing schema version remains `3`; old state without `runtime.durability` remains readable, and old audit entries without `stateCommitId` retain their historical hash material.
 
 ## Experience
 
@@ -147,7 +168,7 @@ Reviewed **active** experience may influence Planner/Worker/semantic Reviewer. C
 9. AI validation defaults to operator-defined capabilities, not arbitrary shell.
 10. Modern MCP support requires a real pinned official-SDK proof.
 11. Container isolation does not replace runtime ownership gates.
-12. Future state backends must pass base + transactional contracts and the same conformance semantics; storage shape alone is insufficient.
+12. Future state backends must pass base + transactional + durable-outcome semantics; storage shape alone is insufficient.
 
 ## Packaging resilience
 
@@ -157,14 +178,14 @@ The bundled Skill must continue to contain `assets/plugin-runtime-starter/` as t
 
 Keep `0.3.0` until a separate version/release decision is made. Preserve the exact 34-tool public MCP surface unless a separate compatibility decision explicitly changes it.
 
-The backend-interface and compare/commit prerequisites are closed. **Do not add a hosted database yet.** The next state milestone is to define and prove commit-outcome / audit partial-failure semantics around the existing local ordering:
+The local commit/audit partial-failure gap is closed. Before introducing a real hosted database, promote the newly proven semantics into an explicit **durable-outcome backend capability contract** and reusable conformance gate:
 
-1. distinguish durable state commit from audit append completion;
-2. ensure a crash/failure between those stages is detectable and reconcilable rather than silently reported as a normal success;
-3. keep requestId `unknown` behavior conservative under ambiguous commit outcomes;
-4. preserve append-only audit ordering and tamper detection;
-5. preserve backup/recovery semantics;
-6. add fault-injection/conformance tests before changing persistence implementation;
-7. local JSON remains the default backend throughout this work.
+1. declare a versioned capability for commit-outcome reconciliation rather than relying on optional method detection;
+2. require a backend-level reconciliation operation and fail closed at app startup when the capability is absent;
+3. conformance must prove state-committed/audit-missing recovery, audit-appended/ack-lost deduplication, conservative unknown request outcomes, and tamper/mismatch rejection;
+4. keep `veteran-state-backend-v1` and `veteran-state-transaction-v1` unchanged for compatibility;
+5. Local JSON remains the first implementation and default backend;
+6. no MCP surface expansion solely for storage;
+7. only after this capability is executable should a concrete hosted transactional adapter be added behind an explicit operator configuration boundary.
 
-Only after those semantics are explicit and executable should a hosted transactional implementation be considered. Bounded external connectors remain a later candidate.
+The installed ChatGPT Skill is already usable; future repository hardening must not block normal Skill use. Repackage the Skill at the next meaningful stable checkpoint rather than after every small internal PR.
