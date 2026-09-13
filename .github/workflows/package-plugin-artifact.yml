@@ -1,0 +1,192 @@
+name: Package Plugin Artifacts
+
+on:
+  pull_request:
+    paths:
+      - ".codex-plugin/**"
+      - ".mcp.json"
+      - "package.json"
+      - "mcp/**"
+      - "src/**"
+      - "tests/**"
+      - "skills/runtime-regression-debugger/**"
+      - ".github/workflows/package-plugin-artifact.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - ".codex-plugin/**"
+      - ".mcp.json"
+      - "package.json"
+      - "mcp/**"
+      - "src/**"
+      - "tests/**"
+      - "skills/runtime-regression-debugger/**"
+      - ".github/workflows/package-plugin-artifact.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package-plugin:
+    name: Export ${{ matrix.profile }} plugin artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [desktop, codex, web]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Export profile
+        shell: bash
+        env:
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          python3 skills/runtime-regression-debugger/scripts/export_plugin_bundle.py \
+            skills/runtime-regression-debugger \
+            --profile "$PROFILE" \
+            --output "dist/veteran-engineer-${PROFILE}.zip"
+
+      - name: Prove reproducibility and symlink rejection
+        shell: bash
+        env:
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          set -euo pipefail
+          ARCHIVE="dist/veteran-engineer-${PROFILE}.zip"
+          REBUILT="dist/veteran-engineer-${PROFILE}-rebuilt.zip"
+          FIRST_SHA="$(sha256sum "$ARCHIVE" | awk '{print $1}')"
+          find skills/runtime-regression-debugger -type f -exec touch -t 200101010101 {} +
+          python3 skills/runtime-regression-debugger/scripts/export_plugin_bundle.py \
+            skills/runtime-regression-debugger \
+            --profile "$PROFILE" \
+            --output "$REBUILT"
+          SECOND_SHA="$(sha256sum "$REBUILT" | awk '{print $1}')"
+          test "$FIRST_SHA" = "$SECOND_SHA"
+          rm "$REBUILT"
+
+          LINK_PATH="skills/runtime-regression-debugger/zz-export-symlink-test"
+          ln -s /etc/passwd "$LINK_PATH"
+          if python3 skills/runtime-regression-debugger/scripts/export_plugin_bundle.py \
+            skills/runtime-regression-debugger \
+            --profile "$PROFILE" \
+            --output dist/should-not-exist.zip \
+            >dist/symlink-test.stdout 2>dist/symlink-test.stderr; then
+            echo "Exporter unexpectedly followed a symbolic link" >&2
+            exit 1
+          fi
+          grep -q "refuses symbolic link" dist/symlink-test.stderr
+          rm -f "$LINK_PATH" dist/should-not-exist.zip dist/symlink-test.stdout dist/symlink-test.stderr
+
+      - name: Verify archive boundary and checksum
+        shell: bash
+        env:
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import stat
+          import zipfile
+
+          profile = os.environ["PROFILE"]
+          bundle = pathlib.Path(f"dist/veteran-engineer-{profile}.zip")
+          required = {
+              "veteran-engineer/.codex-plugin/plugin.json",
+              "veteran-engineer/veteran-distribution.json",
+              "veteran-engineer/skills/runtime-regression-debugger/SKILL.md",
+              "veteran-engineer/skills/runtime-regression-debugger/agents/openai.yaml",
+          }
+          local_required = {
+              "veteran-engineer/.mcp.json",
+              "veteran-engineer/mcp/server.mjs",
+              "veteran-engineer/src/mcp-server.mjs",
+          }
+          forbidden_parts = {".git", "node_modules", "__pycache__"}
+          nested_runtime_prefix = "veteran-engineer/skills/runtime-regression-debugger/assets/plugin-runtime-starter/"
+
+          with zipfile.ZipFile(bundle) as archive:
+              infos = archive.infolist()
+              names = [info.filename for info in infos if not info.is_dir()]
+              if not names:
+                  raise SystemExit("plugin archive is empty")
+              if len(names) != len(set(names)):
+                  raise SystemExit("plugin archive contains duplicate entries")
+              missing = sorted(required.difference(names))
+              if missing:
+                  raise SystemExit("plugin archive missing required entries: " + ", ".join(missing))
+
+              metadata = json.loads(archive.read("veteran-engineer/veteran-distribution.json"))
+              if metadata.get("profile") != profile:
+                  raise SystemExit(f"distribution profile mismatch: {metadata.get('profile')} != {profile}")
+              manifest = json.loads(archive.read("veteran-engineer/.codex-plugin/plugin.json"))
+              if manifest.get("name") != "veteran-engineer" or manifest.get("skills") != "./skills/":
+                  raise SystemExit("plugin manifest identity/Skill binding is invalid")
+
+              if profile in {"desktop", "codex"}:
+                  missing_local = sorted(local_required.difference(names))
+                  if missing_local:
+                      raise SystemExit("local profile missing runtime surfaces: " + ", ".join(missing_local))
+                  if manifest.get("mcpServers") != "./.mcp.json":
+                      raise SystemExit("local profile does not bind bundled MCP manifest")
+              else:
+                  present_local = sorted(local_required.intersection(names))
+                  if present_local:
+                      raise SystemExit("web profile contains local runtime surfaces: " + ", ".join(present_local))
+                  if "mcpServers" in manifest:
+                      raise SystemExit("web profile declares mcpServers")
+
+              for info in infos:
+                  if info.is_dir():
+                      continue
+                  name = info.filename
+                  member = pathlib.PurePosixPath(name)
+                  if member.is_absolute() or ".." in member.parts:
+                      raise SystemExit(f"unsafe archive member: {name}")
+                  if not member.parts or member.parts[0] != "veteran-engineer":
+                      raise SystemExit(f"archive member escaped plugin root: {name}")
+                  if any(part in forbidden_parts for part in member.parts):
+                      raise SystemExit(f"forbidden archive member: {name}")
+                  if name.startswith(nested_runtime_prefix):
+                      raise SystemExit(f"runtime starter duplicated inside bundled Skill: {name}")
+                  if info.date_time != (1980, 1, 1, 0, 0, 0):
+                      raise SystemExit(f"non-deterministic ZIP timestamp: {name} -> {info.date_time}")
+                  mode = (info.external_attr >> 16) & 0o177777
+                  if stat.S_ISLNK(mode):
+                      raise SystemExit(f"symbolic link escaped into plugin archive: {name}")
+
+              uncompressed_bytes = sum(info.file_size for info in infos)
+              if uncompressed_bytes >= 25 * 1024 * 1024:
+                  raise SystemExit(f"plugin archive is unexpectedly large: {uncompressed_bytes} bytes uncompressed")
+
+          digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
+          checksum = pathlib.Path(f"dist/veteran-engineer-{profile}.sha256")
+          checksum.write_text(f"{digest}  {bundle.name}\n", encoding="utf-8")
+          print(f"profile={profile}")
+          print(f"plugin_sha256={digest}")
+          print(f"plugin_bytes={bundle.stat().st_size}")
+          PY
+
+      - name: Upload profile artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: veteran-engineer-${{ matrix.profile }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            dist/veteran-engineer-${{ matrix.profile }}.zip
+            dist/veteran-engineer-${{ matrix.profile }}.sha256
+          if-no-files-found: error
+          retention-days: 7
