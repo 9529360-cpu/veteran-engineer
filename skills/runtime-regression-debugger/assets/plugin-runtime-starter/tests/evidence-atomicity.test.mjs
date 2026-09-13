@@ -53,37 +53,42 @@ test('evidence removes staged artifact files when durable state does not commit'
   });
 });
 
-test('evidence preserves files when state commit is durable but acknowledgement is unknown', async () => {
-  await withEvidenceService('veteran-evidence-durable-', async ({ root, store, service }) => {
-    const originalTransaction = store.transaction.bind(store);
-    store.transaction = async (eventType, ...args) => {
-      const result = await originalTransaction(eventType, ...args);
-      if (eventType === 'evidence_recorded') {
-        const error = new Error('simulated durable evidence acknowledgement loss');
-        error.code = 'STATE_COMMIT_AUDIT_OUTCOME_UNKNOWN';
-        error.stateCommitted = true;
-        throw error;
-      }
-      return result;
-    };
+test('evidence preserves files for both known-durable and unknown commit outcomes', async () => {
+  for (const stateCommitted of [true, 'unknown']) {
+    const label = stateCommitted === true ? 'local' : 'postgres';
+    await withEvidenceService(`veteran-evidence-durable-${label}-`, async ({ root, store, service }) => {
+      const originalTransaction = store.transaction.bind(store);
+      store.transaction = async (eventType, ...args) => {
+        const result = await originalTransaction(eventType, ...args);
+        if (eventType === 'evidence_recorded') {
+          const error = new Error('simulated durable evidence acknowledgement loss');
+          error.code = 'STATE_COMMIT_AUDIT_OUTCOME_UNKNOWN';
+          error.stateCommitted = stateCommitted;
+          error.auditOutcome = 'unknown';
+          error.requiresReconciliation = true;
+          throw error;
+        }
+        return result;
+      };
 
-    await assert.rejects(
-      service.record({
-        projectId: 'p1',
-        type: 'test',
-        summary: 'preserve durable evidence files',
-        artifact: 'durable primary artifact',
-        attachments: [{ name: 'trace.log', content: 'durable attachment' }]
-      }),
-      (error) => error.code === 'STATE_COMMIT_AUDIT_OUTCOME_UNKNOWN' && error.stateCommitted === true
-    );
+      await assert.rejects(
+        service.record({
+          projectId: 'p1',
+          type: 'test',
+          summary: 'preserve durable evidence files',
+          artifact: 'durable primary artifact',
+          attachments: [{ name: 'trace.log', content: 'durable attachment' }]
+        }),
+        (error) => error.code === 'STATE_COMMIT_AUDIT_OUTCOME_UNKNOWN' && error.stateCommitted === stateCommitted
+      );
 
-    const state = await store.read();
-    const records = Object.values(state.evidence);
-    assert.equal(records.length, 1);
-    const record = records[0];
-    assert.equal(await fs.readFile(path.join(root, record.artifactPointer), 'utf8'), 'durable primary artifact');
-    assert.equal(record.attachments.length, 1);
-    assert.equal(await fs.readFile(path.join(root, record.attachments[0].artifactPointer), 'utf8'), 'durable attachment');
-  });
+      const state = await store.read();
+      const records = Object.values(state.evidence);
+      assert.equal(records.length, 1);
+      const record = records[0];
+      assert.equal(await fs.readFile(path.join(root, record.artifactPointer), 'utf8'), 'durable primary artifact');
+      assert.equal(record.attachments.length, 1);
+      assert.equal(await fs.readFile(path.join(root, record.attachments[0].artifactPointer), 'utf8'), 'durable attachment');
+    });
+  }
 });
