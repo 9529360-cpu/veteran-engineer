@@ -5,6 +5,7 @@
 - Start from contracts and risks
 - Choose the strongest practical boundary
 - Keep tests deterministic and isolated
+- Separate product regressions from harness state pollution
 - Use real infrastructure where semantics matter
 - Test time, retries, concurrency, and duplicates
 - Test compatibility and migrations
@@ -67,6 +68,21 @@ Prefer explicit fake clocks and seeded randomness to sleeps. Give each test inde
 
 Playwright's current best practices emphasize isolated tests, user-visible behavior, resilient locators, and web-first assertions:
 https://playwright.dev/docs/best-practices
+
+## Separate product regressions from harness state pollution
+
+A red test is evidence that the observed execution failed, not proof that product code owns the failure. Before changing production behavior, check whether the harness changed process-global state that survives between cases: module/loader caches, dependency or service registries, static/singleton objects, environment variables, fake timers, locale/timezone, temporary-path identity, connection pools, browser profiles, or monkeypatches.
+
+When a negative fixture mutates something globally and a later positive control reuses the same identity, do not assume rewriting the underlying file/config/object resets the runtime. Prefer a fresh process when process identity is the real isolation boundary, or give each control a distinct module/path/profile/database/resource identity. Clear global caches only when cache invalidation itself is the behavior under test; otherwise clearing them can hide the leak instead of proving isolation.
+
+Use cheap discriminators before patching the product:
+
+1. run the failing case alone in a fresh process/environment;
+2. reverse or randomize case order when order dependence is plausible;
+3. give positive and negative controls independent fixture identities;
+4. rerun the real product path after harness isolation is restored.
+
+If the failure disappears only after isolation changes, classify it as a test/harness defect unless separate evidence still implicates production behavior. If it survives a clean harness and the same active product path, continue product debugging. Do not make product code compensate for a test process that leaked state across cases.
 
 ## Use real infrastructure where semantics matter
 
