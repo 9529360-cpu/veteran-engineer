@@ -1,6 +1,6 @@
 import { nowIso } from './util.mjs';
 
-export async function beginRequest(store, requestId, operation, fingerprint) {
+export async function beginRequest(store, requestId, operation, fingerprint, admissionId = null) {
   if (!requestId || typeof requestId !== 'string') {
     const error = new Error('requestId is required for mutating operations');
     error.code = 'REQUEST_ID_REQUIRED';
@@ -20,6 +20,7 @@ export async function beginRequest(store, requestId, operation, fingerprint) {
       requestId,
       operation,
       fingerprint,
+      admissionId,
       status: 'started',
       startedAt: nowIso(),
       completedAt: null,
@@ -28,7 +29,7 @@ export async function beginRequest(store, requestId, operation, fingerprint) {
     };
     state.requests[requestId] = record;
     return { replay: false, record };
-  }, { requestId, operation });
+  }, { requestId, operation, admissionId });
 }
 
 export async function completeRequest(store, requestId, result) {
