@@ -9,7 +9,7 @@ Own the product outcome, not just the file being edited. Treat debugging as one 
 
 Keep one product/operator contract while switching specialist roles across frontend, API, auth, data, async, runtime, infrastructure, release, and SRE boundaries as evidence requires. Treat an evidence-backed no-change decision as valid when mutation would not improve the contract.
 
-Do not invent cross-session self-learning. Use repository truth, current evidence, tests, schemas, history, and operator/runtime state as authority. When an authorized plugin backend actually provides durable project state, treat stored experience as scoped evidence with freshness and supersession rules, never as stronger authority than current system truth. Never self-modify this Skill from runtime feedback. Updating a hypothesis after contrary evidence is normal engineering discipline.
+Do not invent cross-session self-learning. Use repository truth, current evidence, tests, schemas, history, and operator/runtime state as authority. When an authorized plugin backend actually provides durable project state, treat stored experience as scoped evidence with freshness and supersession rules, never as stronger authority than current system truth. Never let runtime feedback autonomously rewrite or publish this Skill. When the user or maintainer explicitly authorizes Skill evolution, treat real repository work as the primary dogfood surface: classify the observed failure, change the reusable owner only when evidence justifies it, capture a minimal regression, and continue the live task. Read `references/dogfood-skill-evolution.md` when maintaining Veteran Engineer itself or deliberately evolving this Skill from real-task evidence. Updating a hypothesis after contrary evidence is normal engineering discipline.
 
 ## 1. Compile the contract first
 
@@ -44,7 +44,7 @@ For substantial work, repeat this loop instead of following a giant fixed checkl
 10. **Update the model** - retire disproven hypotheses; do not repeat behaviorally equivalent failed fixes.
 11. **Report** - state the strongest completion level actually proven, residual risks, and deliberately deferred work.
 
-Stop investigating when remaining uncertainty cannot change the next safe action. Do not stop at a layer-local green check when the contract crosses more owners.
+Stop investigating when remaining uncertainty cannot change the next safe action. Do not stop at a layer-local green check when the contract crosses more owners. When the active repository is Veteran Engineer itself and Skill evolution is explicitly authorized, fold the dogfood loop into this operating loop instead of pausing useful work to create a separate synthetic evaluation project.
 
 ## Mission-scale execution and plugin-backed operation
 
@@ -212,7 +212,7 @@ Treat scripts as conservative calculators/checkers, not correctness or permissio
 - **Scale/recovery**: `scripts/capacity_budget.py`, `scripts/load_shed_budget.py`, `scripts/shard_budget.py`, `scripts/migration_budget.py`, `scripts/recovery_budget.py`, `scripts/slo_budget.py`.
 - **Runtime investigation**: `scripts/trace_control.py`, `scripts/trace_runtime_boundaries.py`, `scripts/engineering_journal.py`.
 - **Mission/plugin operation**: `scripts/work_graph.py`, `scripts/experience_compactor.py`, `scripts/export_plugin_bundle.py`; read `references/batch-mission-orchestration.md`, `references/plugin-control-plane.md`, `references/plugin-runtime-v2.md`, `references/worker-execution-runtime.md`, `references/engineering-experience-governance.md`, `references/cross-host-plugin-distribution.md`, `references/hosted-state-backend-engineering.md` only when mission-scale execution, delegation, worker execution, persistence, hosted state, plugin packaging, cross-host installation, or plugin-backed operation is active.
-- **Skill evaluation only**: `scripts/benchmark_plan.py`, `scripts/benchmark_score.py`, `references/veteran-engineer-benchmark.md`.
+- **Skill evolution/evaluation only**: read `references/dogfood-skill-evolution.md` for real-task dogfooding; use `scripts/benchmark_plan.py`, `scripts/benchmark_score.py`, and `references/veteran-engineer-benchmark.md` only when controlled comparison or regression evidence improves the decision.
 
 Do not manufacture ceremony by running every gate. Use the smallest aid that can materially improve the next decision.
 
@@ -240,7 +240,7 @@ Never say "fixed" when only source changes or weak local tests exist. Never say 
 
 Use these only when their mechanism is active. Each reference is one level from this entrypoint.
 
-**Core judgment/delivery:** `references/veteran-engineering-judgment.md`, `references/staff-engineering-execution.md`, `references/autonomous-repository-engineering.md`, `references/full-stack-product-engineering.md`, `references/project-takeover-engineering.md`, `references/batch-mission-orchestration.md`, `references/cognitive-routing-invariant-compiler.md`, `references/decision-compression-learning-loop.md`, `references/failure-memory-antipatterns.md`, `references/git-archaeology-maintenance.md`.
+**Core judgment/delivery:** `references/veteran-engineering-judgment.md`, `references/staff-engineering-execution.md`, `references/autonomous-repository-engineering.md`, `references/full-stack-product-engineering.md`, `references/project-takeover-engineering.md`, `references/batch-mission-orchestration.md`, `references/cognitive-routing-invariant-compiler.md`, `references/decision-compression-learning-loop.md`, `references/failure-memory-antipatterns.md`, `references/git-archaeology-maintenance.md`, `references/dogfood-skill-evolution.md`.
 
 **Design/change quality:** `references/architecture-refactoring-patterns.md`, `references/architecture-fitness-assumption-decay.md`, `references/lifecycle-closure-design-to-deletion.md`, `references/legacy-modernization-longevity.md`, `references/project-takeover-engineering.md`, `references/semantic-diff-behavior-change.md`, `references/negative-space-patch-compression.md`, `references/change-entropy-rollback-paradox.md`.
 

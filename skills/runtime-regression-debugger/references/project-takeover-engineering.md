@@ -7,6 +7,7 @@ When a plugin/runtime backend is available and the operator provides an authoriz
 ## Contents
 
 - Start from the operating contract
+- Prove repository identity before mutation
 - Build the minimum project model
 - Navigate by questions and high-value anchors
 - Recover the active path before the architecture story
@@ -36,6 +37,14 @@ Capture:
 - compatibility obligations already deployed.
 
 If the request is a bug, narrow this to the failing transition. If it is a feature, narrow it to the shortest complete vertical slice. If it is a rescue, identify contracts whose failure creates the most user, data, money, or operational harm.
+
+## Prove repository identity before mutation
+
+Before the first write in a task, prove that the repository being inspected is the repository the user currently authorized. Use the strongest available identity signals: explicit owner/name or repository URL from the current request, checkout root, Git remote origin or repository ID, and live default branch/remote HEAD when available.
+
+Treat conversational carry-over as a navigation hint, not repository identity. If a prior task, another open checkout, or a similarly named project points at a different repository, discard its branch names, PR numbers, SHAs, CI runs, file ownership assumptions, and release state until they are independently re-established for the current target.
+
+If the explicit current target and the active checkout/connector disagree, switch or reopen the correct repository before mutation. Do not patch the wrong repository merely because its file names, architecture, or recent task history look familiar.
 
 ## Build the minimum project model
 

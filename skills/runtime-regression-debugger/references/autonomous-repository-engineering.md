@@ -28,7 +28,7 @@ Do not ask the user for facts the repository, issue, tests, schemas, runtime, or
 
 Establish:
 
-- repository instructions and local constraints;
+- repository identity, instructions, and local constraints;
 - branch/base/working-tree state;
 - active entrypoint and caller chain;
 - authoritative state owner;
@@ -38,9 +38,13 @@ Establish:
 - tests that claim to protect the behavior;
 - runtime evidence if the symptom is production-only.
 
+Before the first write, reconcile the user's explicit current repository target with the active checkout or connector identity using the strongest available root, remote/repository ID, and default-branch evidence. If they disagree, switch or reopen the correct repository and discard inherited branch, PR, SHA, CI, and file-ownership assumptions until they are re-established for that target. Read `project-takeover-engineering.md` for the detailed identity gate when multiple repositories or checkouts are in play.
+
 Never infer liveness from file existence alone. Old code often survives after authority moved elsewhere.
 
 Treat repository truth as versioned by a state epoch. After any successful remote mutation or automation trigger - merge, push, tag, workflow dispatch, release-bot/version commit, release publication, promotion, or deployment - consider the previous branch/release snapshot stale. Before the next consequential action, refresh the relevant remote HEAD/merge SHA, version/tag/release/workflow state, and any publication/deployment identity that can change the decision. A successful merge or tool call does not update the local checkout or cached model by implication.
+
+Treat pull-request ancestry as another versioned authority. If a stacked PR's base branch is merged, rebased, force-updated, or squash-merged, do not infer that the child PR now contains only its intended delta. Re-fetch the live target, child head, and merge-base; compare the child against the new target; and re-establish the intended write set from that current diff. Squash/rebase can preserve semantics while rewriting commit ancestry, so old parent SHAs, merge refs, and CI attached to them are historical evidence only. Rebuild, rebase, or retarget the child cleanly when needed, then validate the new exact head/base combination before relying on it.
 
 Also discover the execution environment actually available now: source/search/history access, mutation access, shell/compiler/test/browser/runtime, public network, external systems such as CI/cloud/observability, and the authorization boundary. Do not infer web, desktop, Codex, IDE, connector, or CI capabilities from product names or prior sessions. Prefer the least consequential tool that can produce the needed evidence: read/search -> local inspect/test -> local edit -> isolated branch/commit -> remote PR -> staging mutation -> production mutation.
 
