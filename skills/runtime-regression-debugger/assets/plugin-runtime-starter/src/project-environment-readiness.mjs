@@ -198,17 +198,29 @@ export async function assessProjectEnvironmentReadiness(profile, { cwd = process
     const requirement = pythonRequirement(profile);
     let pythonRecord = null;
     let pythonCommand = null;
+    let firstAvailable = null;
     for (const name of ['python3', 'python']) {
       const probed = await probe({ id: 'python', tool: 'python', command: name, args: ['--version'], timeoutMs: PROBE_TIMEOUT_MS, required: true }, { cwd });
-      if (probed.available) {
-        const evaluation = requirement ? evaluateVersionRequirement(probed.version, requirement.requirement) : null;
-        pythonCommand = name;
-        pythonRecord = checkRecord({ id: 'python', tool: 'python', required: true, requirement: requirement?.requirement || null, requirementSource: requirement?.source || null }, probed, evaluation);
-        checks.push(pythonRecord);
-        if (evaluation?.supported && !evaluation.matches) issues.push(issue('HOST_TOOL_VERSION_MISMATCH', 'python', 'python does not satisfy the repository requirement.'));
-        else if (evaluation && !evaluation.supported) issues.push(issue('HOST_TOOL_REQUIREMENT_UNVERIFIED', 'python', 'python is available but the declared version requirement is outside the bounded evaluator.', 'warning'));
+      if (!probed.available) continue;
+      const evaluation = requirement ? evaluateVersionRequirement(probed.version, requirement.requirement) : null;
+      const candidate = { name, probed, evaluation };
+      firstAvailable ||= candidate;
+      if (!requirement || (evaluation?.supported && evaluation.matches)) {
+        firstAvailable = candidate;
         break;
       }
+      if (evaluation && !evaluation.supported && evaluation.actual) break;
+    }
+    if (firstAvailable) {
+      pythonCommand = firstAvailable.name;
+      pythonRecord = checkRecord(
+        { id: 'python', tool: 'python', required: true, requirement: requirement?.requirement || null, requirementSource: requirement?.source || null },
+        firstAvailable.probed,
+        firstAvailable.evaluation
+      );
+      checks.push(pythonRecord);
+      if (firstAvailable.evaluation?.supported && !firstAvailable.evaluation.matches) issues.push(issue('HOST_TOOL_VERSION_MISMATCH', 'python', 'python does not satisfy the repository requirement.'));
+      else if (firstAvailable.evaluation && !firstAvailable.evaluation.supported) issues.push(issue('HOST_TOOL_REQUIREMENT_UNVERIFIED', 'python', 'python is available but the declared version requirement is outside the bounded evaluator.', 'warning'));
     }
     if (!pythonRecord) {
       checks.push({ id: 'python', tool: 'python', required: true, available: false, version: null, requirement: requirement?.requirement || null, requirementSource: requirement?.source || null, compatibility: null, reason: 'not-found', exitCode: null });
