@@ -54,7 +54,7 @@ test('evidence removes staged artifact files when durable state does not commit'
 });
 
 test('evidence preserves files when state commit is durable but acknowledgement is unknown', async () => {
-  await withEvidenceService('veteran-evidence-durable-', async ({ store, service }) => {
+  await withEvidenceService('veteran-evidence-durable-', async ({ root, store, service }) => {
     const originalTransaction = store.transaction.bind(store);
     store.transaction = async (eventType, ...args) => {
       const result = await originalTransaction(eventType, ...args);
