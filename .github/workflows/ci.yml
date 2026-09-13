@@ -110,12 +110,25 @@ jobs:
             -e POSTGRES_DB=veteran \
             -p 5432:5432 \
             "$IMAGE"
-          for attempt in $(seq 1 30); do
-            if docker exec veteran-postgres pg_isready -U veteran -d veteran >/dev/null 2>&1; then
-              exit 0
+
+          ready_streak=0
+          for attempt in $(seq 1 45); do
+            if docker exec veteran-postgres \
+              psql -U veteran -d veteran -v ON_ERROR_STOP=1 -Atqc 'SELECT 1' \
+              2>/dev/null | grep -qx '1'; then
+              ready_streak=$((ready_streak + 1))
+              if [ "$ready_streak" -ge 2 ]; then
+                echo "PostgreSQL accepted two consecutive SQL probes"
+                exit 0
+              fi
+            else
+              ready_streak=0
             fi
             sleep 1
           done
+
+          echo "PostgreSQL did not become stably SQL-ready" >&2
+          docker ps -a --filter name=veteran-postgres >&2
           docker logs veteran-postgres >&2
           exit 1
 
@@ -128,3 +141,11 @@ jobs:
           VETERAN_ENGINEER_POSTGRES_URL: ${{ env.VETERAN_TEST_POSTGRES_URL }}
           VETERAN_ENGINEER_STATE_INSTANCE: ci-mcp-${{ github.run_id }}-${{ github.run_attempt }}
         run: npm run mcp:handshake:modern
+
+      - name: Diagnose PostgreSQL failure
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          docker ps -a --filter name=veteran-postgres
+          docker logs --tail 200 veteran-postgres
