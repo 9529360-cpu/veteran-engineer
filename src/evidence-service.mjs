@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { isStateCommitAuditOutcomeUnknown } from './state-backend-durability-contract.mjs';
 import { nowIso, randomId, sha256, stableStringify } from './util.mjs';
 
 const MAX_ATTACHMENTS = 128;
@@ -92,7 +93,7 @@ export class EvidenceService {
       }, { evidenceId: id, type, projectId, missionId, taskId, attachmentCount: attachmentRecords.length });
       return record;
     } catch (error) {
-      if (error?.stateCommitted !== true) await cleanupUncommittedFiles(createdFiles);
+      if (!isStateCommitAuditOutcomeUnknown(error)) await cleanupUncommittedFiles(createdFiles);
       throw error;
     }
   }
