@@ -5,6 +5,8 @@ import { nowIso } from './util.mjs';
 import { buildContainerInvocation, validateContainerWorkerConfig } from './container-worker.mjs';
 
 const SAFE_ENV_KEYS = ['PATH', 'HOME', 'USERPROFILE', 'TMP', 'TEMP', 'TMPDIR', 'SYSTEMROOT', 'COMSPEC', 'LANG', 'LC_ALL', 'SHELL'];
+const MAX_ENV_NAMES = 64;
+const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const FORBIDDEN_CODEX_FLAGS = new Set([
   '--dangerously-bypass-approvals-and-sandbox', '--yolo', '--dangerously-bypass-hook-trust',
   '--sandbox', '-s', '--approve-for-me', '--not-so-yolo', '--cd', '-C', '--add-dir', '--worktree'
@@ -66,6 +68,22 @@ export function resolveWorkerConfig(project, requestedWorker = 'default') {
   return { type: process.env.VETERAN_WORKER_TYPE || 'custom', command, args };
 }
 
+function validateLocalWorkerEnvironment(config) {
+  if (config?.envAllowlist === undefined) return;
+  if (!Array.isArray(config.envAllowlist) || config.envAllowlist.length > MAX_ENV_NAMES) {
+    const error = new Error(`Local worker envAllowlist must be an array with at most ${MAX_ENV_NAMES} entries`);
+    error.code = 'WORKER_CONFIG_INVALID';
+    throw error;
+  }
+  for (const key of config.envAllowlist) {
+    if (typeof key !== 'string' || !ENV_KEY.test(key)) {
+      const error = new Error('Local worker envAllowlist contains an invalid environment variable name');
+      error.code = 'WORKER_CONFIG_INVALID';
+      throw error;
+    }
+  }
+}
+
 export function enforceWorkerPolicy(project, task, config) {
   if (!project.workerPolicy?.enabled) {
     const error = new Error('Worker execution is disabled by operator policy');
@@ -74,10 +92,13 @@ export function enforceWorkerPolicy(project, task, config) {
   }
   if (config?.type === 'container') {
     validateContainerWorkerConfig(config);
-  } else if (!config?.command) {
-    const error = new Error('No worker executable is configured');
-    error.code = 'WORKER_NOT_CONFIGURED';
-    throw error;
+  } else {
+    validateLocalWorkerEnvironment(config);
+    if (!config?.command) {
+      const error = new Error('No worker executable is configured');
+      error.code = 'WORKER_NOT_CONFIGURED';
+      throw error;
+    }
   }
   const unconfined = config.type === 'custom-unconfined';
   if (unconfined && !project.workerPolicy.allowUnconfinedCustomWorkers) {
