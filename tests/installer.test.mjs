@@ -53,10 +53,13 @@ test('generic host lifecycle installs, doctors, and purges shared runtime', asyn
   const home = await tempDir('veteran-installer-generic-');
   try {
     const installer = new VeteranInstaller({ distributionRoot, home, env: { ...process.env, HOME: home, USERPROFILE: home } });
-    const installed = await installer.install('generic');
+    const installed = await installer.install('generic', { surfaceProfile: 'secure-tunnel' });
     assert.equal(installed.binding.installed, true);
+    const descriptor = JSON.parse(await fs.readFile(installed.binding.descriptorPath, 'utf8'));
+    assert.equal(descriptor.mcpServers['veteran-engineer'].env.VETERAN_ENGINEER_SURFACE_PROFILE, 'secure-tunnel');
     const status = await installer.status('generic');
     assert.equal(status.hosts.generic.installed, true);
+    assert.equal(status.hosts.generic.surfaceProfile, 'secure-tunnel');
     assert.equal(status.distributionDrift, false);
     const dependencySentinel = path.join(installer.runtimeRoot, 'node_modules', '.veteran-test-sentinel');
     await fs.mkdir(path.dirname(dependencySentinel), { recursive: true });
@@ -85,6 +88,9 @@ test('Codex and Hermes adapters bind the same shared runtime without host-specif
     assert.equal(codex.binding.installed, true);
     const hermes = await installer.install('hermes', { hermesHome: path.join(home, '.hermes-test') });
     assert.equal(hermes.binding.installed, true);
+    const hosts = await installer.listHosts();
+    assert.equal(hosts.find((item) => item.id === 'codex').surface.id, 'local-stdio');
+    assert.equal(hosts.find((item) => item.id === 'codex').surface.contract, 'veteran-surface-capabilities-v1');
     const status = await installer.status(null, { hermesHome: path.join(home, '.hermes-test') });
     assert.equal(status.hosts.codex.installed, true);
     assert.equal(status.hosts.hermes.installed, true);

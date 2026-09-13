@@ -12,6 +12,10 @@ Keep this boundary:
 
 Do not fork the Mission engine, worker scheduler, state model, evidence model, or engineering Skill per host. Do not make Codex, Hermes, or another host the authority for core project state.
 
+## Surface capability contract
+
+Host branding is not a core routing primitive. Resolve the runtime topology through `veteran-surface-capabilities-v1` and route by capabilities. Use `local-stdio` for direct local hosts, `remote-mcp` when the runtime is hosted away from the caller, and `secure-tunnel` when a developer/private-network runtime is exposed through an approved tunnel. Read `cross-surface-runtime-architecture.md` when Web/Desktop/Codex parity, tunnel topology, or multi-profile packaging is active.
+
 ## Shared installation model
 
 Install one versioned runtime tree, normally under `~/plugins/veteran-engineer`, and let multiple host adapters point to that tree. Keep installer metadata outside the runtime so a runtime refresh cannot erase host ownership information.
@@ -59,6 +63,8 @@ If the host supports Agent Skills, install or reference the same `runtime-regres
 ## MCP delivery
 
 Prefer stdio for local host bindings and keep the public MCP surface intention-level. A host adapter should register the existing Veteran Engineer MCP server, not reimplement its tools. Generic MCP support should emit a portable descriptor when the target host's exact config contract is unknown.
+
+Do not use one local-MCP plugin archive as the universal Web/Desktop artifact. Current ChatGPT web distribution treats imported plugins that declare `.mcp.json`/`mcp.json` as Desktop-only. Export local Desktop/Codex profiles with the runtime and MCP manifest, and export the Web profile without them. If Web actions are backed by an existing app, reference only caller/workspace-supplied app metadata; never fabricate app IDs, OAuth configuration, or tunnel setup.
 
 ## Lifecycle semantics
 

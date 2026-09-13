@@ -1,14 +1,16 @@
 import path from 'node:path';
 import { git, resolveRepository, sourceIdentity } from './git.mjs';
-import { acquireRemoteRepository, sanitizeStoredRemoteUrl } from './repository-acquisition.mjs';
+import { acquireRemoteRepository, normalizeRemoteRepositoryUrl, sanitizeStoredRemoteUrl } from './repository-acquisition.mjs';
 import { nowIso, randomId, sha256 } from './util.mjs';
 import { projectPolicy } from './operator-config.mjs';
+import { requireSurfaceCapability, resolveSurfaceProfile } from './surface-capabilities.mjs';
 
 export class ProjectService {
-  constructor({ store, operatorConfig = { defaults: {}, projects: {} }, managedProjectsRoot }) {
+  constructor({ store, operatorConfig = { defaults: {}, projects: {} }, managedProjectsRoot, surfaceProfile = 'local-stdio' }) {
     this.store = store;
     this.operatorConfig = operatorConfig;
     this.managedProjectsRoot = managedProjectsRoot ? path.resolve(managedProjectsRoot) : null;
+    this.surfaceProfile = resolveSurfaceProfile(surfaceProfile);
   }
 
   async open({ repoPath, repoUrl, name, refreshRemote = true }) {
@@ -16,6 +18,12 @@ export class ProjectService {
     const hasUrl = typeof repoUrl === 'string' && repoUrl.trim();
     if ((hasPath && hasUrl) || (!hasPath && !hasUrl)) {
       throw Object.assign(new Error('project_open requires exactly one of repoPath or repoUrl'), { code: 'PROJECT_SOURCE_INVALID' });
+    }
+    if (hasPath) requireSurfaceCapability(this.surfaceProfile, 'repository', 'localPath', `Surface ${this.surfaceProfile.id} cannot open caller-local repository paths; provide repoUrl instead.`);
+    if (hasUrl) {
+      requireSurfaceCapability(this.surfaceProfile, 'repository', 'remoteGit');
+      const normalizedRemote = normalizeRemoteRepositoryUrl(repoUrl.trim());
+      if (normalizedRemote.protocol === 'file:') requireSurfaceCapability(this.surfaceProfile, 'repository', 'fileUrl', `Surface ${this.surfaceProfile.id} cannot use file:// repository URLs because they address runtime-local filesystem state.`);
     }
 
     let repo;

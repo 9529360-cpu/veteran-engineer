@@ -24,7 +24,7 @@ The pinned base dependency graph is:
 
 Current mainline validation after the PostgreSQL hosted-state milestone proves:
 
-1. `npm run check`: **70 syntax files**, exact **34-tool** surface, protocol constants, pinned SDK graph/lock integrity, runtime-starter mirror parity, and **78/78 Node tests PASS**;
+1. `npm run check`: **73 syntax files**, exact **34-tool** surface, protocol constants, pinned SDK graph/lock integrity, runtime-starter mirror parity across **79 mirrored files**, and **82/82 Node tests PASS**;
 2. a real Docker engine-backed confined `WorkerAdapter` smoke;
 3. a real PostgreSQL engine-backed state-backend integration gate, followed by the real modern MCP handshake while PostgreSQL is the active state backend.
 
@@ -111,6 +111,18 @@ PostgreSQL state and audit append commit in one SQL transaction. Each durable st
 Every mutating MCP operation requires a `requestId`. Reuse with a different operation/payload is rejected. Completed requests replay their recorded result; failed requests replay failure; `unknown` outcomes are never replayed blindly. New request identities store a SHA-256 payload fingerprint rather than the raw request JSON, so idempotency does not become a durable copy of goals, paths, repository URLs, or future sensitive arguments. Legacy raw fingerprints remain replay-compatible.
 
 Admission carries an internal attempt identity. If request admission itself becomes ambiguous, only the invocation that owns the durable reservation may continue after reconciliation. If a handler mutation may already have committed, the request becomes `unknown`, not falsely `failed`. If only completion acknowledgement is ambiguous, Veteran returns success only after durable state proves the request is already `completed`.
+
+## Cross-surface runtime profiles
+
+Veteran Engineer now separates the engineering core from the product surface through `veteran-surface-capabilities-v1`. The built-in runtime profiles are:
+
+- `local-stdio`: direct local hosts; local repository paths and remote Git takeover are available;
+- `remote-mcp`: hosted/remote MCP; caller-local paths and `file://` URLs are rejected and project takeover must use a network `repoUrl`;
+- `secure-tunnel`: the runtime remains on a developer/private-network machine but is reachable through a secure MCP tunnel, so paths on that runtime machine remain valid.
+
+`runtime_health` reports the effective surface profile. Unknown profiles fail closed. Generic MCP descriptors can select a topology with `--surface-profile`, including `secure-tunnel`. Tunnel provisioning itself remains an external OpenAI/workspace control rather than an undocumented command embedded in Veteran.
+
+Distribution is now profile-aware. `export_plugin_bundle.py --profile desktop|codex|web` builds all surfaces from the same Skill source. Desktop/Codex profiles include the local runtime and `.mcp.json`; the Web profile intentionally excludes local MCP/runtime files so it is not made Desktop-only by its package contents. A Web package may reference a complete caller/workspace-supplied `.app.json`, but Veteran never invents app IDs, OAuth settings, remote MCP URLs, or tunnel configuration.
 
 ## Cross-host installation
 

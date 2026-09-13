@@ -16,6 +16,7 @@ function parse(argv) {
     else if (arg === '--installer-root') out.installerRoot = argv[++i];
     else if (arg === '--distribution-root') out.distributionRoot = argv[++i];
     else if (arg === '--descriptor') out.options.descriptorPath = argv[++i];
+    else if (arg === '--surface-profile') out.options.surfaceProfile = argv[++i];
     else if (arg === '--hermes-home') out.options.hermesHome = argv[++i];
     else if (arg === '--trusted-adapter-dir') out.trustedAdapterDirs.push(argv[++i]);
     else throw new Error(`Unknown argument: ${arg}`);
@@ -24,7 +25,7 @@ function parse(argv) {
 }
 
 function usage() {
-  return `Veteran Engineer ${process.env.npm_package_version || '0.3.0'}\n\nUsage:\n  veteran-engineer install <codex|hermes|generic> [options]\n  veteran-engineer status [host] [--json]\n  veteran-engineer doctor [host] [--json]\n  veteran-engineer repair [host] [options]\n  veteran-engineer upgrade [options]\n  veteran-engineer uninstall <host> [--purge]\n  veteran-engineer hosts [--json]\n\nShared runtime defaults to ~/plugins/veteran-engineer. Durable state defaults to ~/.veteran-engineer/state.\n`;
+  return `Veteran Engineer ${process.env.npm_package_version || '0.3.0'}\n\nUsage:\n  veteran-engineer install <codex|hermes|generic> [options]\n  veteran-engineer status [host] [--json]\n  veteran-engineer doctor [host] [--json]\n  veteran-engineer repair [host] [options]\n  veteran-engineer upgrade [options]\n  veteran-engineer uninstall <host> [--purge]\n  veteran-engineer hosts [--json]\n\nSurface profiles: local-stdio, remote-mcp, secure-tunnel. Use --surface-profile with generic descriptors.\nShared runtime defaults to ~/plugins/veteran-engineer. Durable state defaults to ~/.veteran-engineer/state.\n`;
 }
 
 function doctorText(report) {

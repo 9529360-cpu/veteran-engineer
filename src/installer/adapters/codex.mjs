@@ -95,6 +95,7 @@ export default {
   apiVersion: HOST_ADAPTER_API_VERSION,
   id: 'codex',
   displayName: 'OpenAI Codex',
+  surfaceProfile: 'local-stdio',
   capabilities: { mcp: true, skill: true, nativePlugin: true },
   async install(context) {
     const executable = await requireCodex(context);
