@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RUNTIME_NAME, RUNTIME_VERSION, STATE_SCHEMA_VERSION } from './constants.mjs';
+import { git } from './git.mjs';
 import { protocolCapability, MCP_TRANSPORT_MODES } from './mcp-protocol-capability.mjs';
 import { TOOL_NAMES } from './tool-catalog.mjs';
 import { nowIso, pathExists } from './util.mjs';
@@ -9,6 +10,8 @@ import { inspectMcpSdkIntegrity } from './mcp-sdk-integrity.mjs';
 import { resolveSurfaceProfile } from './surface-capabilities.mjs';
 
 const defaultRuntimeRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const CANDIDATE_REF_PREFIX = 'refs/veteran/candidates/';
+const CANDIDATE_PRODUCING_OPERATIONS = new Set(['candidate_refresh', 'mission_advance']);
 
 function directRuntimeWorktreeName(worktreesDir, worktreePath) {
   if (!worktreePath) return null;
@@ -16,6 +19,38 @@ function directRuntimeWorktreeName(worktreesDir, worktreePath) {
   const resolved = path.resolve(String(worktreePath));
   if (path.dirname(resolved) !== root) return null;
   return path.basename(resolved);
+}
+
+function candidateMutationBlockers(state) {
+  return Object.values(state.requests || {})
+    .filter((request) => CANDIDATE_PRODUCING_OPERATIONS.has(request.operation) && ['started', 'unknown'].includes(request.status))
+    .map((request) => ({ requestId: request.requestId, operation: request.operation, status: request.status }))
+    .sort((a, b) => a.requestId.localeCompare(b.requestId));
+}
+
+function candidateOwner(state, projectId, ref) {
+  return Object.values(state.runtime?.candidates || {}).find((candidate) => candidate.projectId === projectId && candidate.ref === ref) || null;
+}
+
+async function listCandidateRefs(project) {
+  const result = await git(project.repoPath, ['for-each-ref', '--format=%(refname) %(objectname)', CANDIDATE_REF_PREFIX], { allowFailure: true });
+  if (result.code !== 0) {
+    return {
+      refs: [],
+      error: {
+        projectId: project.id,
+        code: 'CANDIDATE_REF_SCAN_FAILED',
+        message: `${result.stderr || result.stdout || 'git for-each-ref failed'}`.trim().slice(0, 2000)
+      }
+    };
+  }
+  const refs = result.stdout.trim()
+    ? result.stdout.trim().split(/\r?\n/).map((line) => {
+      const separator = line.indexOf(' ');
+      return separator > 0 ? { ref: line.slice(0, separator), commitSha: line.slice(separator + 1).trim() } : null;
+    }).filter(Boolean)
+    : [];
+  return { refs, error: null };
 }
 
 export class RuntimeService {
@@ -95,7 +130,76 @@ export class RuntimeService {
         removed.push(name);
       }
     }
-    return { apply, orphans, removed };
+
+    const candidateRefs = {
+      blockers: candidateMutationBlockers(state),
+      orphans: [],
+      mismatches: [],
+      scanErrors: [],
+      skipped: [],
+      removed: []
+    };
+    for (const project of Object.values(state.projects || {})) {
+      if (!project?.id || !project?.repoPath) continue;
+      const scanned = await listCandidateRefs(project);
+      if (scanned.error) {
+        candidateRefs.scanErrors.push(scanned.error);
+        continue;
+      }
+      for (const actual of scanned.refs) {
+        const owner = candidateOwner(state, project.id, actual.ref);
+        if (!owner) {
+          candidateRefs.orphans.push({ projectId: project.id, ref: actual.ref, commitSha: actual.commitSha });
+        } else if (owner.commitSha !== actual.commitSha) {
+          candidateRefs.mismatches.push({
+            projectId: project.id,
+            candidateId: owner.id,
+            ref: actual.ref,
+            expectedCommitSha: owner.commitSha,
+            actualCommitSha: actual.commitSha
+          });
+        }
+      }
+    }
+    candidateRefs.orphans.sort((a, b) => `${a.projectId}:${a.ref}`.localeCompare(`${b.projectId}:${b.ref}`));
+    candidateRefs.mismatches.sort((a, b) => `${a.projectId}:${a.ref}`.localeCompare(`${b.projectId}:${b.ref}`));
+
+    if (apply && candidateRefs.blockers.length === 0) {
+      for (const orphan of candidateRefs.orphans) {
+        const latest = await this.store.read();
+        const blockers = candidateMutationBlockers(latest);
+        if (blockers.length) {
+          candidateRefs.blockers = blockers;
+          break;
+        }
+        const nowOwned = candidateOwner(latest, orphan.projectId, orphan.ref);
+        if (nowOwned) {
+          candidateRefs.skipped.push({ projectId: orphan.projectId, ref: orphan.ref, reason: 'now-owned' });
+          continue;
+        }
+        const project = latest.projects?.[orphan.projectId];
+        if (!project?.repoPath) {
+          candidateRefs.skipped.push({ projectId: orphan.projectId, ref: orphan.ref, reason: 'project-unavailable' });
+          continue;
+        }
+        const deletion = await git(project.repoPath, ['update-ref', '-d', orphan.ref, orphan.commitSha], { allowFailure: true });
+        if (deletion.code !== 0) {
+          const error = new Error(`Failed to remove orphan candidate ref ${orphan.ref}`);
+          error.code = 'CANDIDATE_REF_CLEANUP_FAILED';
+          error.details = {
+            projectId: orphan.projectId,
+            ref: orphan.ref,
+            expectedCommitSha: orphan.commitSha,
+            gitExitCode: deletion.code,
+            gitError: `${deletion.stderr || deletion.stdout || ''}`.trim().slice(0, 2000) || null
+          };
+          throw error;
+        }
+        candidateRefs.removed.push(orphan);
+      }
+    }
+
+    return { apply, orphans, removed, candidateRefs };
   }
 
   async maintenance({ projectId = null } = {}) {
