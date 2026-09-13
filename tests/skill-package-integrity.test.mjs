@@ -31,6 +31,11 @@ test('Skill package references, metadata, and benchmark scenarios stay coherent'
   assert.ok(frontmatter, 'SKILL.md must have YAML frontmatter');
   const frontmatterKeys = [...frontmatter[1].matchAll(/^([A-Za-z0-9_-]+):/gm)].map((match) => match[1]);
   assert.deepEqual(frontmatterKeys, ['name', 'description'], 'Skill frontmatter must contain only name and description');
+  const name = frontmatter[1].match(/^name:\s*(\S+)\s*$/m)?.[1];
+  const description = frontmatter[1].match(/^description:\s*(.+)\s*$/m)?.[1];
+  assert.equal(name, path.basename(skillRoot), 'Skill frontmatter name must match its package directory');
+  assert.equal(name, name?.toLowerCase(), 'Skill frontmatter name must remain lowercase');
+  assert.ok(description?.trim(), 'Skill frontmatter description must be non-empty');
 
   const referencedPaths = [...new Set(
     [...skill.matchAll(/\b(?:references|scripts|assets)\/[A-Za-z0-9._/-]+/g)]
@@ -42,11 +47,16 @@ test('Skill package references, metadata, and benchmark scenarios stay coherent'
     const target = path.resolve(skillRoot, rel);
     assert.equal(target === skillRoot || target.startsWith(`${skillRoot}${path.sep}`), true, `Skill reference escapes package root: ${rel}`);
     assert.equal(await exists(target), true, `SKILL.md references missing packaged resource: ${rel}`);
+    if (rel.startsWith('references/')) {
+      assert.equal(rel.split('/').length, 2, `Skill references must stay one level deep: ${rel}`);
+    }
   }
 
   const agentPath = path.join(skillRoot, 'agents', 'openai.yaml');
   assert.equal(await exists(agentPath), true, 'Skill UI metadata is missing: agents/openai.yaml');
   const agent = await fs.readFile(agentPath, 'utf8');
+  assert.match(agent, /^\s*display_name:\s*\S.+$/m, 'Skill UI metadata must define interface.display_name');
+  assert.match(agent, /^\s*short_description:\s*\S.+$/m, 'Skill UI metadata must define interface.short_description');
   for (const match of agent.matchAll(/^\s*icon_(?:small|large):\s*(\S+)\s*$/gm)) {
     const rel = match[1];
     const target = path.resolve(skillRoot, rel);
