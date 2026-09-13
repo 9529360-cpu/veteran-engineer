@@ -104,6 +104,41 @@ test('Codex and Hermes adapters bind the same shared runtime without host-specif
   }
 });
 
+test('Codex uninstall reuses recorded marketplace identity when marketplace metadata disappears', async () => {
+  const home = await tempDir('veteran-installer-codex-marketplace-');
+  const marketplaceFile = path.join(home, '.agents', 'plugins', 'marketplace.json');
+  try {
+    const { env, exec: hostExec } = await fakeHostEnvironment(home);
+    const calls = [];
+    const exec = async (command, args = [], options = {}) => {
+      calls.push({ command, args: [...args] });
+      return hostExec(command, args, options);
+    };
+    await fs.mkdir(path.dirname(marketplaceFile), { recursive: true });
+    await fs.writeFile(marketplaceFile, `${JSON.stringify({ name: 'team-market', interface: { displayName: 'Team' }, plugins: [] }, null, 2)}\n`);
+
+    const installer = new VeteranInstaller({ distributionRoot, home, env, exec });
+    const installed = await installer.install('codex');
+    assert.equal(installed.binding.marketplaceName, 'team-market');
+    assert.equal(installed.binding.selector, 'veteran-engineer@team-market');
+
+    const state = JSON.parse(await fs.readFile(installer.installerStatePath, 'utf8'));
+    assert.equal(state.hosts.codex.binding.marketplaceName, 'team-market');
+    delete state.hosts.codex.binding.marketplaceName;
+    await fs.writeFile(installer.installerStatePath, `${JSON.stringify(state, null, 2)}\n`);
+    await fs.rm(marketplaceFile, { force: true });
+
+    const beforeUninstall = calls.length;
+    const removed = await installer.uninstall('codex');
+    assert.equal(removed.removed, true);
+    const removeCall = calls.slice(beforeUninstall).find((call) => path.basename(call.command).toLowerCase().startsWith('codex') && call.args[0] === 'plugin' && call.args[1] === 'remove');
+    assert.ok(removeCall, 'Codex uninstall must invoke plugin remove when the CLI is available');
+    assert.equal(removeCall.args[2], 'veteran-engineer@team-market', 'legacy binding selector must preserve the installed marketplace identity');
+  } finally {
+    await cleanup(home);
+  }
+});
+
 test('purge is rejected before any host is unbound when another host still references runtime', async () => {
   const home = await tempDir('veteran-installer-purge-');
   try {

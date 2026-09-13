@@ -91,6 +91,17 @@ function listContainsPlugin(stdout, marketplaceName) {
   }
 }
 
+function recordedMarketplaceName(context) {
+  const previous = context.previousBinding;
+  const binding = previous?.binding && typeof previous.binding === 'object' ? previous.binding : previous;
+  if (typeof binding?.marketplaceName === 'string' && binding.marketplaceName.length > 0) return binding.marketplaceName;
+  if (typeof binding?.selector === 'string') {
+    const prefix = `${PLUGIN_NAME}@`;
+    if (binding.selector.startsWith(prefix) && binding.selector.length > prefix.length) return binding.selector.slice(prefix.length);
+  }
+  return null;
+}
+
 export default {
   apiVersion: HOST_ADAPTER_API_VERSION,
   id: 'codex',
@@ -102,7 +113,7 @@ export default {
     const marketplace = await ensureMarketplaceEntry(context);
     const selector = `${PLUGIN_NAME}@${marketplace.name}`;
     const result = await context.exec(executable, ['plugin', 'add', selector, '--json'], { env: context.env, timeoutMs: 45_000 });
-    return { installed: true, cli: executable, selector, marketplacePath: marketplace.file, backup: marketplace.backup, result: result.stdout.trim() };
+    return { installed: true, cli: executable, selector, marketplaceName: marketplace.name, marketplacePath: marketplace.file, backup: marketplace.backup, result: result.stdout.trim() };
   },
   async status(context) {
     const executable = await findExecutable('codex', context.env);
@@ -133,7 +144,7 @@ export default {
   },
   async uninstall(context) {
     const marketplace = await readJson(marketplacePath(context), null);
-    const marketName = marketplace?.name || context.previousBinding?.marketplaceName || 'personal';
+    const marketName = marketplace?.name || recordedMarketplaceName(context) || 'personal';
     const executable = await findExecutable('codex', context.env);
     const actions = [];
     if (executable) {

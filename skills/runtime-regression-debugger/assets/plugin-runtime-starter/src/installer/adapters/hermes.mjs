@@ -1,5 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import crypto from 'node:crypto';
 import { HOST_ADAPTER_API_VERSION } from '../../constants.mjs';
 import { ensureDir, pathExists } from '../../util.mjs';
 import { findExecutable, readJson, writeJsonAtomic } from '../util.mjs';
@@ -14,8 +15,67 @@ function skillTarget(context) {
   return path.join(hermesHome(context), 'skills', 'runtime-regression-debugger');
 }
 
+function skillSource(context) {
+  return path.join(context.runtimeRoot, 'skills', 'runtime-regression-debugger');
+}
+
+async function skillDigest(root) {
+  const stat = await fs.lstat(root);
+  if (!stat.isDirectory() || stat.isSymbolicLink()) {
+    const error = new Error(`Hermes skill projection root must be a real directory: ${root}`);
+    error.code = 'HOST_SKILL_PROJECTION_INVALID';
+    throw error;
+  }
+  const files = [];
+  async function walk(current, rel = '') {
+    const entries = await fs.readdir(current, { withFileTypes: true });
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      if (!rel && entry.name === OWNERSHIP_FILE) continue;
+      const childRel = rel ? path.join(rel, entry.name) : entry.name;
+      const child = path.join(current, entry.name);
+      if (entry.isDirectory()) await walk(child, childRel);
+      else if (entry.isFile()) files.push({ rel: childRel, file: child });
+      else {
+        const error = new Error(`Hermes skill projection contains unsupported filesystem entry: ${childRel}`);
+        error.code = 'HOST_SKILL_PROJECTION_INVALID';
+        throw error;
+      }
+    }
+  }
+  await walk(root);
+  const hash = crypto.createHash('sha256');
+  for (const item of files) {
+    hash.update(item.rel.replaceAll(path.sep, '/'));
+    hash.update('\0');
+    hash.update(await fs.readFile(item.file));
+    hash.update('\0');
+  }
+  return hash.digest('hex');
+}
+
+async function inspectSkillProjection(context, marker) {
+  let sourceDigest = null;
+  let targetDigest = null;
+  let skillProjectionError = null;
+  try {
+    sourceDigest = await skillDigest(skillSource(context));
+  } catch (error) {
+    skillProjectionError = `source:${error.code || 'SKILL_DIGEST_FAILED'}`;
+  }
+  try {
+    targetDigest = await skillDigest(skillTarget(context));
+  } catch (error) {
+    const targetError = `target:${error.code || 'SKILL_DIGEST_FAILED'}`;
+    skillProjectionError = skillProjectionError ? `${skillProjectionError};${targetError}` : targetError;
+  }
+  const skillOwned = marker?.ownedBy === 'veteran-engineer';
+  const skillVersionCurrent = Boolean(skillOwned && marker?.version === context.version);
+  const skillProjectionCurrent = Boolean(skillVersionCurrent && sourceDigest && targetDigest && sourceDigest === targetDigest);
+  return { skillOwned, skillVersionCurrent, skillProjectionCurrent, skillProjectionError };
+}
+
 async function copyOwnedSkill(context) {
-  const source = path.join(context.runtimeRoot, 'skills', 'runtime-regression-debugger');
+  const source = skillSource(context);
   const target = skillTarget(context);
   if (await pathExists(target)) {
     const marker = await readJson(path.join(target, OWNERSHIP_FILE), null);
@@ -78,8 +138,18 @@ export default {
       list = await listHermes(executable, context);
       mcpInstalled = /\bveteran-engineer\b/.test(`${list.stdout}\n${list.stderr}`);
     }
-    const skillInstalled = marker?.ownedBy === 'veteran-engineer';
-    return { installed: Boolean(executable && mcpInstalled && skillInstalled), cliAvailable: Boolean(executable), mcpInstalled, skillInstalled, skillPath: skillTarget(context), hermesHome: hermesHome(context), listExitCode: list?.code ?? null };
+    const projection = await inspectSkillProjection(context, marker);
+    const skillInstalled = projection.skillProjectionCurrent;
+    return {
+      installed: Boolean(executable && mcpInstalled && skillInstalled),
+      cliAvailable: Boolean(executable),
+      mcpInstalled,
+      skillInstalled,
+      ...projection,
+      skillPath: skillTarget(context),
+      hermesHome: hermesHome(context),
+      listExitCode: list?.code ?? null
+    };
   },
   async doctor(context) {
     const status = await this.status(context);
