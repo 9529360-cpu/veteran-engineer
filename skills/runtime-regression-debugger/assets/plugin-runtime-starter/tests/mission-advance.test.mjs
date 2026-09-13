@@ -78,10 +78,30 @@ test('mission advances through execution, proof gates, immutable candidate, fina
     assert.equal((await git(repo, ['rev-parse', 'HEAD'])).stdout.trim(), driftHead, 'refresh must not merge into user branch');
 
     const sourceBranch = (await git(repo, ['branch', '--show-current'])).stdout.trim() || null;
+    const originalEvidenceRecord = app.services.evidenceService.record.bind(app.services.evidenceService);
+    let failMergeProposalEvidenceOnce = true;
+    app.services.evidenceService.record = async (args) => {
+      if (args.type === 'merge-proposal' && failMergeProposalEvidenceOnce) {
+        failMergeProposalEvidenceOnce = false;
+        throw Object.assign(new Error('simulated merge-proposal evidence failure'), { code: 'SIMULATED_EVIDENCE_FAILURE' });
+      }
+      return originalEvidenceRecord(args);
+    };
+    await assert.rejects(
+      app.services.missionAdvanceService.advance({ missionId }),
+      (error) => error.code === 'SIMULATED_EVIDENCE_FAILURE'
+    );
+    app.services.evidenceService.record = originalEvidenceRecord;
+
+    status = await app.services.missionService.status({ missionId });
+    assert.equal(status.mission.status, 'awaiting-operator-merge');
+    assert.equal(status.mergeProposals.length, 1, 'proposal survives evidence-side partial failure');
+    assert.equal(status.mergeProposals[0].evidenceId, null);
+
     step = await app.services.missionAdvanceService.advance({ missionId });
     assert.equal(step.action, 'finalize-proposal');
     assert.equal(step.requiresOperatorAction, true);
-    assert.equal(step.reused, false);
+    assert.equal(step.reused, true, 'retry reuses and repairs the durable proposal');
     const proposal = step.proposal;
     assert.equal(proposal.status, 'proposed');
     assert.equal(proposal.candidateId, refreshedCandidate.id);

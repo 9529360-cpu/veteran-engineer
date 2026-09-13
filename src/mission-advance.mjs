@@ -25,6 +25,23 @@ export class MissionAdvanceService {
     Object.assign(this, { store, projectService, missionService, worktreeManager, workerOrchestrator, validationService, reviewService, candidateService, evidenceService });
   }
 
+  async ensureMergeProposalEvidence({ proposal, project, preflight }) {
+    if (proposal.evidenceId) return proposal;
+    const evidence = await this.evidenceService.record({
+      projectId: project.id,
+      missionId: proposal.missionId,
+      type: 'merge-proposal',
+      summary: proposal,
+      sourceIdentity: { head: preflight.sourceHead, branch: preflight.sourceBranch || null, dirty: false, dirtyPaths: [] }
+    });
+    return this.store.transaction('mission_finalize_evidence_attached', (state) => {
+      const stored = state.runtime.mergeProposals?.[proposal.id];
+      if (!stored) throw Object.assign(new Error(`Unknown merge proposal ${proposal.id}`), { code: 'MERGE_PROPOSAL_NOT_FOUND' });
+      if (!stored.evidenceId) stored.evidenceId = evidence.id;
+      return stored;
+    }, { missionId: proposal.missionId, proposalId: proposal.id, evidenceId: evidence.id });
+  }
+
   async advance({ missionId, runWorkers = false }) {
     const { mission } = await this.missionService.status({ missionId });
     if (mission.status === 'cancelled') throw Object.assign(new Error('Mission is cancelled'), { code: 'MISSION_CANCELLED' });
@@ -141,7 +158,8 @@ export class MissionAdvanceService {
 
       const activeProposal = before.runtime.mergeProposals?.[mission.activeMergeProposalId];
       if (proposalMatches(activeProposal, { missionId, candidate, preflight })) {
-        return { action: 'finalize-proposal', proposal: activeProposal, evidenceId: activeProposal.evidenceId || null, nextPhase: 'finalize', requiresOperatorAction: true, reused: true };
+        const repairedProposal = await this.ensureMergeProposalEvidence({ proposal: activeProposal, project, preflight });
+        return { action: 'finalize-proposal', proposal: repairedProposal, evidenceId: repairedProposal.evidenceId, nextPhase: 'finalize', requiresOperatorAction: true, reused: true };
       }
 
       const proposalId = randomId('merge');
@@ -186,23 +204,7 @@ export class MissionAdvanceService {
         return { proposal, reused: false };
       }, { missionId, candidateId, proposalId, candidateCommitSha: candidate.commitSha, expectedSourceHead: preflight.sourceHead });
 
-      let finalProposal = persisted.proposal;
-      if (!finalProposal.evidenceId) {
-        const evidence = await this.evidenceService.record({
-          projectId: project.id,
-          missionId,
-          type: 'merge-proposal',
-          summary: finalProposal,
-          sourceIdentity: { head: preflight.sourceHead, branch: preflight.sourceBranch || null, dirty: false, dirtyPaths: [] }
-        });
-        const attached = await this.store.transaction('mission_finalize_evidence_attached', (state) => {
-          const stored = state.runtime.mergeProposals?.[finalProposal.id];
-          if (!stored) throw Object.assign(new Error(`Unknown merge proposal ${finalProposal.id}`), { code: 'MERGE_PROPOSAL_NOT_FOUND' });
-          if (!stored.evidenceId) stored.evidenceId = evidence.id;
-          return stored;
-        }, { missionId, proposalId: finalProposal.id, evidenceId: evidence.id });
-        finalProposal = attached;
-      }
+      const finalProposal = await this.ensureMergeProposalEvidence({ proposal: persisted.proposal, project, preflight });
       return { action: 'finalize-proposal', proposal: finalProposal, evidenceId: finalProposal.evidenceId, nextPhase: 'finalize', requiresOperatorAction: true, reused: persisted.reused };
     }
     return { action: 'noop', phase: mission.phase, status: mission.status };
