@@ -5,7 +5,7 @@ import test from 'node:test';
 import { pathToFileURL } from 'node:url';
 import { createVeteranApp } from '../src/app.mjs';
 import { git, runProcess } from '../src/git.mjs';
-import { acquireRemoteRepository, normalizeRemoteRepositoryUrl } from '../src/repository-acquisition.mjs';
+import { acquireRemoteRepository, normalizeRemoteRepositoryUrl, sanitizeStoredRemoteUrl } from '../src/repository-acquisition.mjs';
 import { cleanup, createGitRepo, tempDir } from './helpers.mjs';
 
 async function createBareRemote(sourceRepo, root) {
@@ -151,6 +151,30 @@ test('project state redacts credentials from an existing local origin URL', asyn
     const state = await app.store.read();
     assert.equal(state.projects[project.id].remoteUrl, 'https://example.com/acme/repo.git');
     assert.equal(JSON.stringify(state).includes('secret'), false);
+  } finally {
+    await cleanup(fixture.root);
+  }
+});
+
+test('project state drops opaque local origins instead of persisting embedded secrets', async () => {
+  const fixture = await createGitRepo();
+  const secret = 'supersecret-local-origin-token';
+  const opaqueOrigin = `ext::token:${secret}@example.invalid/repo`;
+  try {
+    assert.equal(sanitizeStoredRemoteUrl(opaqueOrigin), null);
+    assert.equal(sanitizeStoredRemoteUrl(`foo://token:${secret}@example.invalid/repo.git`), null);
+    assert.equal(sanitizeStoredRemoteUrl('git@example.invalid:acme/repo.git'), 'git@example.invalid:acme/repo.git');
+    await git(fixture.repo, ['remote', 'add', 'origin', opaqueOrigin]);
+    const app = await createVeteranApp({ stateRoot: fixture.stateRoot });
+    const project = await app.callTool('project_open', {
+      requestId: 'local-origin-opaque-redaction',
+      repoPath: fixture.repo
+    });
+    assert.equal(project.remoteUrl, null);
+    const state = await app.store.read();
+    assert.equal(state.projects[project.id].remoteUrl, null);
+    assert.equal(JSON.stringify(state).includes(secret), false);
+    assert.equal(JSON.stringify(state).includes('ext::'), false);
   } finally {
     await cleanup(fixture.root);
   }
