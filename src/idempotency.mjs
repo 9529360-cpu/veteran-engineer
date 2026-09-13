@@ -1,6 +1,6 @@
 import { nowIso } from './util.mjs';
 
-export async function beginRequest(store, requestId, operation, fingerprint) {
+export async function beginRequest(store, requestId, operation, fingerprint, admissionId = null) {
   if (!requestId || typeof requestId !== 'string') {
     const error = new Error('requestId is required for mutating operations');
     error.code = 'REQUEST_ID_REQUIRED';
@@ -20,6 +20,7 @@ export async function beginRequest(store, requestId, operation, fingerprint) {
       requestId,
       operation,
       fingerprint,
+      admissionId,
       status: 'started',
       startedAt: nowIso(),
       completedAt: null,
@@ -28,7 +29,7 @@ export async function beginRequest(store, requestId, operation, fingerprint) {
     };
     state.requests[requestId] = record;
     return { replay: false, record };
-  }, { requestId, operation });
+  }, { requestId, operation, admissionId });
 }
 
 export async function completeRequest(store, requestId, result) {
@@ -52,6 +53,21 @@ export async function failRequest(store, requestId, error) {
     request.error = { code: error?.code || 'ERROR', message: error?.message || String(error) };
     return request.error;
   }, { requestId, code: error?.code || 'ERROR' });
+}
+
+export async function markRequestUnknown(store, requestId, cause) {
+  return store.transaction('request_outcome_marked_unknown', (state) => {
+    const request = state.requests[requestId];
+    if (!request) throw new Error(`Unknown requestId: ${requestId}`);
+    if (request.status === 'completed' || request.status === 'failed' || request.status === 'unknown') return request;
+    request.status = 'unknown';
+    request.reconciledAt = nowIso();
+    request.error = {
+      code: cause?.code || 'REQUEST_OUTCOME_UNKNOWN',
+      message: cause?.message || 'Request outcome requires reconciliation'
+    };
+    return request;
+  }, { requestId, causeCode: cause?.code || 'REQUEST_OUTCOME_UNKNOWN' });
 }
 
 export function replayOrThrow(record) {

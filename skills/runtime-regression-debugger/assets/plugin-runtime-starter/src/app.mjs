@@ -16,9 +16,9 @@ import { RuntimeService } from './runtime-service.mjs';
 import { HandoffService } from './handoff-service.mjs';
 import { MissionAdvanceService } from './mission-advance.mjs';
 import { loadOperatorConfig } from './operator-config.mjs';
-import { beginRequest, completeRequest, failRequest, replayOrThrow } from './idempotency.mjs';
+import { beginRequest, completeRequest, failRequest, markRequestUnknown, replayOrThrow } from './idempotency.mjs';
 import { MCP_TRANSPORT_MODES } from './mcp-protocol-capability.mjs';
-import { stableStringify } from './util.mjs';
+import { randomId, stableStringify } from './util.mjs';
 
 const MUTATING_TOOLS = new Set([
   'project_open', 'project_snapshot', 'mission_plan', 'mission_execute', 'mission_advance',
@@ -27,6 +27,32 @@ const MUTATING_TOOLS = new Set([
   'candidate_refresh', 'experience_commit', 'experience_review', 'experience_challenge',
   'experience_compact', 'runtime_cleanup', 'runtime_maintenance', 'handoff_export'
 ]);
+
+function isAmbiguousStateCommit(error) {
+  return error?.code === 'STATE_COMMIT_AUDIT_OUTCOME_UNKNOWN' && error?.stateCommitted === true;
+}
+
+function requestOutcomeUnknown(requestId, cause) {
+  const error = new Error('Mutation may have committed but its durable audit outcome requires reconciliation; the request will not be replayed blindly.');
+  error.code = 'REQUEST_OUTCOME_UNKNOWN';
+  error.details = {
+    requestId,
+    stateCommitId: cause?.details?.stateCommitId || null,
+    causeCode: cause?.code || 'ERROR'
+  };
+  error.cause = cause;
+  return error;
+}
+
+async function tryReconcileStateCommit(store) {
+  if (typeof store.reconcilePendingAudit !== 'function') return false;
+  try {
+    await store.reconcilePendingAudit();
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export async function createVeteranApp({ stateRoot, stateBackend = null, protocolMode = MCP_TRANSPORT_MODES.STANDALONE_FALLBACK, configPath } = {}) {
   if (!stateRoot) throw new Error('stateRoot is required');
@@ -91,13 +117,54 @@ export async function createVeteranApp({ stateRoot, stateBackend = null, protoco
     if (!MUTATING_TOOLS.has(name)) return handler(args || {});
     const { requestId, ...payload } = args || {};
     const fingerprint = stableStringify(payload);
-    const begin = await beginRequest(store, requestId, name, fingerprint);
-    if (begin.replay) return replayOrThrow(begin.record);
+    const admissionId = randomId('requestattempt');
+    let begin;
     try {
-      const result = await handler(payload);
+      begin = await beginRequest(store, requestId, name, fingerprint, admissionId);
+    } catch (error) {
+      if (isAmbiguousStateCommit(error)) {
+        const reconciled = await tryReconcileStateCommit(store);
+        if (!reconciled) throw requestOutcomeUnknown(requestId, error);
+        const state = await store.read();
+        const record = state.requests?.[requestId];
+        if (!record) throw requestOutcomeUnknown(requestId, error);
+        if (record.admissionId === admissionId && record.status === 'started') {
+          begin = { replay: false, record };
+        } else {
+          return replayOrThrow(record);
+        }
+      } else {
+        throw error;
+      }
+    }
+    if (begin.replay) return replayOrThrow(begin.record);
+
+    let result;
+    try {
+      result = await handler(payload);
+    } catch (error) {
+      if (isAmbiguousStateCommit(error)) {
+        await tryReconcileStateCommit(store);
+        await markRequestUnknown(store, requestId, error).catch(() => {});
+        throw requestOutcomeUnknown(requestId, error);
+      }
+      await failRequest(store, requestId, error).catch(() => {});
+      throw error;
+    }
+
+    try {
       await completeRequest(store, requestId, result);
       return result;
     } catch (error) {
+      if (isAmbiguousStateCommit(error)) {
+        const reconciled = await tryReconcileStateCommit(store);
+        if (reconciled) {
+          const state = await store.read();
+          if (state.requests?.[requestId]?.status === 'completed') return result;
+        }
+        await markRequestUnknown(store, requestId, error).catch(() => {});
+        throw requestOutcomeUnknown(requestId, error);
+      }
       await failRequest(store, requestId, error).catch(() => {});
       throw error;
     }
