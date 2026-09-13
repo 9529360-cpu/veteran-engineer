@@ -2,6 +2,12 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { runProcess, git } from './git.mjs';
 import { nowIso, randomId } from './util.mjs';
+import {
+  normalizeProductService,
+  startValidationService,
+  waitForValidationReadiness,
+  stopValidationService
+} from './product-validation-runner.mjs';
 
 function normalizeCapability(raw) {
   if (!raw || typeof raw !== 'object' || !raw.name || !Array.isArray(raw.command) || raw.command.length === 0) return null;
@@ -10,8 +16,37 @@ function normalizeCapability(raw) {
     description: String(raw.description || ''),
     command: raw.command.map(String),
     cwd: raw.cwd ? String(raw.cwd) : '.',
-    timeoutMs: Math.max(1000, Number(raw.timeoutMs || 120_000))
+    timeoutMs: Number.isFinite(Number(raw.timeoutMs ?? 120_000)) ? Math.max(1000, Number(raw.timeoutMs ?? 120_000)) : 120_000,
+    service: normalizeProductService(raw.service)
   };
+}
+
+async function resolveWorktreeCwd(worktree, relativeCwd, label = 'Validation') {
+  const cwd = path.resolve(worktree, relativeCwd);
+  const realCwd = await fs.realpath(cwd).catch(() => cwd);
+  const root = path.resolve(worktree);
+  if (!realCwd.startsWith(`${root}${path.sep}`) && realCwd !== root) {
+    throw Object.assign(new Error(`${label} cwd escapes detached worktree`), { code: 'VALIDATION_CWD_ESCAPE' });
+  }
+  return cwd;
+}
+
+function validationArtifact({ result, serviceRun }) {
+  const sections = [
+    '--- validation stdout ---',
+    result?.stdout || '',
+    '--- validation stderr ---',
+    result?.stderr || ''
+  ];
+  if (serviceRun) {
+    sections.push(
+      '--- service stdout ---',
+      serviceRun.logs.stdout || '',
+      '--- service stderr ---',
+      serviceRun.logs.stderr || ''
+    );
+  }
+  return `${sections.join('\n')}\n`;
 }
 
 export class ValidationService {
@@ -39,7 +74,7 @@ export class ValidationService {
         throw error;
       }
       if (!Array.isArray(rawCommand) || rawCommand.length === 0) throw new Error('rawCommand must be a non-empty argv array');
-      selected = { name: 'raw', description: 'Explicit raw validation', command: rawCommand.map(String), cwd: '.', timeoutMs: 120_000 };
+      selected = { name: 'raw', description: 'Explicit raw validation', command: rawCommand.map(String), cwd: '.', timeoutMs: 120_000, service: null };
     }
     if (!selected) throw Object.assign(new Error(`Unknown validation capability: ${capability}`), { code: 'VALIDATION_CAPABILITY_NOT_FOUND' });
 
@@ -62,27 +97,61 @@ export class ValidationService {
     const validationId = randomId('validation');
     const wt = path.join(this.store.worktreesDir, `validation-${validationId}`);
     await git(project.repoPath, ['worktree', 'add', '--detach', wt, commitSha]);
-    let result;
+    let result = { code: 1, signal: null, stdout: '', stderr: '' };
+    let serviceRun = null;
+    let readiness = null;
+    let cleanup = null;
+    let failureStage = null;
     try {
-      const cwd = path.resolve(wt, selected.cwd);
-      const realCwd = await fs.realpath(cwd).catch(() => cwd);
-      if (!realCwd.startsWith(`${path.resolve(wt)}${path.sep}`) && realCwd !== path.resolve(wt)) {
-        throw Object.assign(new Error('Validation cwd escapes detached worktree'), { code: 'VALIDATION_CWD_ESCAPE' });
+      const cwd = await resolveWorktreeCwd(wt, selected.cwd);
+      if (selected.service) {
+        const serviceCwd = await resolveWorktreeCwd(wt, selected.service.cwd, 'Validation service');
+        serviceRun = startValidationService(selected.service, { cwd: serviceCwd });
+        readiness = await waitForValidationReadiness(serviceRun, selected.service.readiness);
+        if (!readiness.ready) {
+          failureStage = readiness.reason === 'service-exited' ? 'service-startup' : 'readiness';
+          result = {
+            code: 1,
+            signal: null,
+            stdout: '',
+            stderr: readiness.reason === 'service-exited'
+              ? 'Validation service exited before readiness was established.'
+              : `Validation service did not become ready within ${selected.service.readiness.timeoutMs}ms.`
+          };
+        }
       }
-      const [command, ...args] = selected.command;
-      result = await runProcess(command, args, { cwd, timeoutMs: selected.timeoutMs, allowFailure: true });
+      if (!failureStage) {
+        const [command, ...args] = selected.command;
+        result = await runProcess(command, args, { cwd, timeoutMs: selected.timeoutMs, allowFailure: true });
+        if (result.code !== 0) failureStage = 'validation-command';
+      }
     } finally {
+      if (serviceRun) cleanup = await stopValidationService(serviceRun, selected.service.shutdownGraceMs);
       await git(project.repoPath, ['worktree', 'remove', '--force', wt], { allowFailure: true });
       await fs.rm(wt, { recursive: true, force: true });
     }
-    const passed = result.code === 0;
+    const passed = !failureStage && result.code === 0;
+    const serviceSummary = serviceRun ? {
+      configured: true,
+      ready: readiness?.ready === true,
+      readiness: readiness ? {
+        reason: readiness.reason,
+        attempts: readiness.attempts,
+        elapsedMs: readiness.elapsedMs,
+        lastStatus: readiness.lastStatus ?? null,
+        lastError: readiness.lastError ?? null
+      } : null,
+      stdoutTruncated: serviceRun.logs.stdoutTruncated,
+      stderrTruncated: serviceRun.logs.stderrTruncated,
+      cleanup
+    } : null;
     const evidence = await this.evidenceService.record({
       projectId,
       missionId: mission?.id || missionId,
       type: 'validation',
-      summary: { capability: selected.name, passed, exitCode: result.code, commitSha },
+      summary: { capability: selected.name, passed, exitCode: result.code, commitSha, failureStage, service: serviceSummary },
       sourceIdentity: { head: commitSha },
-      artifact: `${result.stdout}\n--- stderr ---\n${result.stderr}`,
+      artifact: validationArtifact({ result, serviceRun }),
       metadata: { candidateId }
     });
     if (missionId) {
@@ -93,8 +162,8 @@ export class ValidationService {
         target.validation.commitSha = commitSha;
         target.updatedAt = nowIso();
         state.runtime.timeline.push({ type: 'validation_completed', missionId, at: nowIso(), passed, evidenceId: evidence.id, commitSha });
-      }, { missionId, passed, capability: selected.name, commitSha });
+      }, { missionId, passed, capability: selected.name, commitSha, failureStage });
     }
-    return { passed, capability: selected.name, commitSha, evidenceId: evidence.id, exitCode: result.code };
+    return { passed, capability: selected.name, commitSha, evidenceId: evidence.id, exitCode: result.code, failureStage, service: serviceSummary };
   }
 }

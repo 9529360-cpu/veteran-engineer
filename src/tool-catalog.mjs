@@ -15,7 +15,7 @@ export const TOOL_DEFINITIONS = Object.freeze([
   ['worker_retry', 'Retry a failed worker task with a new dispatch identity.'],
   ['evidence_query', 'Query bounded evidence records and artifact pointers.'],
   ['validation_capabilities', 'List operator-defined repository validation capabilities.'],
-  ['validation_run', 'Run an allowed validation capability in an isolated detached worktree.'],
+  ['validation_run', 'Run an allowed command or service-backed product validation in an isolated detached worktree.'],
   ['review_run', 'Run deterministic whole-change review against the mission base.'],
   ['semantic_review_run', 'Run the configured independent semantic reviewer provider.'],
   ['remediation_plan', 'Create a bounded remediation plan from review findings.'],
