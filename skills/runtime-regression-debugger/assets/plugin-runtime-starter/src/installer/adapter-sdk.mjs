@@ -63,18 +63,20 @@ export async function loadExternalAdapters(trustedDirs = []) {
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
       if (!entry.isFile() || !entry.name.endsWith('.mjs')) continue;
       const source = path.join(dir, entry.name);
+      let adapter;
       try {
         const module = await import(pathToFileURL(source).href);
-        const adapter = validateHostAdapter(module.default || module.adapter, source);
-        if (path.basename(entry.name, '.mjs') !== adapter.id) {
-          const error = new Error(`External adapter filename must match id: ${entry.name} vs ${adapter.id}`);
-          error.code = 'HOST_ADAPTER_FILENAME_MISMATCH';
-          throw error;
-        }
-        adapters.push(adapter);
+        adapter = validateHostAdapter(module.default || module.adapter, source);
       } catch (error) {
         adapters.push(invalidExternalAdapter(source, error));
+        continue;
       }
+      if (path.basename(entry.name, '.mjs') !== adapter.id) {
+        const error = new Error(`External adapter filename must match id: ${entry.name} vs ${adapter.id}`);
+        error.code = 'HOST_ADAPTER_FILENAME_MISMATCH';
+        throw error;
+      }
+      adapters.push(adapter);
     }
   }
   return adapters;
