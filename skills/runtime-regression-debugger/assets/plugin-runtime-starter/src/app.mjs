@@ -18,7 +18,7 @@ import { MissionAdvanceService } from './mission-advance.mjs';
 import { loadOperatorConfig } from './operator-config.mjs';
 import { beginRequest, completeRequest, failRequest, markRequestUnknown, replayOrThrow } from './idempotency.mjs';
 import { MCP_TRANSPORT_MODES } from './mcp-protocol-capability.mjs';
-import { stableStringify } from './util.mjs';
+import { randomId, stableStringify } from './util.mjs';
 
 const MUTATING_TOOLS = new Set([
   'project_open', 'project_snapshot', 'mission_plan', 'mission_execute', 'mission_advance',
@@ -117,15 +117,25 @@ export async function createVeteranApp({ stateRoot, stateBackend = null, protoco
     if (!MUTATING_TOOLS.has(name)) return handler(args || {});
     const { requestId, ...payload } = args || {};
     const fingerprint = stableStringify(payload);
+    const admissionId = randomId('requestattempt');
     let begin;
     try {
-      begin = await beginRequest(store, requestId, name, fingerprint);
+      begin = await beginRequest(store, requestId, name, fingerprint, admissionId);
     } catch (error) {
       if (isAmbiguousStateCommit(error)) {
-        await tryReconcileStateCommit(store);
-        throw requestOutcomeUnknown(requestId, error);
+        const reconciled = await tryReconcileStateCommit(store);
+        if (!reconciled) throw requestOutcomeUnknown(requestId, error);
+        const state = await store.read();
+        const record = state.requests?.[requestId];
+        if (!record) throw requestOutcomeUnknown(requestId, error);
+        if (record.admissionId === admissionId && record.status === 'started') {
+          begin = { replay: false, record };
+        } else {
+          return replayOrThrow(record);
+        }
+      } else {
+        throw error;
       }
-      throw error;
     }
     if (begin.replay) return replayOrThrow(begin.record);
 
