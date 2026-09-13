@@ -146,14 +146,14 @@ function normalizeCheck(raw, index, secrets) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw codedError(`Observability check ${index + 1} must be an object`, 'OBSERVABILITY_PROVIDER_RESULT_INVALID');
   }
-  const name = typeof raw.name === 'string' ? raw.name.trim() : '';
-  if (!name || name.length > 240 || typeof raw.passed !== 'boolean') {
+  const rawName = typeof raw.name === 'string' ? raw.name.trim() : '';
+  if (!rawName || rawName.length > 240 || typeof raw.passed !== 'boolean') {
     throw codedError(`Observability check ${index + 1} is invalid`, 'OBSERVABILITY_PROVIDER_RESULT_INVALID');
   }
   return {
-    name,
+    name: redactText(rawName, secrets, 240),
     passed: raw.passed,
-    signal: raw.signal === undefined || raw.signal === null ? null : String(raw.signal).slice(0, 80),
+    signal: raw.signal === undefined || raw.signal === null ? null : redactText(raw.signal, secrets, 80),
     observed: normalizeScalar(raw.observed, secrets),
     threshold: normalizeScalar(raw.threshold, secrets),
     detail: raw.detail === undefined || raw.detail === null ? null : redactText(raw.detail, secrets, 1200)
@@ -175,15 +175,16 @@ function normalizeProviderResult(raw, { expectedSourceHead, requireSourceMatch, 
   if (raw.passed && checks.some((item) => !item.passed)) {
     throw codedError('Observability provider cannot report passed=true with failed checks', 'OBSERVABILITY_PROVIDER_RESULT_INVALID');
   }
-  const observedSourceHead = typeof raw.observedSourceHead === 'string' ? raw.observedSourceHead.trim() : '';
+  const rawObservedSourceHead = typeof raw.observedSourceHead === 'string' ? raw.observedSourceHead.trim() : '';
+  const observedSourceHead = rawObservedSourceHead ? redactText(rawObservedSourceHead, secrets, 240) : null;
   if (requireSourceMatch) {
-    if (!observedSourceHead || observedSourceHead !== expectedSourceHead) {
+    if (!rawObservedSourceHead || rawObservedSourceHead !== expectedSourceHead) {
       return {
         contract: OBSERVABILITY_VALIDATION_CONTRACT,
         passed: false,
         failureCode: 'OBSERVABILITY_SOURCE_IDENTITY_MISMATCH',
         summary: 'Observed deployment/source identity does not match the validation source identity.',
-        observedSourceHead: observedSourceHead || null,
+        observedSourceHead,
         checks
       };
     }
@@ -193,7 +194,7 @@ function normalizeProviderResult(raw, { expectedSourceHead, requireSourceMatch, 
     passed: raw.passed,
     failureCode: raw.passed ? null : 'OBSERVABILITY_CHECK_FAILED',
     summary: raw.summary === undefined || raw.summary === null ? '' : redactText(raw.summary, secrets, 2000),
-    observedSourceHead: observedSourceHead || null,
+    observedSourceHead,
     checks
   };
 }
