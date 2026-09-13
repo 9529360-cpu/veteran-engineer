@@ -78,7 +78,7 @@ export function registerStateBackendDurabilityConformance({ name, create, reopen
       const audit = await fixture.backend.verifyAudit();
       assert.equal(audit.ok, false);
       await assert.rejects(
-        fixture.backend.reconcilePendingAudit(),
+        async () => fixture.backend.reconcilePendingAudit(),
         (error) => error.code === 'STATE_AUDIT_INTEGRITY_FAILURE'
       );
     } finally {
