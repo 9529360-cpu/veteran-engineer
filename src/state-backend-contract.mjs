@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 export const STATE_BACKEND_CONTRACT = 'veteran-state-backend-v1';
 
 const REQUIRED_METHODS = ['init', 'read', 'transaction', 'recordTimeline', 'verifyAudit'];
@@ -31,6 +33,9 @@ export function assertStateBackend(backend) {
   for (const key of REQUIRED_PATHS) {
     if (typeof backend[key] !== 'string' || !backend[key]) {
       throw contractError(`State backend is missing required execution-local path ${key}`);
+    }
+    if (!path.isAbsolute(backend[key])) {
+      throw contractError(`State backend execution-local path ${key} must be absolute`, { path: key });
     }
   }
   return backend;
