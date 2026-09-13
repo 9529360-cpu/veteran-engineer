@@ -1,5 +1,24 @@
-import { nowIso } from './util.mjs';
+import { nowIso, randomId } from './util.mjs';
 import { git } from './git.mjs';
+
+function proofFreshForCandidate(mission, candidate) {
+  return ['passed', 'skipped'].includes(mission.validation.status)
+    && mission.review.status === 'passed'
+    && ['passed', 'skipped'].includes(mission.semanticReview.status)
+    && mission.validation.commitSha === candidate.commitSha
+    && mission.review.commitSha === candidate.commitSha
+    && mission.semanticReview.commitSha === candidate.commitSha;
+}
+
+function proposalMatches(proposal, { missionId, candidate, preflight }) {
+  return proposal
+    && proposal.status === 'proposed'
+    && proposal.missionId === missionId
+    && proposal.candidateId === candidate.id
+    && proposal.candidateCommitSha === candidate.commitSha
+    && proposal.expectedSourceHead === preflight.sourceHead
+    && proposal.missionHead === preflight.missionHead;
+}
 
 export class MissionAdvanceService {
   constructor({ store, projectService, missionService, worktreeManager, workerOrchestrator, validationService, reviewService, candidateService, evidenceService }) {
@@ -88,19 +107,103 @@ export class MissionAdvanceService {
           const result = await this.candidateService.createOrRefresh({ missionId, reason: 'source-drift-refresh' });
           return { action: 'candidate-refresh', result, nextPhase: result.requiresRevalidation ? 'validation' : 'candidate' };
         }
-        const proofFresh = ['passed', 'skipped'].includes(mission.validation.status) && mission.review.status === 'passed' && ['passed', 'skipped'].includes(mission.semanticReview.status) && mission.validation.commitSha === candidate.commitSha && mission.review.commitSha === candidate.commitSha && mission.semanticReview.commitSha === candidate.commitSha;
-        if (proofFresh) {
+        if (proofFreshForCandidate(mission, candidate)) {
           await this.store.transaction('mission_candidate_ready', (working) => {
             const target = working.missions[missionId];
+            target.phase = 'finalize';
             target.status = 'candidate-ready';
             target.updatedAt = nowIso();
           }, { missionId, candidateId });
-          return { action: 'candidate-ready', candidate, nextPhase: 'candidate' };
+          return { action: 'candidate-ready', candidate, nextPhase: 'finalize' };
         }
       }
       const result = await this.candidateService.createOrRefresh({ missionId, reason: candidateId ? 'proof-refresh' : 'finalize' });
       if (result.requiresRevalidation) return { action: 'candidate-refresh', result, nextPhase: 'validation' };
       return { action: 'candidate-created', result, nextPhase: 'candidate' };
+    }
+    if (mission.phase === 'finalize') {
+      if (!candidateId) throw Object.assign(new Error('Finalize requires an active immutable candidate'), { code: 'CANDIDATE_REQUIRED' });
+      const before = await this.store.read();
+      const candidate = before.runtime.candidates?.[candidateId];
+      if (!candidate) throw Object.assign(new Error(`Unknown candidate ${candidateId}`), { code: 'CANDIDATE_NOT_FOUND' });
+      const preflight = await this.candidateService.preflight({ missionId });
+      const sourceChanged = preflight.sourceHead !== candidate.sourceHead || preflight.missionHead !== candidate.missionHead;
+      if (sourceChanged) {
+        const result = await this.candidateService.createOrRefresh({ missionId, reason: 'finalize-source-drift' });
+        return { action: 'candidate-refresh', result, nextPhase: result.requiresRevalidation ? 'validation' : 'candidate' };
+      }
+      if (!proofFreshForCandidate(mission, candidate)) {
+        throw Object.assign(new Error('Finalize requires validation and review proof bound to the active candidate'), {
+          code: 'FINALIZE_PROOF_STALE',
+          details: { candidateId, candidateCommitSha: candidate.commitSha }
+        });
+      }
+
+      const activeProposal = before.runtime.mergeProposals?.[mission.activeMergeProposalId];
+      if (proposalMatches(activeProposal, { missionId, candidate, preflight })) {
+        return { action: 'finalize-proposal', proposal: activeProposal, evidenceId: activeProposal.evidenceId || null, nextPhase: 'finalize', requiresOperatorAction: true, reused: true };
+      }
+
+      const proposalId = randomId('merge');
+      const createdAt = nowIso();
+      const proposal = {
+        id: proposalId,
+        projectId: project.id,
+        missionId,
+        candidateId: candidate.id,
+        candidateCommitSha: candidate.commitSha,
+        candidateRef: candidate.ref,
+        expectedSourceHead: preflight.sourceHead,
+        targetBranch: preflight.sourceBranch || null,
+        missionHead: preflight.missionHead,
+        sourceDrift: false,
+        status: 'proposed',
+        automaticMerge: false,
+        automaticPush: false,
+        requiresOperatorAction: true,
+        proof: {
+          validation: { status: mission.validation.status, commitSha: mission.validation.commitSha, evidenceIds: mission.validation.evidenceIds || [] },
+          review: { status: mission.review.status, commitSha: mission.review.commitSha, evidenceIds: mission.review.evidenceIds || [] },
+          semanticReview: { status: mission.semanticReview.status, commitSha: mission.semanticReview.commitSha, evidenceIds: mission.semanticReview.evidenceIds || [] }
+        },
+        evidenceId: null,
+        createdAt
+      };
+
+      const persisted = await this.store.transaction('mission_finalize_proposed', (state) => {
+        state.runtime.mergeProposals ||= {};
+        const target = state.missions[missionId];
+        const current = state.runtime.mergeProposals[target.activeMergeProposalId];
+        if (proposalMatches(current, { missionId, candidate, preflight })) return { proposal: current, reused: true };
+        state.runtime.mergeProposals[proposalId] = proposal;
+        target.mergeProposalIds ||= [];
+        target.mergeProposalIds.push(proposalId);
+        target.activeMergeProposalId = proposalId;
+        target.phase = 'finalize';
+        target.status = 'awaiting-operator-merge';
+        target.updatedAt = nowIso();
+        state.runtime.timeline.push({ type: 'mission_finalize_proposed', missionId, candidateId, proposalId, candidateCommitSha: candidate.commitSha, expectedSourceHead: preflight.sourceHead, at: nowIso() });
+        return { proposal, reused: false };
+      }, { missionId, candidateId, proposalId, candidateCommitSha: candidate.commitSha, expectedSourceHead: preflight.sourceHead });
+
+      let finalProposal = persisted.proposal;
+      if (!finalProposal.evidenceId) {
+        const evidence = await this.evidenceService.record({
+          projectId: project.id,
+          missionId,
+          type: 'merge-proposal',
+          summary: finalProposal,
+          sourceIdentity: { head: preflight.sourceHead, branch: preflight.sourceBranch || null, dirty: false, dirtyPaths: [] }
+        });
+        const attached = await this.store.transaction('mission_finalize_evidence_attached', (state) => {
+          const stored = state.runtime.mergeProposals?.[finalProposal.id];
+          if (!stored) throw Object.assign(new Error(`Unknown merge proposal ${finalProposal.id}`), { code: 'MERGE_PROPOSAL_NOT_FOUND' });
+          if (!stored.evidenceId) stored.evidenceId = evidence.id;
+          return stored;
+        }, { missionId, proposalId: finalProposal.id, evidenceId: evidence.id });
+        finalProposal = attached;
+      }
+      return { action: 'finalize-proposal', proposal: finalProposal, evidenceId: finalProposal.evidenceId, nextPhase: 'finalize', requiresOperatorAction: true, reused: persisted.reused };
     }
     return { action: 'noop', phase: mission.phase, status: mission.status };
   }
