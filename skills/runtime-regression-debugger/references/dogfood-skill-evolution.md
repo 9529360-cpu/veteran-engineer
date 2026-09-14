@@ -36,6 +36,8 @@ A new module must buy a real boundary: materially different authority, failure m
 
 When an evolution increases file count, indirection, or parallel authorities, state why that complexity is cheaper than extending or simplifying the current owner. If that case is weak, converge instead of expanding.
 
+When maintaining this repository's runtime, edit the root runtime as the single handwritten owner and run `node scripts/runtime-starter-mirror.mjs --sync` to derive `assets/plugin-runtime-starter`; do not hand-edit mirrored starter files except while repairing the mirror mechanism itself.
+
 ## Distinguish prohibited self-rewrite from authorized evolution
 
 Runtime feedback must never automatically rewrite or publish the Skill.

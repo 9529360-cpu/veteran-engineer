@@ -8,15 +8,12 @@ import { RUNTIME_VERSION, MODERN_PROTOCOL_VERSION, LEGACY_PROTOCOL_VERSION } fro
 import { TOOL_NAMES } from '../src/tool-catalog.mjs';
 import { inspectMcpSdkIntegrity } from '../src/mcp-sdk-integrity.mjs';
 import { SURFACE_CAPABILITY_CONTRACT, surfaceProfileNames } from '../src/surface-capabilities.mjs';
+import { verifyRuntimeStarterMirror } from './runtime-starter-mirror.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
 const codeRoots = ['src', 'mcp', 'bin', 'scripts', 'tests'];
 const starterRoot = path.join(root, 'skills', 'runtime-regression-debugger', 'assets', 'plugin-runtime-starter');
-const mirrorRoots = [
-  '.codex-plugin', '.mcp.json', 'NEXT_CHAT_HANDOFF.md', 'README.md', 'bin', 'mcp',
-  'package-lock.json', 'package.json', 'scripts', 'src', 'tests'
-];
 
 async function walk(dir) {
   const out = [];
@@ -27,41 +24,6 @@ async function walk(dir) {
     else if (entry.isFile()) out.push(full);
   }
   return out;
-}
-
-async function exists(target) {
-  try { await fs.access(target); return true; } catch { return false; }
-}
-
-async function mirroredFiles(base, rel) {
-  const target = path.join(base, rel);
-  const stat = await fs.stat(target);
-  if (stat.isFile()) return [rel];
-  const files = await walk(target);
-  return files.map((file) => path.relative(base, file)).sort();
-}
-
-async function verifyRuntimeStarterMirror() {
-  if (!(await exists(starterRoot))) return { enforced: false, files: 0 };
-  let files = 0;
-  for (const relRoot of mirrorRoots) {
-    const sourcePath = path.join(root, relRoot);
-    const starterPath = path.join(starterRoot, relRoot);
-    assert.equal(await exists(sourcePath), true, `Runtime mirror source is missing: ${relRoot}`);
-    assert.equal(await exists(starterPath), true, `Runtime starter mirror is missing: ${relRoot}`);
-    const sourceFiles = await mirroredFiles(root, relRoot);
-    const starterFiles = await mirroredFiles(starterRoot, relRoot);
-    assert.deepEqual(starterFiles, sourceFiles, `Runtime starter file set drifted under ${relRoot}`);
-    for (const rel of sourceFiles) {
-      const [source, starter] = await Promise.all([
-        fs.readFile(path.join(root, rel)),
-        fs.readFile(path.join(starterRoot, rel))
-      ]);
-      assert.equal(Buffer.compare(source, starter), 0, `Runtime starter content drifted: ${rel}`);
-      files += 1;
-    }
-  }
-  return { enforced: true, files };
 }
 
 const packageJson = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8'));
@@ -94,7 +56,7 @@ assert.ok(!/\[TODO:[^\]]*\]/.test(skill), 'Skill contains unresolved TODO placeh
 const sdkIntegrity = await inspectMcpSdkIntegrity(root);
 assert.notEqual(sdkIntegrity.status, 'invalid', `MCP SDK integrity failure: ${JSON.stringify(sdkIntegrity)}`);
 assert.equal(sdkIntegrity.lockfile.status, 'verified', 'package-lock.json must verify exact MCP SDK pins and npm integrity');
-const mirror = await verifyRuntimeStarterMirror();
+const mirror = await verifyRuntimeStarterMirror({ root, starterRoot });
 
 let checked = 0;
 for (const relRoot of codeRoots) {
