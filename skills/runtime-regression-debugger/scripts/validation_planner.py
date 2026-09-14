@@ -41,10 +41,28 @@ def main() -> int:
             if item not in required: required.append(item)
         for item in route[1]:
             if item not in adversarial: adversarial.append(item)
+
+    coverage_complete = not unmatched
+    blockers = [
+        {
+            "risk": risk,
+            "reason": "no deterministic baseline route",
+            "required_action": "add repository-specific evidence and adversarial coverage before claiming the validation plan is complete",
+        }
+        for risk in unmatched
+    ]
     payload = {
-        "risks": risks, "required_evidence": required, "adversarial_cases": adversarial,
+        "risks": risks,
+        "required_evidence": required,
+        "adversarial_cases": adversarial,
         "unmatched_risks": unmatched,
-        "note": "Baseline only. Remove irrelevant evidence and add repository-specific proof when the actual owner crosses another boundary.",
+        "coverage_complete": coverage_complete,
+        "status": "ready" if coverage_complete else "needs-repository-specific-proof",
+        "blockers": blockers,
+        "note": (
+            "Baseline only. Remove irrelevant evidence and add repository-specific proof when the actual owner crosses another boundary. "
+            "Unmatched risks are intentionally not guessed into the nearest built-in route."
+        ),
     }
     if a.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
@@ -53,8 +71,9 @@ def main() -> int:
         for item in required: print("required:", item)
         for item in adversarial: print("adversarial:", item)
         if unmatched: print("unmatched:", ", ".join(unmatched))
+        print("status:", payload["status"])
         print("note:", payload["note"])
-    return 0
+    return 0 if coverage_complete else 1
 
 
 if __name__ == "__main__":
