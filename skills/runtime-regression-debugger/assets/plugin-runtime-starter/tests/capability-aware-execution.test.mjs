@@ -89,6 +89,14 @@ test('project-exclusive runtime resource lease blocks a competing mission until 
     assert.equal(blocked.blocked[0].reason, 'runtime-resource-conflict');
     assert.equal(blocked.blocked[0].conflicts[0].missionId, first.mission.id);
     assert.equal(blocked.blocked[0].conflicts[0].taskId, 'A');
+
+    await app.services.workerOrchestrator.commitExternalTaskResult({ missionId: first.mission.id, taskId: 'A' });
+    const completedFirst = await app.services.missionService.status({ missionId: first.mission.id });
+    assert.equal(completedFirst.tasks[0].status, 'done');
+    assert.equal(completedFirst.tasks[0].capabilityLease, null);
+
+    const secondDispatch = await app.services.workerOrchestrator.execute({ missionId: second.mission.id, runWorkers: false });
+    assert.equal(secondDispatch.dispatched.length, 1);
   } finally {
     await cleanup(fixture.root);
   }
