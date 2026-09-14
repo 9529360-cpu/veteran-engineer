@@ -266,3 +266,71 @@ test('different missions cannot own the same persistent loopback endpoint at the
     await cleanup(root);
   }
 });
+
+test('persistent session admission enforces maxSessions atomically across concurrent starts', async () => {
+  const portA = await freePort();
+  let portB = await freePort();
+  while (portB === portA) portB = await freePort();
+  const serverSource = `const http=require('http');const port=Number(process.argv[2]);http.createServer((req,res)=>{res.statusCode=200;res.end('ok');}).listen(port,'127.0.0.1');`;
+  const firstRepo = await createGitRepo({ files: { 'src/a.txt': 'a\n', 'server.cjs': serverSource } });
+  const secondRepo = await createGitRepo({ files: { 'src/b.txt': 'b\n', 'server.cjs': serverSource } });
+  const worktreesDir = path.join(firstRepo.root, 'live-admission-worktrees');
+  await fs.mkdir(worktreesDir, { recursive: true });
+  const manager = new LiveValidationSessionManager({
+    store: { backendKind: 'local-json', worktreesDir },
+    maxSessions: 1
+  });
+  const serviceFor = (port) => ({
+    command: [process.execPath, 'server.cjs', String(port)],
+    cwd: '.',
+    readiness: {
+      url: `http://127.0.0.1:${port}/health`,
+      method: 'GET',
+      statuses: [200],
+      timeoutMs: 5_000,
+      intervalMs: 50,
+      requestTimeoutMs: 1_000
+    },
+    shutdownGraceMs: 500,
+    logLimitBytes: 16 * 1024
+  });
+  const inputs = [
+    {
+      project: { id: 'project-a', repoPath: firstRepo.repo, runtimeFeedbackPolicy: { liveSession: true, liveSessionIdleMs: 60_000 } },
+      mission: { id: 'mission-a' },
+      capability: 'live-product',
+      commitSha: firstRepo.head,
+      service: serviceFor(portA)
+    },
+    {
+      project: { id: 'project-b', repoPath: secondRepo.repo, runtimeFeedbackPolicy: { liveSession: true, liveSessionIdleMs: 60_000 } },
+      mission: { id: 'mission-b' },
+      capability: 'live-product',
+      commitSha: secondRepo.head,
+      service: serviceFor(portB)
+    }
+  ];
+
+  try {
+    const attempts = await Promise.allSettled(inputs.map((input) => manager.acquire(input)));
+    const fulfilled = attempts.filter((entry) => entry.status === 'fulfilled');
+    const rejected = attempts.filter((entry) => entry.status === 'rejected');
+    assert.equal(fulfilled.length, 1, 'only one concurrent session may consume the single slot');
+    assert.equal(rejected.length, 1, 'the second concurrent start must be rejected by admission control');
+    assert.equal(fulfilled[0].value.active, true);
+    assert.equal(rejected[0].reason?.code, 'LIVE_VALIDATION_SESSION_LIMIT_REACHED');
+    assert.equal(rejected[0].reason?.details?.maxSessions, 1);
+    assert.equal(manager.snapshot().length, 1);
+
+    const loserIndex = attempts.findIndex((entry) => entry.status === 'rejected');
+    await manager.releaseAll({ reason: 'admission-handoff-test' });
+    assert.equal(manager.snapshot().length, 0);
+    const retry = await manager.acquire(inputs[loserIndex]);
+    assert.equal(retry.active, true, 'a released slot must be reusable by the previously rejected session');
+    assert.equal(manager.snapshot().length, 1);
+  } finally {
+    await manager.releaseAll({ reason: 'test-cleanup' }).catch(() => {});
+    await cleanup(firstRepo.root);
+    await cleanup(secondRepo.root);
+  }
+});
