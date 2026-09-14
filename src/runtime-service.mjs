@@ -12,6 +12,7 @@ import { resolveSurfaceProfile } from './surface-capabilities.mjs';
 const defaultRuntimeRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const CANDIDATE_REF_PREFIX = 'refs/veteran/candidates/';
 const CANDIDATE_PRODUCING_OPERATIONS = new Set(['candidate_refresh', 'mission_advance']);
+const WORKTREE_MUTATING_OPERATIONS = new Set(['mission_execute', 'validation_run']);
 
 function directRuntimeWorktreeName(worktreesDir, worktreePath) {
   if (!worktreePath) return null;
@@ -21,11 +22,34 @@ function directRuntimeWorktreeName(worktreesDir, worktreePath) {
   return path.basename(resolved);
 }
 
-function candidateMutationBlockers(state) {
+function requestBlockers(state, operations) {
   return Object.values(state.requests || {})
-    .filter((request) => CANDIDATE_PRODUCING_OPERATIONS.has(request.operation) && ['started', 'unknown'].includes(request.status))
+    .filter((request) => operations.has(request.operation) && ['started', 'unknown'].includes(request.status))
     .map((request) => ({ requestId: request.requestId, operation: request.operation, status: request.status }))
     .sort((a, b) => a.requestId.localeCompare(b.requestId));
+}
+
+function candidateMutationBlockers(state) {
+  return requestBlockers(state, CANDIDATE_PRODUCING_OPERATIONS);
+}
+
+function worktreeMutationBlockers(state) {
+  return requestBlockers(state, WORKTREE_MUTATING_OPERATIONS);
+}
+
+function referencedWorktreeNames(state, worktreesDir) {
+  const referenced = new Set();
+  for (const mission of Object.values(state.missions || {})) {
+    if (!['completed', 'cancelled'].includes(mission.status)) referenced.add(`mission-${mission.id}`);
+  }
+  for (const task of Object.values(state.tasks || {})) {
+    if (['done', 'cancelled', 'superseded'].includes(task.status)) continue;
+    for (const dispatch of task.dispatches || []) {
+      const name = directRuntimeWorktreeName(worktreesDir, dispatch.worktreePath);
+      if (name) referenced.add(name);
+    }
+  }
+  return referenced;
 }
 
 function candidateOwner(state, projectId, ref) {
@@ -110,24 +134,51 @@ export class RuntimeService {
 
   async cleanup({ apply = false } = {}) {
     const state = await this.store.read();
-    const referenced = new Set();
-    for (const mission of Object.values(state.missions || {})) {
-      if (!['completed', 'cancelled'].includes(mission.status)) referenced.add(`mission-${mission.id}`);
-    }
-    for (const task of Object.values(state.tasks || {})) {
-      if (['done', 'cancelled', 'superseded'].includes(task.status)) continue;
-      for (const dispatch of task.dispatches || []) {
-        const name = directRuntimeWorktreeName(this.store.worktreesDir, dispatch.worktreePath);
-        if (name) referenced.add(name);
-      }
-    }
+    const referenced = referencedWorktreeNames(state, this.store.worktreesDir);
     const entries = await fs.readdir(this.store.worktreesDir, { withFileTypes: true }).catch(() => []);
     const orphans = entries.filter((entry) => entry.isDirectory() && !referenced.has(entry.name)).map((entry) => entry.name);
     const removed = [];
-    if (apply) {
+    const worktrees = {
+      blockers: worktreeMutationBlockers(state),
+      skipped: [],
+      prunedProjects: [],
+      pruneErrors: []
+    };
+    if (apply && worktrees.blockers.length === 0) {
       for (const name of orphans) {
+        const latest = await this.store.read();
+        const blockers = worktreeMutationBlockers(latest);
+        if (blockers.length) {
+          worktrees.blockers = blockers;
+          break;
+        }
+        if (referencedWorktreeNames(latest, this.store.worktreesDir).has(name)) {
+          worktrees.skipped.push({ name, reason: 'now-referenced' });
+          continue;
+        }
         await fs.rm(path.join(this.store.worktreesDir, name), { recursive: true, force: true });
         removed.push(name);
+      }
+    }
+    if (apply && worktrees.blockers.length === 0) {
+      const latest = await this.store.read();
+      for (const project of Object.values(latest.projects || {})) {
+        const blockers = worktreeMutationBlockers(await this.store.read());
+        if (blockers.length) {
+          worktrees.blockers = blockers;
+          break;
+        }
+        if (!project?.id || !project?.repoPath) continue;
+        const prune = await git(project.repoPath, ['worktree', 'prune', '--expire', 'now'], { allowFailure: true });
+        if (prune.code === 0) {
+          worktrees.prunedProjects.push(project.id);
+        } else {
+          worktrees.pruneErrors.push({
+            projectId: project.id,
+            code: 'WORKTREE_PRUNE_FAILED',
+            message: `${prune.stderr || prune.stdout || 'git worktree prune failed'}`.trim().slice(0, 2000)
+          });
+        }
       }
     }
 
@@ -199,7 +250,7 @@ export class RuntimeService {
       }
     }
 
-    return { apply, orphans, removed, candidateRefs };
+    return { apply, orphans, removed, worktrees, candidateRefs };
   }
 
   async maintenance({ projectId = null } = {}) {
