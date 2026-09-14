@@ -22,9 +22,13 @@ let worker = null;
 let container = null;
 let workerEnv = null;
 let forceTimer = null;
+let reapTimer = null;
 let pendingSignal = null;
 let started = false;
 let settled = false;
+let workerOutcome = null;
+let workerStreamsClosed = false;
+let workerTreeReaped = false;
 
 process.stdout.on('error', () => {});
 process.stderr.on('error', () => {});
@@ -47,6 +51,16 @@ function killProcessTree(pid, signal = 'SIGTERM') {
     } catch {
       return false;
     }
+  }
+}
+
+function processGroupAlive(pid) {
+  if (process.platform === 'win32' || !Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(-pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === 'EPERM';
   }
 }
 
@@ -124,9 +138,51 @@ function finish(outcome, exitCode) {
   settled = true;
   if (forceTimer) clearTimeout(forceTimer);
   forceTimer = null;
+  if (reapTimer) clearTimeout(reapTimer);
+  reapTimer = null;
   cleanupContainer();
   cleanupRuntimeProfile();
   send({ type: 'outcome', ...outcome }, () => process.exit(exitCode));
+}
+
+function maybeFinishWorkerOutcome() {
+  if (settled || !workerOutcome || !workerStreamsClosed || !workerTreeReaped) return;
+  const { code, signal } = workerOutcome;
+  const exitCode = Number.isInteger(code) && code >= 0 ? Math.min(code, 255) : 1;
+  finish({ code, signal, spawnError: null }, exitCode);
+}
+
+function markWorkerTreeReaped() {
+  if (workerTreeReaped) return;
+  workerTreeReaped = true;
+  if (reapTimer) clearTimeout(reapTimer);
+  reapTimer = null;
+  maybeFinishWorkerOutcome();
+}
+
+function reapExitedWorkerGroup(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) {
+    markWorkerTreeReaped();
+    return;
+  }
+
+  const signalled = killProcessTree(pid, 'SIGTERM');
+  if (process.platform === 'win32') {
+    // taskkill /T is the strongest available best effort after the root process exits.
+    markWorkerTreeReaped();
+    return;
+  }
+  if (signalled) scheduleForceKill();
+
+  const poll = () => {
+    if (!processGroupAlive(pid)) {
+      markWorkerTreeReaped();
+      return;
+    }
+    if (!forceTimer) scheduleForceKill();
+    reapTimer = setTimeout(poll, 25);
+  };
+  poll();
 }
 
 function failStart(error) {
@@ -167,9 +223,13 @@ function startWorker(message) {
   worker.stdout?.pipe(process.stdout, { end: false });
   worker.stderr?.pipe(process.stderr, { end: false });
   worker.on('error', failStart);
-  worker.on('close', (code, signal) => {
-    const exitCode = Number.isInteger(code) && code >= 0 ? Math.min(code, 255) : 1;
-    finish({ code, signal, spawnError: null }, exitCode);
+  worker.on('exit', (code, signal) => {
+    workerOutcome = { code, signal };
+    reapExitedWorkerGroup(worker.pid);
+  });
+  worker.on('close', () => {
+    workerStreamsClosed = true;
+    maybeFinishWorkerOutcome();
   });
 
   const stdin = message?.stdin;
