@@ -21,7 +21,7 @@ async function configureWorker(stateRoot, workerScript) {
   }, null, 2)}\n`);
 }
 
-test('capability snapshot follows mission worktree source after task integration while project checkout stays at base', async () => {
+test('capability snapshot follows mission worktree source and invalidates feedback when that source becomes dirty', async () => {
   const fixture = await createGitRepo({ files: { 'src/a.txt': 'before\n' } });
   try {
     const worker = path.join(fixture.root, 'worker.cjs');
@@ -58,6 +58,7 @@ test('capability snapshot follows mission worktree source after task integration
     const missionPath = app.services.worktreeManager.missionPath(status.mission);
     const missionIdentity = await sourceIdentity(missionPath);
     assert.equal(missionIdentity.head, integratedHead);
+    assert.equal(missionIdentity.dirty, false);
 
     await app.store.transaction('test_capability_feedback_source', (state) => {
       state.missions[planned.mission.id].runtimeFeedback = {
@@ -75,10 +76,22 @@ test('capability snapshot follows mission worktree source after task integration
     const snapshot = readiness.capabilitySnapshot;
     assert.equal(snapshot.sourceScope, 'mission-worktree');
     assert.equal(snapshot.sourceIdentity.head, integratedHead);
+    assert.equal(snapshot.sourceIdentity.dirty, false);
     assert.equal(snapshot.projectSourceIdentity.head, fixture.head);
     assert.equal(snapshot.runtimeFeedback.sourceHead, integratedHead);
+    assert.equal(snapshot.runtimeFeedback.sourceDirty, false);
     assert.equal(snapshot.runtimeFeedback.sourceBoundToLiveHead, true);
     assert.equal(snapshot.runtimeFeedback.sourceBoundToCurrentMissionHead, true);
+
+    await fs.writeFile(path.join(missionPath, 'src', 'a.txt'), 'dirty-after-feedback\n');
+    const dirtyReadiness = await app.handlers.mission_readiness({ missionId: planned.mission.id });
+    const dirtySnapshot = dirtyReadiness.capabilitySnapshot;
+    assert.equal(dirtySnapshot.sourceScope, 'mission-worktree');
+    assert.equal(dirtySnapshot.sourceIdentity.head, integratedHead);
+    assert.equal(dirtySnapshot.sourceIdentity.dirty, true);
+    assert.equal(dirtySnapshot.runtimeFeedback.sourceDirty, true);
+    assert.equal(dirtySnapshot.runtimeFeedback.sourceBoundToLiveHead, false);
+    assert.equal(dirtySnapshot.runtimeFeedback.sourceBoundToCurrentMissionHead, false);
   } finally {
     await cleanup(fixture.root);
   }
