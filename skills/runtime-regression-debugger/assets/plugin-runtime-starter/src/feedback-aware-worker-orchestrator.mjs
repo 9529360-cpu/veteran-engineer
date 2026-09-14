@@ -14,7 +14,9 @@ export class FeedbackAwareWorkerOrchestrator {
     const end = after.mission.nextWaveIndex;
     if (before.mission.phase === 'execution' && end > start) {
       for (let waveIndex = start; waveIndex < end; waveIndex += 1) {
-        rounds.push(await this.runtimeFeedbackService.runAfterWaveSafe({ missionId, waveIndex }));
+        const feedback = await this.runtimeFeedbackService.runAfterWaveSafe({ missionId, waveIndex });
+        const repair = await this.runtimeFeedbackService.scheduleRepairWaveSafe({ missionId, feedbackRound: feedback });
+        rounds.push({ ...feedback, repair });
       }
     }
     if (!rounds.length) return result;
