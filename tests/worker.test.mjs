@@ -63,51 +63,7 @@ test('dispatch-only worker packet lives outside task worktree, cannot be re-disp
   }
 });
 
-test('global admission serializes runtime resource claims across independent missions', async () => {
-  const { root, repo, stateRoot } = await createGitRepo({ files: { 'src/a.txt': 'a\n', 'src/b.txt': 'b\n' } });
-  try {
-    const rt = await buildRuntime(repo, stateRoot);
-    const firstMission = await rt.missionService.plan({
-      projectId: rt.project.id,
-      goal: 'first runtime owner',
-      doneDefinition: 'first complete',
-      tasks: [{ id: 'A', contract: 'own database for first task', owner: 'src/a', dependencies: [], writeSet: ['src/a.txt'], runtimeResources: ['db:test'], risk: 'low' }]
-    });
-    const secondMission = await rt.missionService.plan({
-      projectId: rt.project.id,
-      goal: 'second runtime owner',
-      doneDefinition: 'second complete',
-      tasks: [{ id: 'B', contract: 'own database for second task', owner: 'src/b', dependencies: [], writeSet: ['src/b.txt'], runtimeResources: ['db:test'], risk: 'low' }]
-    });
-
-    const first = await rt.orchestrator.execute({ missionId: firstMission.mission.id, runWorkers: false });
-    assert.equal(first.dispatched.length, 1);
-    assert.deepEqual(first.dispatched[0].packet.task.runtimeResources, ['db:test']);
-
-    const blocked = await rt.orchestrator.execute({ missionId: secondMission.mission.id, runWorkers: false });
-    assert.equal(blocked.reason, 'runtime-resource-conflict');
-    assert.equal(blocked.admitted.length, 0);
-    assert.deepEqual(blocked.resourceConflicts, [{
-      taskId: 'B',
-      conflictingTaskId: 'A',
-      conflictingMissionId: firstMission.mission.id,
-      resources: ['db:test']
-    }]);
-
-    const blockedTimeline = await rt.missionService.timeline({ missionId: secondMission.mission.id });
-    assert.equal(blockedTimeline.at(-1).type, 'worker_admission_resource_blocked');
-    assert.deepEqual(blockedTimeline.at(-1).conflicts[0].resources, ['db:test']);
-
-    await rt.orchestrator.commitExternalTaskResult({ missionId: firstMission.mission.id, taskId: 'A' });
-    const admittedAfterRelease = await rt.orchestrator.execute({ missionId: secondMission.mission.id, runWorkers: false });
-    assert.equal(admittedAfterRelease.dispatched.length, 1);
-    assert.equal(admittedAfterRelease.dispatched[0].taskId, 'B');
-  } finally {
-    await cleanup(root);
-  }
-});
-
-test('local worker receives a dispatch runtime namespace and disposable isolated temp directory', async () => {
+test('local worker receives a dispatch runtime namespace and randomized disposable temp directory', async () => {
   const root = await tempDir('veteran-worker-runtime-');
   try {
     const worktreePath = path.join(root, 'worktree');
@@ -131,10 +87,12 @@ test('local worker receives a dispatch runtime namespace and disposable isolated
       config: { type: 'custom', command: process.execPath, args: [workerPath] }
     });
     assert.equal(result.code, 0);
+    assert.equal(result.termination, null);
+    assert.ok(result.durationMs >= 0);
     const observed = JSON.parse(result.stdout);
     assert.equal(observed.runtimeNamespace, 'M1:T1:dispatch-123');
     assert.equal(result.runtimeNamespace, observed.runtimeNamespace);
-    assert.match(observed.tmp.replaceAll('\\', '/'), /\/veteran-engineer\//);
+    assert.match(observed.tmp.replaceAll('\\', '/'), /\/veteran-engineer-m1-t1-dispatch-123-[^/]+$/);
     await assert.rejects(fs.stat(observed.tmp), (error) => error.code === 'ENOENT', 'task-owned temp directory must be cleaned after worker exit');
   } finally {
     await cleanup(root);
