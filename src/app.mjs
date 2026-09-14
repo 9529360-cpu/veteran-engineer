@@ -107,6 +107,15 @@ export async function createVeteranApp({
     return { ...result, runtimeFeedbackSessionsReleased: released.length };
   }
 
+  async function resumeMission(args) {
+    const result = await missionService.resume(args);
+    const capabilityLeaseReconciliation = await workerOrchestrator.reconcileMission({
+      missionId: args.missionId,
+      reason: 'mission-resume'
+    });
+    return { ...result, capabilityLeaseReconciliation };
+  }
+
   async function missionReadiness(args) {
     const [readiness, capabilitySnapshot] = await Promise.all([
       missionService.readiness(args),
@@ -149,7 +158,7 @@ export async function createVeteranApp({
     mission_readiness: (a) => missionReadiness(a),
     mission_timeline: (a) => missionService.timeline(a),
     mission_cancel: (a) => cancelMission(a),
-    mission_resume: (a) => missionService.resume(a),
+    mission_resume: (a) => resumeMission(a),
     task_result_commit: (a) => workerOrchestrator.commitExternalTaskResult(a),
     worker_cancel: (a) => workerOrchestrator.cancelWorker(a),
     worker_resume: (a) => workerOrchestrator.resumeWorker(a),
