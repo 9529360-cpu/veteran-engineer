@@ -4,6 +4,7 @@
 
 - Trust-boundary inventory
 - Authentication and sessions
+- Account and identity lifecycle
 - OAuth/OIDC
 - Authorization
 - Multi-tenant isolation
@@ -47,6 +48,12 @@ For sessions/tokens define:
 - sensitive-operation reauthentication.
 
 Do not put long-lived secrets in localStorage merely because frontend access is convenient.
+
+## Account and identity lifecycle
+
+When the product owns registration, contact verification, passwords/passkeys/MFA, recovery, linked identity providers, credential replacement, session/device security changes, or account closure, read `account-identity-lifecycle-product-engineering.md`.
+
+Keep stable account identity separate from contacts, credentials, recovery proofs, provider links, sessions, and tenant memberships. Treat recovery, factor removal, provider linking/unlinking, and account closure as security-sensitive state transitions whose stale tokens, sessions, and callbacks must converge rather than relying on signature validity alone.
 
 ## OAuth/OIDC
 
