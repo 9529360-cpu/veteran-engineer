@@ -248,6 +248,34 @@ ALIASES = {
     "ai": "ai-product", "ai-feature": "ai-product", "genai": "ai-product", "generative-ai": "ai-product", "large-language-model": "llm", "prompt": "prompt-engineering", "retrieval-augmented-generation": "rag", "retrieval-augmented": "rag", "function-calling": "tool-calling", "agentic": "agent-loop", "agent": "agent-loop", "llm-eval": "model-eval", "ai-eval": "model-eval", "json-output": "structured-output", "schema-output": "structured-output",
 }
 
+ROUTES.update({
+    "billing-entitlements": ["references/subscription-billing-entitlements-product-engineering.md", "references/payments-ledger-integrity.md", "references/security-multitenancy-patterns.md"],
+    "subscription-billing": ["references/subscription-billing-entitlements-product-engineering.md", "references/payments-ledger-integrity.md"],
+    "subscription-lifecycle": ["references/subscription-billing-entitlements-product-engineering.md", "references/temporal-debugging-state-transitions.md"],
+    "plan-change": ["references/subscription-billing-entitlements-product-engineering.md", "references/payments-ledger-integrity.md"],
+    "trial-lifecycle": ["references/subscription-billing-entitlements-product-engineering.md", "references/temporal-debugging-state-transitions.md"],
+    "seat-entitlements": ["references/subscription-billing-entitlements-product-engineering.md", "references/security-multitenancy-patterns.md"],
+    "usage-metering": ["references/subscription-billing-entitlements-product-engineering.md", "references/async-edge-job-patterns.md", "references/data-consistency-migration-patterns.md"],
+    "billing-webhook": ["references/subscription-billing-entitlements-product-engineering.md", "references/payments-ledger-integrity.md", "references/api-backend-patterns.md"],
+    "entitlement-projection": ["references/subscription-billing-entitlements-product-engineering.md", "references/data-consistency-migration-patterns.md", "references/security-multitenancy-patterns.md"],
+    "subscription-grace-period": ["references/subscription-billing-entitlements-product-engineering.md", "references/temporal-debugging-state-transitions.md"],
+    "billing-reconciliation": ["references/subscription-billing-entitlements-product-engineering.md", "references/payments-ledger-integrity.md", "references/data-consistency-migration-patterns.md"],
+    "subscription-cancellation": ["references/subscription-billing-entitlements-product-engineering.md", "references/lifecycle-closure-design-to-deletion.md"],
+    "subscription-proration": ["references/subscription-billing-entitlements-product-engineering.md", "references/payments-ledger-integrity.md"],
+})
+ALIASES.update({
+    "saas-billing": "subscription-billing", "recurring-billing": "subscription-billing",
+    "subscription-plan-change": "plan-change", "upgrade-downgrade": "plan-change",
+    "subscription-trial": "trial-lifecycle", "trial-conversion": "trial-lifecycle",
+    "seat-management": "seat-entitlements", "seat-billing": "seat-entitlements",
+    "metered-billing": "usage-metering", "usage-billing": "usage-metering",
+    "subscription-webhook": "billing-webhook", "stripe-subscription-webhook": "billing-webhook",
+    "entitlement-read-model": "entitlement-projection",
+    "subscription-grace": "subscription-grace-period",
+    "subscription-reconciliation": "billing-reconciliation", "invoice-entitlement-reconciliation": "billing-reconciliation",
+    "subscription-cancel": "subscription-cancellation", "subscription-prorate": "subscription-proration",
+})
+
 def split_csv(value: str) -> list[str]:
     out = []
     for item in value.split(","):
