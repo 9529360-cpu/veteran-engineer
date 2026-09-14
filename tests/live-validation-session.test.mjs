@@ -266,3 +266,77 @@ test('different missions cannot own the same persistent loopback endpoint at the
     await cleanup(root);
   }
 });
+
+test('shared local state leases prevent a second runtime from tearing down an active live preview', async () => {
+  const port = await freePort();
+  const serverSource = `const http=require('http');const port=Number(process.argv[2]);http.createServer((req,res)=>{res.statusCode=200;res.end('ok');}).listen(port,'127.0.0.1');`;
+  const { root, repo, head, stateRoot } = await createGitRepo({ files: { 'src/a.txt': 'a\n', 'server.cjs': serverSource } });
+  let app1 = null;
+  let app2 = null;
+  try {
+    const worker = path.join(root, 'worker.cjs');
+    await fs.writeFile(worker, 'process.exit(0);\n');
+    const capability = {
+      name: 'live-product',
+      service: {
+        command: [process.execPath, 'server.cjs', String(port)],
+        readiness: { url: `http://127.0.0.1:${port}/health`, timeoutMs: 5_000, intervalMs: 50 }
+      },
+      command: [process.execPath, '-e', 'process.exit(0)']
+    };
+    await configure(stateRoot, worker, capability);
+    app1 = await createVeteranApp({ stateRoot });
+    const project = await app1.services.projectService.open({ repoPath: repo });
+    app2 = await createVeteranApp({ stateRoot });
+    const project2 = await app2.services.projectService.get(project.id);
+    const normalized = (await app1.services.validationService.capabilities({ projectId: project.id }))[0];
+
+    const first = await app1.services.liveSessionManager.acquire({
+      project,
+      mission: { id: 'shared-mission' },
+      capability: 'live-product',
+      commitSha: head,
+      service: normalized.service
+    });
+    assert.equal(first.active, true);
+    const firstSnapshot = app1.services.liveSessionManager.snapshot()[0];
+    assert.ok(firstSnapshot);
+    assert.equal(await fs.stat(first.worktreePath).then(() => true, () => false), true);
+
+    await assert.rejects(
+      app2.services.liveSessionManager.acquire({
+        project: project2,
+        mission: { id: 'shared-mission' },
+        capability: 'live-product',
+        commitSha: head,
+        service: normalized.service
+      }),
+      (error) => error.code === 'LIVE_VALIDATION_SESSION_IN_USE'
+        && error.details?.ownerSessionId === first.sessionId
+    );
+    assert.equal(app2.services.liveSessionManager.snapshot().length, 0);
+    assert.equal(first.serviceRun.status().running, true);
+    assert.equal((await app1.services.liveSessionManager.checkSource({ sessionId: first.sessionId, expectedHead: head })).ok, true);
+
+    const preview = await app2.handlers.runtime_cleanup({ apply: false });
+    assert.equal(preview.orphans.includes(firstSnapshot.worktreeName), false, 'another runtime must recognize the durable live-session lease');
+    const applied = await app2.handlers.runtime_cleanup({ apply: true });
+    assert.equal(applied.removed.includes(firstSnapshot.worktreeName), false, 'cleanup must not remove another runtime active live worktree');
+    assert.equal(await fs.stat(first.worktreePath).then(() => true, () => false), true);
+    assert.equal(first.serviceRun.status().running, true);
+
+    await app1.services.liveSessionManager.releaseMission({ missionId: 'shared-mission', reason: 'cross-runtime-handoff' });
+    const second = await app2.services.liveSessionManager.acquire({
+      project: project2,
+      mission: { id: 'shared-mission' },
+      capability: 'live-product',
+      commitSha: head,
+      service: normalized.service
+    });
+    assert.equal(second.active, true, 'lease ownership should transfer after the first runtime releases it');
+  } finally {
+    await app1?.services.liveSessionManager.releaseAll({ reason: 'test-cleanup' }).catch(() => {});
+    await app2?.services.liveSessionManager.releaseAll({ reason: 'test-cleanup' }).catch(() => {});
+    await cleanup(root);
+  }
+});

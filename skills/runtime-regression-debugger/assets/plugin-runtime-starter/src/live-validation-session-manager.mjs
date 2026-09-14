@@ -47,6 +47,64 @@ function worktreeNameFor(key) {
   return `live-validation-${sha256(key).slice(0, 24)}`;
 }
 
+function pidAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === 'EPERM';
+  }
+}
+
+function liveLeaseState(state) {
+  state.runtime ||= {};
+  const current = state.runtime.liveValidationLeases;
+  if (!current || typeof current !== 'object' || Array.isArray(current)) {
+    state.runtime.liveValidationLeases = { sessions: {}, endpoints: {} };
+  }
+  const leases = state.runtime.liveValidationLeases;
+  if (!leases.sessions || typeof leases.sessions !== 'object' || Array.isArray(leases.sessions)) leases.sessions = {};
+  if (!leases.endpoints || typeof leases.endpoints !== 'object' || Array.isArray(leases.endpoints)) leases.endpoints = {};
+  return leases;
+}
+
+function reapDeadLeases(leases) {
+  const reapedWorktreeNames = new Set();
+  for (const [key, lease] of Object.entries(leases.sessions)) {
+    if (pidAlive(lease?.pid)) continue;
+    if (lease?.worktreeName) reapedWorktreeNames.add(lease.worktreeName);
+    if (lease?.endpointLeaseKey && leases.endpoints[lease.endpointLeaseKey]?.sessionId === lease?.sessionId) {
+      delete leases.endpoints[lease.endpointLeaseKey];
+    }
+    delete leases.sessions[key];
+  }
+  for (const [key, lease] of Object.entries(leases.endpoints)) {
+    const owner = lease?.sessionKey ? leases.sessions[lease.sessionKey] : null;
+    if (!owner || owner.sessionId !== lease?.sessionId || !pidAlive(lease?.pid)) delete leases.endpoints[key];
+  }
+  return reapedWorktreeNames;
+}
+
+function leaseDetails(lease) {
+  return {
+    ownerMissionId: lease?.missionId || null,
+    ownerCapability: lease?.capability || null,
+    ownerSessionId: lease?.sessionId || null,
+    ownerPid: Number.isInteger(lease?.pid) ? lease.pid : null,
+    ownerWorktreeName: lease?.worktreeName || null
+  };
+}
+
+async function pathExists(target) {
+  try {
+    await fs.access(target);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function within(root, candidate) {
   const rel = path.relative(path.resolve(root), path.resolve(candidate));
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
@@ -85,8 +143,6 @@ export class LiveValidationSessionManager {
     this.maxSessions = Math.max(1, Math.min(MAX_LIVE_SESSIONS, Number(maxSessions) || MAX_LIVE_SESSIONS));
     this.sessions = new Map();
     this.locks = new Map();
-    this.endpointLeases = new Map();
-    this.endpointLocks = new Map();
   }
 
   support({ project, service }) {
@@ -95,6 +151,9 @@ export class LiveValidationSessionManager {
     if (!service) return { enabled: false, reason: 'validation-service-required', idleMs: policy.idleMs };
     if (this.store.backendKind === 'postgres') {
       return { enabled: false, reason: 'hosted-backend-requires-session-lease', idleMs: policy.idleMs };
+    }
+    if (typeof this.store.transaction !== 'function') {
+      return { enabled: false, reason: 'state-backend-requires-session-lease', idleMs: policy.idleMs };
     }
     return { enabled: true, reason: null, idleMs: policy.idleMs };
   }
@@ -144,12 +203,6 @@ export class LiveValidationSessionManager {
           reused = false;
           restarted = true;
         }
-      }
-
-      if (!session && this.sessions.size >= this.maxSessions) {
-        throw Object.assign(new Error(`Persistent live validation session limit reached (${this.maxSessions})`), {
-          code: 'LIVE_VALIDATION_SESSION_LIMIT_REACHED'
-        });
       }
 
       if (!session) {
@@ -255,79 +308,131 @@ export class LiveValidationSessionManager {
     return released;
   }
 
-  async #startSession({ project, mission, capability, commitSha, service, idleMs }) {
+  async #reserveLease({ project, mission, capability, sessionId, worktreeName, endpoint }) {
     const key = sessionKey(project.id, mission.id, capability);
-    const endpoint = readinessEndpoint(service);
-    return this.#withLock(this.endpointLocks, endpoint.leaseKey, async () => {
-      const existingLease = this.endpointLeases.get(endpoint.leaseKey) || null;
-      if (existingLease && existingLease.key !== key) {
+    return this.store.transaction('live_validation_session_reserved', (state) => {
+      const leases = liveLeaseState(state);
+      const reapedWorktreeNames = reapDeadLeases(leases);
+      const existingSession = leases.sessions[key] || null;
+      if (existingSession) {
+        throw Object.assign(new Error('Persistent live validation session is already owned by another runtime instance'), {
+          code: 'LIVE_VALIDATION_SESSION_IN_USE',
+          details: { ...leaseDetails(existingSession), worktreeName }
+        });
+      }
+      const existingEndpoint = leases.endpoints[endpoint.leaseKey] || null;
+      if (existingEndpoint) {
         throw Object.assign(new Error(`Persistent live validation endpoint ${endpoint.origin} is already owned by another session`), {
           code: 'LIVE_VALIDATION_ENDPOINT_IN_USE',
           details: {
             readinessOrigin: endpoint.origin,
             port: endpoint.port,
-            ownerMissionId: existingLease.missionId,
-            ownerCapability: existingLease.capability,
-            ownerSessionId: existingLease.sessionId || null
+            ...leaseDetails(existingEndpoint)
           }
         });
       }
-
-      const sessionId = randomId('livesession');
+      if (Object.keys(leases.sessions).length >= this.maxSessions) {
+        throw Object.assign(new Error(`Persistent live validation session limit reached (${this.maxSessions})`), {
+          code: 'LIVE_VALIDATION_SESSION_LIMIT_REACHED'
+        });
+      }
       const reservation = {
         key,
-        missionId: mission.id,
-        capability,
         sessionId,
-        readinessOrigin: endpoint.origin
-      };
-      this.endpointLeases.set(endpoint.leaseKey, reservation);
-
-      const worktreeName = worktreeNameFor(key);
-      const worktreePath = path.join(this.store.worktreesDir, worktreeName);
-      let serviceRun = null;
-      try {
-        await git(project.repoPath, ['worktree', 'remove', '--force', worktreePath], { allowFailure: true });
-        await fs.rm(worktreePath, { recursive: true, force: true });
-        await git(project.repoPath, ['worktree', 'prune', '--expire', 'now'], { allowFailure: true });
-        await git(project.repoPath, ['worktree', 'add', '--detach', worktreePath, commitSha]);
-        const serviceCwd = await resolveContainedCwd(worktreePath, service.cwd);
-        serviceRun = startValidationService(service, { cwd: serviceCwd });
-      } catch (error) {
-        if (serviceRun) await stopValidationService(serviceRun, service.shutdownGraceMs).catch(() => {});
-        await git(project.repoPath, ['worktree', 'remove', '--force', worktreePath], { allowFailure: true });
-        await fs.rm(worktreePath, { recursive: true, force: true });
-        await git(project.repoPath, ['worktree', 'prune', '--expire', 'now'], { allowFailure: true });
-        const lease = this.endpointLeases.get(endpoint.leaseKey);
-        if (lease?.sessionId === sessionId) this.endpointLeases.delete(endpoint.leaseKey);
-        throw error;
-      }
-
-      const session = {
-        id: sessionId,
-        key,
+        sessionKey: key,
         projectId: project.id,
         missionId: mission.id,
         capability,
-        projectRepoPath: project.repoPath,
         worktreeName,
-        worktreePath,
-        commitSha,
-        generation: 1,
-        reuseCount: 0,
-        serviceFingerprint: serviceFingerprint(service),
-        service,
-        serviceRun,
         endpointLeaseKey: endpoint.leaseKey,
         endpointOrigin: endpoint.origin,
-        idleMs,
-        idleTimer: null,
-        startedAt: nowIso(),
-        lastUsedAt: nowIso()
+        pid: process.pid,
+        reservedAt: nowIso()
       };
-      this.sessions.set(key, session);
-      return session;
-    });
+      leases.sessions[key] = reservation;
+      leases.endpoints[endpoint.leaseKey] = { ...reservation };
+      return { reservation, reapedWorktreeNames: [...reapedWorktreeNames] };
+    }, { projectId: project.id, missionId: mission.id, capability, sessionId, worktreeName, endpoint: endpoint.leaseKey });
+  }
+
+  async #releaseLease({ key, id, endpointLeaseKey }, reason) {
+    return this.store.transaction('live_validation_session_released', (state) => {
+      const leases = state.runtime?.liveValidationLeases;
+      if (!leases?.sessions || !leases?.endpoints) return false;
+      let released = false;
+      if (leases.sessions[key]?.sessionId === id) {
+        delete leases.sessions[key];
+        released = true;
+      }
+      if (endpointLeaseKey && leases.endpoints[endpointLeaseKey]?.sessionId === id) {
+        delete leases.endpoints[endpointLeaseKey];
+        released = true;
+      }
+      return released;
+    }, { sessionId: id, reason });
+  }
+
+  async #startSession({ project, mission, capability, commitSha, service, idleMs }) {
+    const key = sessionKey(project.id, mission.id, capability);
+    const endpoint = readinessEndpoint(service);
+    const sessionId = randomId('livesession');
+    const worktreeName = worktreeNameFor(key);
+    const worktreePath = path.join(this.store.worktreesDir, worktreeName);
+    const lease = await this.#reserveLease({ project, mission, capability, sessionId, worktreeName, endpoint });
+    const reclaimedWorktree = lease.reapedWorktreeNames.includes(worktreeName);
+    let serviceRun = null;
+    let ownsWorktree = false;
+    try {
+      if (await pathExists(worktreePath)) {
+        if (!reclaimedWorktree) {
+          throw Object.assign(new Error('Persistent live validation worktree is already present without a reclaimable lease'), {
+            code: 'LIVE_VALIDATION_WORKTREE_IN_USE',
+            details: { worktreeName, worktreePath }
+          });
+        }
+        await git(project.repoPath, ['worktree', 'remove', '--force', worktreePath], { allowFailure: true });
+        await fs.rm(worktreePath, { recursive: true, force: true });
+      }
+      await git(project.repoPath, ['worktree', 'prune', '--expire', 'now'], { allowFailure: true });
+      await git(project.repoPath, ['worktree', 'add', '--detach', worktreePath, commitSha]);
+      ownsWorktree = true;
+      const serviceCwd = await resolveContainedCwd(worktreePath, service.cwd);
+      serviceRun = startValidationService(service, { cwd: serviceCwd });
+    } catch (error) {
+      if (serviceRun) await stopValidationService(serviceRun, service.shutdownGraceMs).catch(() => {});
+      if (ownsWorktree) {
+        await git(project.repoPath, ['worktree', 'remove', '--force', worktreePath], { allowFailure: true });
+        await fs.rm(worktreePath, { recursive: true, force: true });
+        await git(project.repoPath, ['worktree', 'prune', '--expire', 'now'], { allowFailure: true });
+      }
+      await this.#releaseLease({ key, id: sessionId, endpointLeaseKey: endpoint.leaseKey }, 'session-start-failed').catch(() => {});
+      throw error;
+    }
+
+    const session = {
+      id: sessionId,
+      key,
+      projectId: project.id,
+      missionId: mission.id,
+      capability,
+      projectRepoPath: project.repoPath,
+      worktreeName,
+      worktreePath,
+      commitSha,
+      generation: 1,
+      reuseCount: 0,
+      serviceFingerprint: serviceFingerprint(service),
+      service,
+      serviceRun,
+      endpointLeaseKey: endpoint.leaseKey,
+      endpointOrigin: endpoint.origin,
+      idleMs,
+      idleTimer: null,
+      startedAt: nowIso(),
+      lastUsedAt: nowIso()
+    };
+    this.sessions.set(key, session);
+    return session;
   }
 
   async #moveSessionSource(session, commitSha) {
@@ -365,11 +470,8 @@ export class LiveValidationSessionManager {
     await fs.rm(session.worktreePath, { recursive: true, force: true });
     await git(session.projectRepoPath, ['worktree', 'prune', '--expire', 'now'], { allowFailure: true });
     this.sessions.delete(session.key);
-    await this.#withLock(this.endpointLocks, session.endpointLeaseKey, async () => {
-      const lease = this.endpointLeases.get(session.endpointLeaseKey);
-      if (lease?.sessionId === session.id) this.endpointLeases.delete(session.endpointLeaseKey);
-    });
-    return { stopped: true, removedWorktree: true, reason, process: cleanup };
+    const leaseReleased = await this.#releaseLease(session, reason);
+    return { stopped: true, removedWorktree: true, reason, process: cleanup, leaseReleased };
   }
 
   async #withLock(lockMap, key, operation) {
