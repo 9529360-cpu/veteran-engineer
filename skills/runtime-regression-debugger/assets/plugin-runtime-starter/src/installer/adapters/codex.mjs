@@ -2,7 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { HOST_ADAPTER_API_VERSION } from '../../constants.mjs';
 import { ensureDir, pathExists } from '../../util.mjs';
-import { backupFile, findExecutable, readJson, writeJsonAtomic } from '../util.mjs';
+import { backupFile, findExecutable, readJson, stableObjectHash, writeJsonAtomic } from '../util.mjs';
 
 const PLUGIN_NAME = 'veteran-engineer';
 
@@ -12,6 +12,27 @@ function marketplacePath(context) {
 
 function expectedRuntimeRoot(context) {
   return path.join(context.home, 'plugins', PLUGIN_NAME);
+}
+
+function expectedMarketplaceEntry() {
+  return {
+    name: PLUGIN_NAME,
+    source: { source: 'local', path: `./plugins/${PLUGIN_NAME}` },
+    policy: { installation: 'AVAILABLE', authentication: 'ON_INSTALL' },
+    category: 'Developer Tools'
+  };
+}
+
+function recordedBinding(context) {
+  const previous = context.previousBinding;
+  return previous?.binding && typeof previous.binding === 'object' ? previous.binding : previous;
+}
+
+function marketplaceEntryDriftError(file) {
+  const error = new Error(`Codex marketplace entry drift must be resolved before repair: ${file}`);
+  error.code = 'HOST_BINDING_DRIFT';
+  error.details = { marketplacePath: file, plugin: PLUGIN_NAME };
+  return error;
 }
 
 async function requireCodex(context) {
@@ -42,26 +63,30 @@ async function ensureMarketplaceEntry(context) {
   const original = await readJson(file, null);
   const marketplace = normalizeMarketplace(original);
   const index = marketplace.plugins.findIndex((entry) => entry?.name === PLUGIN_NAME);
-  const nextEntry = {
-    name: PLUGIN_NAME,
-    source: { source: 'local', path: `./plugins/${PLUGIN_NAME}` },
-    policy: { installation: 'AVAILABLE', authentication: 'ON_INSTALL' },
-    category: 'Developer Tools'
-  };
+  const nextEntry = expectedMarketplaceEntry();
   if (index >= 0) {
     const existing = marketplace.plugins[index];
     const ownedPath = existing?.source?.source === 'local' && existing?.source?.path === `./plugins/${PLUGIN_NAME}`;
-    if (!ownedPath && !context.previousBinding) {
+    const previous = recordedBinding(context);
+    if (!ownedPath && !previous) {
       const error = new Error('Codex marketplace already contains veteran-engineer from another source');
       error.code = 'HOST_BINDING_CONFLICT';
       throw error;
+    }
+    if (previous) {
+      const currentDigest = stableObjectHash(existing);
+      const recordedDigest = typeof previous.marketplaceEntryDigest === 'string' ? previous.marketplaceEntryDigest : null;
+      const owned = recordedDigest
+        ? currentDigest === recordedDigest
+        : currentDigest === stableObjectHash(nextEntry);
+      if (!owned) throw marketplaceEntryDriftError(file);
     }
     marketplace.plugins[index] = nextEntry;
   } else marketplace.plugins.push(nextEntry);
   await ensureDir(path.dirname(file));
   const backup = original ? await backupFile(file) : null;
   await writeJsonAtomic(file, marketplace);
-  return { file, name: marketplace.name, backup };
+  return { file, name: marketplace.name, backup, entryDigest: stableObjectHash(nextEntry) };
 }
 
 async function removeMarketplaceEntry(context) {
@@ -92,8 +117,7 @@ function listContainsPlugin(stdout, marketplaceName) {
 }
 
 function recordedMarketplaceName(context) {
-  const previous = context.previousBinding;
-  const binding = previous?.binding && typeof previous.binding === 'object' ? previous.binding : previous;
+  const binding = recordedBinding(context);
   if (typeof binding?.marketplaceName === 'string' && binding.marketplaceName.length > 0) return binding.marketplaceName;
   if (typeof binding?.selector === 'string') {
     const prefix = `${PLUGIN_NAME}@`;
@@ -113,13 +137,27 @@ export default {
     const marketplace = await ensureMarketplaceEntry(context);
     const selector = `${PLUGIN_NAME}@${marketplace.name}`;
     const result = await context.exec(executable, ['plugin', 'add', selector, '--json'], { env: context.env, timeoutMs: 45_000 });
-    return { installed: true, cli: executable, selector, marketplaceName: marketplace.name, marketplacePath: marketplace.file, backup: marketplace.backup, result: result.stdout.trim() };
+    return {
+      installed: true,
+      cli: executable,
+      selector,
+      marketplaceName: marketplace.name,
+      marketplacePath: marketplace.file,
+      marketplaceEntryDigest: marketplace.entryDigest,
+      backup: marketplace.backup,
+      result: result.stdout.trim()
+    };
   },
   async status(context) {
     const executable = await findExecutable('codex', context.env);
     const marketplace = await readJson(marketplacePath(context), null);
     const entry = marketplace?.plugins?.find?.((item) => item?.name === PLUGIN_NAME);
     const marketplaceOwned = entry?.source?.source === 'local' && entry?.source?.path === `./plugins/${PLUGIN_NAME}`;
+    const entryDigest = entry && typeof entry === 'object' && !Array.isArray(entry) ? stableObjectHash(entry) : null;
+    const expectedEntryDigest = stableObjectHash(expectedMarketplaceEntry());
+    const marketplaceEntryCurrent = Boolean(entryDigest && entryDigest === expectedEntryDigest);
+    const recordedDigest = recordedBinding(context)?.marketplaceEntryDigest || null;
+    const marketplaceEntryDigestCurrent = recordedDigest ? entryDigest === recordedDigest : null;
     let cliInstalled = false;
     let listExitCode = null;
     if (executable) {
@@ -129,13 +167,25 @@ export default {
     }
     const manifestPresent = await pathExists(path.join(context.runtimeRoot, '.codex-plugin', 'plugin.json'));
     const mcpPresent = await pathExists(path.join(context.runtimeRoot, '.mcp.json'));
-    return { installed: Boolean(executable && marketplaceOwned && cliInstalled && manifestPresent && mcpPresent), cliAvailable: Boolean(executable), marketplaceOwned, cliInstalled, manifestPresent, mcpPresent, marketplacePath: marketplacePath(context), marketplaceName: marketplace?.name || null, listExitCode };
+    return {
+      installed: Boolean(executable && marketplaceOwned && marketplaceEntryCurrent && cliInstalled && manifestPresent && mcpPresent),
+      cliAvailable: Boolean(executable),
+      marketplaceOwned,
+      marketplaceEntryCurrent,
+      marketplaceEntryDigestCurrent,
+      cliInstalled,
+      manifestPresent,
+      mcpPresent,
+      marketplacePath: marketplacePath(context),
+      marketplaceName: marketplace?.name || null,
+      listExitCode
+    };
   },
   async doctor(context) {
     const status = await this.status(context);
     const checks = [
       { name: 'codex-cli', ok: status.cliAvailable },
-      { name: 'codex-marketplace-entry', ok: status.marketplaceOwned },
+      { name: 'codex-marketplace-entry', ok: status.marketplaceOwned && status.marketplaceEntryCurrent },
       { name: 'codex-plugin-installed', ok: status.cliInstalled },
       { name: 'codex-plugin-manifest', ok: status.manifestPresent },
       { name: 'codex-mcp-manifest', ok: status.mcpPresent }
