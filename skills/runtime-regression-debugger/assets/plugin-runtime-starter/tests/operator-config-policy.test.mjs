@@ -50,6 +50,10 @@ test('operator policy rejects ambiguous safety-sensitive scalar types', () => {
     'projects./repo.validationCapabilities[0].name'
   );
   rejectsConfig(
+    { defaults: { validationCapabilities: [{ name: 'lint', command: ['node'] }, { name: ' lint ', command: ['other'] }] } },
+    'defaults.validationCapabilities[1].name'
+  );
+  rejectsConfig(
     { projects: { '/repo': { workerPolicy: { allowUnconfinedCustomWorkers: 'false' } } } },
     'projects./repo.workerPolicy.allowUnconfinedCustomWorkers'
   );
