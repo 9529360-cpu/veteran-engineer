@@ -10,13 +10,34 @@ function boundedText(value, limit = 1000) {
   return String(value).slice(0, limit);
 }
 
+function compactSessionObservation(session) {
+  if (!session) return null;
+  return {
+    mode: boundedText(session.mode, 80),
+    active: typeof session.active === 'boolean' ? session.active : null,
+    reused: typeof session.reused === 'boolean' ? session.reused : null,
+    restarted: typeof session.restarted === 'boolean' ? session.restarted : null,
+    restartReason: boundedText(session.restartReason, 240),
+    sourceChanged: typeof session.sourceChanged === 'boolean' ? session.sourceChanged : null,
+    generation: Number.isInteger(session.generation) ? session.generation : null,
+    released: typeof session.released === 'boolean' ? session.released : null,
+    releaseReason: boundedText(session.releaseReason, 240),
+    reason: boundedText(session.reason, 240),
+    sourceCheck: session.sourceCheck ? {
+      ok: session.sourceCheck.ok === true,
+      reason: boundedText(session.sourceCheck.reason, 240)
+    } : null
+  };
+}
+
 function compactServiceObservation(service) {
   if (!service?.configured) return null;
   return {
     ready: service.ready === true,
     reason: service.readiness?.reason || null,
     lastStatus: service.readiness?.lastStatus ?? null,
-    lastError: boundedText(service.readiness?.lastError, 500)
+    lastError: boundedText(service.readiness?.lastError, 500),
+    session: compactSessionObservation(service.session)
   };
 }
 
