@@ -22,11 +22,12 @@ The pinned base dependency graph is:
 - `@modelcontextprotocol/core@2.0.0`
 - `zod@4.2.0`
 
-Current mainline validation after the PostgreSQL hosted-state milestone proves:
+Current mainline validation at the #333 execution-blocker checkpoint proves:
 
-1. `npm run check`: **73 syntax files**, exact **34-tool** surface, protocol constants, pinned SDK graph/lock integrity, runtime-starter mirror parity across **79 mirrored files**, and **82/82 Node tests PASS**;
+1. `npm run check`: **225 syntax files**, exact **34-tool** surface, protocol constants, pinned SDK graph/lock integrity, runtime-starter mirror parity across **231 mirrored files**, and **421/421 Node tests PASS**;
 2. a real Docker engine-backed confined `WorkerAdapter` smoke;
-3. a real PostgreSQL engine-backed state-backend integration gate, followed by the real modern MCP handshake while PostgreSQL is the active state backend.
+3. a real PostgreSQL engine-backed state-backend contract/durability integration gate, followed by the real modern MCP handshake while PostgreSQL is the active state backend;
+4. profile-aware Desktop/Codex/Web plugin artifact export with reproducibility and package-boundary checks.
 
 The bundled recovery seed under `skills/runtime-regression-debugger/assets/plugin-runtime-starter/` is part of the product contract. The main validation gate now compares the mirrored runtime file set and file contents against the repository runtime so root/starter drift fails CI instead of becoming a future recovery surprise.
 
@@ -173,16 +174,18 @@ Fallback results are never counted as modern-protocol proof.
 
 ## Convergence status
 
-The current architecture has been reviewed across the earlier Mission finalize, worker sandbox, real-engine worker, state-backend, transactional CAS, commit/audit reconciliation, durable-outcome capability, and hosted PostgreSQL milestones.
+The current architecture has been reviewed across Mission finalize, worker isolation/process ownership, adaptive Mission execution, provider boundaries, interruption/restart reconciliation, durable state, remote onboarding, cross-host packaging, and real Docker/PostgreSQL execution boundaries.
 
-The convergence pass found and closed concrete issues rather than merely re-reading documentation:
+The convergence pass has closed concrete authority and lifecycle defects rather than expanding the public surface:
 
-- an earlier experimental PostgreSQL lockfile was not accepted because it broke the existing official MCP SDK integrity gate;
-- the first PostgreSQL audit query sorted a text alias and would order sequence `10` before `2`; real concurrency tests exposed it and the query now orders by the numeric database column;
-- root/runtime-starter synchronization is now executable CI policy instead of a documentation promise;
+- root/runtime-starter synchronization is executable CI policy, not a documentation promise;
 - remote project onboarding no longer requires a manual local clone, while managed checkout refresh remains credential-safe and fast-forward-only;
-- hosted PostgreSQL now has cross-instance concurrency evidence, not only same-process/same-pool evidence;
-- README and handoff authority are refreshed to the actual mainline checkpoint.
+- hosted PostgreSQL has cross-instance concurrency and durable-outcome evidence, not only same-process/same-pool coverage;
+- adaptive Mission strategy now preserves explicit risk intent through planning and execution-capacity policy without growing the 34-tool surface;
+- planner/reviewer provider configuration fails fast and provider evidence redacts allowlisted secret values before durable persistence;
+- interruption recovery preserves unresolved task authority across repeated resume and partial retry;
+- Mission status/readiness cannot outrun authoritative execution task state: failed/cancelled/interrupted work stays blocked, while admitted/dispatched/executing/cancelling work keeps next-transition readiness false;
+- current capacity/lease and multi-Mission contention behavior remains unchanged where existing reservation/reconciliation tests already prove the contract.
 
 No convergence review found a reason to weaken the 34-tool compatibility surface, change state schema 3, relax fail-closed behavior, or move merge/push/deploy authority into the runtime.
 
