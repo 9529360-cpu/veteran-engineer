@@ -153,6 +153,8 @@ For a new reusable component define, when material:
 
 Avoid creating a generic component abstraction from a single accidental use case. Avoid encoding product policy into purely visual primitives.
 
+When the issue is product-wide drift across semantic tokens, shared primitives, variants, states, themes/density, duplicate components, or legacy UI islands, read `design-system-consistency-product-engineering.md`. Fix the canonical shared owner when evidence shows a shared cause; keep genuinely product-specific exceptions in owned wrappers instead of forcing uniformity.
+
 ## Design-to-code execution
 
 When implementation is requested, do not stop at mockups, prose, or a static image.
