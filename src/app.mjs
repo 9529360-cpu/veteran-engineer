@@ -10,7 +10,9 @@ import { EvidenceService } from './evidence-service.mjs';
 import { WorktreeManager } from './worktree-manager.mjs';
 import { WorkerAdapter } from './worker-adapter.mjs';
 import { WorkerOrchestrator } from './worker-orchestrator.mjs';
+import { FeedbackAwareWorkerOrchestrator } from './feedback-aware-worker-orchestrator.mjs';
 import { ValidationService } from './validation-service.mjs';
+import { RuntimeFeedbackService } from './runtime-feedback-service.mjs';
 import { ReviewService } from './review-service.mjs';
 import { CandidateService } from './candidate-service.mjs';
 import { RuntimeService } from './runtime-service.mjs';
@@ -85,8 +87,10 @@ export async function createVeteranApp({
   const missionService = new MissionService({ store, projectService, experienceService, evidenceService });
   const worktreeManager = new WorktreeManager({ store });
   const workerAdapter = new WorkerAdapter();
-  const workerOrchestrator = new WorkerOrchestrator({ store, projectService, missionService, worktreeManager, workerAdapter, evidenceService, experienceService });
+  const coreWorkerOrchestrator = new WorkerOrchestrator({ store, projectService, missionService, worktreeManager, workerAdapter, evidenceService, experienceService });
   const validationService = new ValidationService({ store, projectService, missionService, worktreeManager, evidenceService });
+  const runtimeFeedbackService = new RuntimeFeedbackService({ store, projectService, missionService, validationService, evidenceService });
+  const workerOrchestrator = new FeedbackAwareWorkerOrchestrator({ delegate: coreWorkerOrchestrator, missionService, runtimeFeedbackService });
   const reviewService = new ReviewService({ store, projectService, missionService, worktreeManager, evidenceService, experienceService });
   const candidateService = new CandidateService({ store, projectService, missionService, worktreeManager, evidenceService });
   const runtimeService = new RuntimeService({ store, experienceService, protocolMode, surfaceProfile: resolvedSurfaceProfile });
@@ -192,7 +196,7 @@ export async function createVeteranApp({
 
   return {
     store,
-    services: { projectService, missionService, evidenceService, experienceService, worktreeManager, workerAdapter, workerOrchestrator, validationService, reviewService, candidateService, runtimeService, handoffService, missionAdvanceService },
+    services: { projectService, missionService, evidenceService, experienceService, worktreeManager, workerAdapter, coreWorkerOrchestrator, workerOrchestrator, validationService, runtimeFeedbackService, reviewService, candidateService, runtimeService, handoffService, missionAdvanceService },
     handlers,
     callTool,
     operatorConfigPath,

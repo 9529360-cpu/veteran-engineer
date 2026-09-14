@@ -13,6 +13,8 @@ import { normalizeBrowserValidation, runBrowserValidation } from './browser-vali
 import { CredentialBroker } from './credential-broker.mjs';
 import { normalizeObservabilityValidation, runObservabilityValidation } from './observability-validation-provider.mjs';
 
+const VALIDATION_PURPOSES = new Set(['final-validation', 'runtime-feedback']);
+
 function normalizeCapability(raw) {
   if (!raw || typeof raw !== 'object' || !raw.name) return null;
   const browser = normalizeBrowserValidation(raw.browser);
@@ -83,7 +85,26 @@ export class ValidationService {
     return (project.validationCapabilities || []).map(normalizeCapability).filter(Boolean);
   }
 
-  async run({ projectId, missionId = null, candidateId = null, capability, rawCommand = null, confirmRawValidation = false }) {
+  async run({
+    projectId,
+    missionId = null,
+    candidateId = null,
+    capability,
+    rawCommand = null,
+    confirmRawValidation = false,
+    purpose = 'final-validation',
+    targetCommitSha = null
+  }) {
+    if (!VALIDATION_PURPOSES.has(purpose)) {
+      throw Object.assign(new Error(`Unknown validation purpose: ${purpose}`), { code: 'VALIDATION_PURPOSE_INVALID' });
+    }
+    if (purpose === 'runtime-feedback' && (!missionId || candidateId || rawCommand)) {
+      throw Object.assign(new Error('Runtime feedback requires a mission capability and does not accept candidate or raw-command overrides'), { code: 'RUNTIME_FEEDBACK_SCOPE_INVALID' });
+    }
+    if (purpose !== 'runtime-feedback' && targetCommitSha) {
+      throw Object.assign(new Error('targetCommitSha is reserved for runtime feedback'), { code: 'VALIDATION_TARGET_OVERRIDE_BLOCKED' });
+    }
+
     const project = await this.projectService.get(projectId);
     const caps = await this.capabilities({ projectId });
     let selected = caps.find((item) => item.name === capability) || null;
@@ -101,7 +122,23 @@ export class ValidationService {
     let commitSha;
     let mission = null;
     let validationMissionId = null;
-    if (candidateId) {
+    if (purpose === 'runtime-feedback') {
+      const status = await this.missionService.status({ missionId });
+      mission = status.mission;
+      if (mission.projectId !== projectId) {
+        throw Object.assign(new Error(`Unknown mission: ${missionId}`), { code: 'MISSION_NOT_FOUND' });
+      }
+      const missionWt = await this.worktreeManager.ensureMissionWorktree(project, mission);
+      const missionHead = (await git(missionWt.path, ['rev-parse', 'HEAD'])).stdout.trim();
+      const allowedCommits = new Set([missionHead, ...status.tasks.map((task) => task.integrationSha).filter(Boolean)]);
+      commitSha = targetCommitSha ? String(targetCommitSha).trim() : missionHead;
+      if (!allowedCommits.has(commitSha)) {
+        throw Object.assign(new Error('Runtime feedback target must be an integrated mission source identity'), {
+          code: 'RUNTIME_FEEDBACK_TARGET_INVALID',
+          details: { targetCommitSha: commitSha, missionHead }
+        });
+      }
+    } else if (candidateId) {
       const state = await this.store.read();
       const candidate = state.runtime.candidates?.[candidateId];
       const candidateMission = candidate ? state.missions[candidate.missionId] : null;
@@ -257,12 +294,12 @@ export class ValidationService {
     const evidence = await this.evidenceService.record({
       projectId,
       missionId: mission?.id || null,
-      type: 'validation',
-      summary: { capability: selected.name, passed, exitCode: result.code, commitSha, failureStage, service: serviceSummary, browser: browserSummary, observability: observabilitySummary, artifacts: artifactSummary },
+      type: purpose === 'runtime-feedback' ? 'runtime-feedback-observation' : 'validation',
+      summary: { purpose, capability: selected.name, passed, exitCode: result.code, commitSha, failureStage, service: serviceSummary, browser: browserSummary, observability: observabilitySummary, artifacts: artifactSummary },
       sourceIdentity: { head: commitSha },
       artifact: validationArtifact({ result, serviceRun }),
       attachments: artifactCollection.attachments,
-      metadata: { candidateId }
+      metadata: { candidateId, purpose }
     });
     if (validationMissionId) {
       await this.store.transaction('mission_validation_recorded', (state) => {
@@ -274,6 +311,6 @@ export class ValidationService {
         state.runtime.timeline.push({ type: 'validation_completed', missionId: validationMissionId, at: nowIso(), passed, evidenceId: evidence.id, commitSha });
       }, { missionId: validationMissionId, passed, capability: selected.name, commitSha, failureStage });
     }
-    return { passed, capability: selected.name, commitSha, evidenceId: evidence.id, exitCode: result.code, failureStage, service: serviceSummary, browser: browserSummary, observability: observabilitySummary, artifacts: artifactSummary };
+    return { purpose, passed, capability: selected.name, commitSha, evidenceId: evidence.id, exitCode: result.code, failureStage, service: serviceSummary, browser: browserSummary, observability: observabilitySummary, artifacts: artifactSummary };
   }
 }
