@@ -15,6 +15,7 @@ Use this for UI/UX design and frontend implementation. Treat interface design as
 - Design-to-code execution
 - Visual and browser validation
 - State classes and owners
+- Forms and data entry
 - Effects and lifecycle
 - Async freshness
 - Optimistic UI
@@ -206,6 +207,32 @@ Typical classes:
 - derived state: values computable from authoritative state.
 
 Do not copy server state into a second client store without a reconciliation contract. Do not persist derived state merely to avoid recomputation unless performance evidence justifies it.
+
+## Forms and data entry
+
+Treat meaningful forms, settings editors, wizards, and autosave surfaces as product state machines rather than collections of inputs.
+
+Keep editable draft, authoritative validation, and durably persisted state distinct. A useful contract is:
+
+`editing representation -> parse/normalize -> client guidance -> authorized server/domain validation and mutation -> persisted state -> visible completion or preserved recovery state`
+
+Editing text may be temporarily incomplete or non-canonical. Do not normalize every keystroke when doing so moves the caret, breaks IME composition, or destroys a value the user is still forming. Client validation is guidance; permissions, uniqueness, quotas, cross-record invariants, and current product policy remain server/domain authority. Bind async validation to the subject plus candidate/draft generation so a stale response cannot overwrite newer input.
+
+Define dirty state relative to a stable baseline, not merely component activity. Defaults hydrating or formatting changing should not create false unsaved-change warnings. Advance the baseline only when the persistence contract proves the save outcome. If drafts survive navigation, reload, restart, or devices, define their identity, storage owner, privacy/retention boundary, schema version, conflict policy, and cleanup rather than silently upgrading ephemeral input into durable data.
+
+Autosave is a distributed write flow. Debounce controls request frequency; it does not establish write ordering or durability. Use stable object/draft identity and a generation or version where stale saves can complete late; make retries/idempotency explicit when effects are not naturally idempotent; never let save N visually confirm or overwrite draft N+1. After timeout-after-commit, reconcile authoritative state before retrying or clearing dirty state.
+
+Disabling a submit button can reduce accidental double clicks. It does not make a non-idempotent server mutation safe. Model duplicate submit, accepted-versus-durable completion, cancellation, retry, and unknown outcome at the mutation owner. After an ambiguous timeout, reconcile before blindly repeating an irreversible action.
+
+Conditional fields need data semantics: decide whether hidden values remain in draft, are cleared, or are excluded from submission. Disabled, read-only, or hidden presentation is never an authorization boundary; the trusted server still validates and authorizes client-controlled values. Use stable semantic identity for repeated rows when add/remove/reorder can overlap validation or persistence.
+
+When another actor or device can change the same object, choose an explicit conflict policy such as optimistic version check, merge/review, or a documented last-write-wins rule. Do not silently overwrite newer authoritative data because a local draft still passes client validation.
+
+Locale, IME composition, autofill, password managers, pasted content, and mobile keyboard behavior are correctness inputs when relevant. Keep display formatting separate from canonical values, and do not disable paste/autofill/zoom without a concrete product or security reason.
+
+Schema evolution includes old clients and durable drafts. Consider removed/renamed fields, absent-field defaults, queued/offline submissions, changed conditional meaning, and server-error formats consumed by older UIs. Migrate or invalidate stale drafts explicitly when their meaning changed materially.
+
+For material data-entry work, validate representative prefilled/empty states, client and server validation errors, duplicate submit, stale async validation, slow/failing saves, timeout-after-success, unsaved navigation, autosave ordering, conflict/recovery, keyboard/focus/error association, long/localized content, and compact/mobile layouts. Do not add a form-specific gate merely to restate these prose rules; add deterministic validation only when the repository has a fragile machine-checkable invariant.
 
 ## Effects and lifecycle
 
