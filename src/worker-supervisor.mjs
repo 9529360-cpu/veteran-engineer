@@ -5,6 +5,18 @@ import path from 'node:path';
 
 const FORCE_KILL_AFTER_MS = 3_000;
 const RUNTIME_PROFILE_PREFIX = 'veteran-engineer-';
+const SUPERVISOR_ENV_KEYS = new Set([
+  'PATH', 'PATHEXT', 'SYSTEMROOT', 'COMSPEC', 'WINDIR',
+  'TMP', 'TEMP', 'TMPDIR', 'LANG', 'LC_ALL'
+]);
+
+function scrubInheritedEnvironment() {
+  for (const key of Object.keys(process.env)) {
+    if (!SUPERVISOR_ENV_KEYS.has(key.toUpperCase())) delete process.env[key];
+  }
+}
+
+scrubInheritedEnvironment();
 
 let worker = null;
 let container = null;
