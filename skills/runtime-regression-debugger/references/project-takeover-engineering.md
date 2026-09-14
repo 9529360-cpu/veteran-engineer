@@ -20,6 +20,7 @@ When a plugin/runtime backend is available and the operator provides an authoriz
 - Recover validation and release topology
 - Rank unknowns by decision impact
 - Choose the first evidence-producing change
+- Gate the first consequential mutation
 - Avoid takeover anti-patterns
 - Know when the project model is good enough
 
@@ -248,6 +249,31 @@ Prefer:
 - a reversible feature flag only when it reduces real rollout risk.
 
 Avoid starting with broad rewrites, framework upgrades, service splits, database replacements, or stylistic cleanup unless evidence already proves they are necessary.
+
+## Gate the first consequential mutation
+
+When takeover uncertainty is material, encode the pre-mutation model in a small JSON manifest and run the deterministic readiness check before the first consequential write:
+
+`python3 scripts/takeover_readiness_gate.py <takeover.json> --json`
+
+Treat this as a fail-closed planning aid, not as proof that the supplied evidence is true. Bind manifest claims to live repository evidence and exact identities.
+
+Capture at least:
+
+- the authorized and observed repository identities, default branch/revision, and strong identity evidence;
+- the actor/intent/transition/postconditions/failure-recovery/compatibility contract;
+- entry, authority, and validation maps, plus data/runtime/delivery maps when applicable (otherwise record why they are not applicable);
+- one live active path from entry through authoritative effect to visible result, with liveness evidence;
+- the intended mutation path, its authoritative-source classification, and its source-of-truth relationship;
+- material companion consumers that may need compatible changes;
+- blocking, high-value, and deferrable unknowns;
+- a narrow first-change kind, bounded expected write set, falsifier, and rollback/recovery path;
+- the focused oracle, real integration boundary, exact validation identity, and repository-native required gates;
+- a fresh parallel-work collision check and an explicit strategy for any overlaps.
+
+The readiness gate should block mutation when repository identity disagrees, the live path is unproven, the target is generated/derived rather than authoritative, a decision-changing unknown remains unresolved, the first step is an unbounded rewrite, a falsifying validation path is missing, or parallel work has not been checked.
+
+A passing manifest means the takeover model is structurally ready for the next bounded action. It does not certify architecture truth, test adequacy, or implementation correctness; those remain evidence obligations during execution.
 
 ## Avoid takeover anti-patterns
 
