@@ -43,9 +43,9 @@ function dedupeResources(resources) {
 }
 
 export function normalizeTaskCapabilityContract(raw = {}, taskId = 'task') {
-  const sensingCapabilities = normalizeNames(raw.sensingCapabilities || [], `${taskId}.sensingCapabilities`);
-  const executionCapabilities = normalizeNames(raw.executionCapabilities || [], `${taskId}.executionCapabilities`);
-  const coordinationKeys = normalizeNames(raw.coordinationKeys || [], `${taskId}.coordinationKeys`);
+  const sensingCapabilities = normalizeNames(raw.sensingCapabilities, `${taskId}.sensingCapabilities`);
+  const executionCapabilities = normalizeNames(raw.executionCapabilities, `${taskId}.executionCapabilities`);
+  const coordinationKeys = normalizeNames(raw.coordinationKeys, `${taskId}.coordinationKeys`);
   const rawResources = raw.runtimeResources === undefined || raw.runtimeResources === null ? [] : raw.runtimeResources;
   if (!Array.isArray(rawResources)) throw new Error(`${taskId}.runtimeResources must be an array`);
   if (rawResources.length > MAX_ITEMS) throw new Error(`${taskId}.runtimeResources exceeds the ${MAX_ITEMS}-item safety bound`);
