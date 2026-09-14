@@ -198,6 +198,26 @@ export class CapabilityAwareWorkerOrchestrator {
     }, { missionId, taskId, reason });
   }
 
+  async reconcileMission({ missionId, reason = 'mission-resume' }) {
+    return this.store.transaction('capability_mission_reconciled', (state) => {
+      const mission = state.missions[missionId];
+      if (!mission) throw Object.assign(new Error(`Unknown mission: ${missionId}`), { code: 'MISSION_NOT_FOUND' });
+      const released = [];
+      const retained = [];
+      for (const task of Object.values(state.tasks).filter((item) => item.missionId === missionId && item.capabilityLease)) {
+        if (task.status === 'planned' || TERMINAL_TASK_STATUSES.has(task.status)) {
+          released.push({ taskId: task.id, leaseId: task.capabilityLease.id, previousStatus: task.status });
+          task.capabilityLease = null;
+          task.updatedAt = nowIso();
+        } else {
+          retained.push({ taskId: task.id, leaseId: task.capabilityLease.id, status: task.status });
+        }
+      }
+      state.runtime.timeline.push({ type: 'capability_mission_reconciled', missionId, reason, releasedTaskIds: released.map((item) => item.taskId), retainedTaskIds: retained.map((item) => item.taskId), at: nowIso() });
+      return { missionId, released, retained };
+    }, { missionId, reason });
+  }
+
   async execute(args) {
     const runWorkers = args.runWorkers === true;
     const snapshot = await this.#snapshot(args.missionId);
