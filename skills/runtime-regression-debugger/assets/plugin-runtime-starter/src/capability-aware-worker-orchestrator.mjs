@@ -67,10 +67,20 @@ export class CapabilityAwareWorkerOrchestrator {
     const state = await this.store.read();
     const snapshot = buildCapabilitySnapshot({ project, mission, tasks, liveSourceIdentity: live, state });
     const byId = new Map(tasks.map((task) => [task.id, task]));
-    snapshot.wave = snapshot.wave.map((item) => ({
-      ...item,
-      runtimeManagedExecution: workerCapabilityProfile(project, byId.get(item.taskId))
-    }));
+    snapshot.wave = snapshot.wave.map((item) => {
+      const task = byId.get(item.taskId);
+      const dispatchOnlyReadiness = taskCapabilityReadiness(task, project);
+      const runtimeManagedReadiness = runtimeManagedExecutionReadiness(task, project);
+      return {
+        ...item,
+        dispatchOnlyCapabilityReady: dispatchOnlyReadiness.ready,
+        runtimeManagedCapabilityReady: dispatchOnlyReadiness.missingSensing.length === 0 && runtimeManagedReadiness.ready,
+        runtimeManagedMissingSensing: dispatchOnlyReadiness.missingSensing,
+        runtimeManagedMissingExecution: runtimeManagedReadiness.missingExecution,
+        runtimeManagedExecutionBlockers: runtimeManagedReadiness.blockers,
+        runtimeManagedExecution: runtimeManagedReadiness.profile
+      };
+    });
     return snapshot;
   }
 
