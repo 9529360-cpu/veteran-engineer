@@ -33,7 +33,7 @@ test('supervisor loss is durable worker failure but never project failed-assumpt
       tasks: [{ id: 'T1', contract: 'exercise runtime failure handling', owner: 'src', dependencies: [], writeSet: ['src'], risk: 'low' }]
     });
 
-    app.services.workerOrchestrator.workerAdapter = {
+    app.services.coreWorkerOrchestrator.workerAdapter = {
       async run() {
         const error = new Error('Worker supervisor exited before reporting the worker outcome');
         error.code = 'WORKER_SUPERVISOR_LOST';
