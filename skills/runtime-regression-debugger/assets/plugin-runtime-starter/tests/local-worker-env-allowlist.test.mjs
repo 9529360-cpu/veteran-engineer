@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import { createVeteranApp } from '../src/app.mjs';
-import { enforceWorkerPolicy } from '../src/worker-adapter.mjs';
+import { WorkerAdapter, enforceWorkerPolicy } from '../src/worker-adapter.mjs';
 import { cleanup, createGitRepo } from './helpers.mjs';
 
 const policyProject = {
@@ -12,7 +12,7 @@ const policyProject = {
     allowUnconfinedCustomWorkers: false
   }
 };
-const policyTask = { risk: 'low', writeSet: ['src/a.txt'] };
+const policyTask = { id: 'T1', key: 'M1:T1', risk: 'low', writeSet: ['src/a.txt'] };
 
 function localConfig(envAllowlist) {
   return {
@@ -31,6 +31,51 @@ test('local worker env allowlist requires a bounded array of variable names', ()
     );
   }
   assert.doesNotThrow(() => enforceWorkerPolicy(policyProject, policyTask, localConfig(['WORKER_TOKEN', 'lower_case_ok'])));
+});
+
+test('local worker spawn config is validated before claims while omitted type remains legacy custom', async () => {
+  const validLegacy = {
+    command: process.execPath,
+    args: ['-e', 'process.exit(0)'],
+    env: { WORKER_MODE: 'test' },
+    timeoutMs: 1_000
+  };
+  assert.doesNotThrow(() => enforceWorkerPolicy(policyProject, policyTask, validLegacy));
+
+  const invalidConfigs = [
+    { type: 'mystery', command: process.execPath },
+    { type: 'custom', command: '' },
+    { type: 'custom', command: 42 },
+    { type: 'custom', command: process.execPath, args: 'not-an-array' },
+    { type: 'custom', command: process.execPath, args: ['ok', 42] },
+    { type: 'custom', command: process.execPath, env: [] },
+    { type: 'custom', command: process.execPath, env: { GOOD: 42 } },
+    { type: 'custom', command: process.execPath, env: { 'BAD-KEY': 'value' } },
+    { type: 'custom', command: process.execPath, timeoutMs: 0 },
+    { type: 'custom', command: process.execPath, timeoutMs: 1.5 },
+    { type: 'custom', command: process.execPath, timeoutMs: 2_147_483_648 },
+    { type: 'custom', command: process.execPath, stdinMode: 'raw' }
+  ];
+  for (const config of invalidConfigs) {
+    assert.throws(
+      () => enforceWorkerPolicy(policyProject, policyTask, config),
+      (error) => error?.code === 'WORKER_CONFIG_INVALID'
+    );
+  }
+
+  const adapter = new WorkerAdapter();
+  await assert.rejects(
+    adapter.run({
+      project: policyProject,
+      mission: { id: 'M1' },
+      task: policyTask,
+      worktreePath: path.join(process.cwd(), 'must-not-be-touched'),
+      packet: { protocol: 'veteran-worker-v1' },
+      config: { type: 'custom', command: process.execPath, args: ['ok', 42] }
+    }),
+    (error) => error?.code === 'WORKER_CONFIG_INVALID'
+  );
+  assert.deepEqual(adapter.snapshot(), [], 'invalid worker config must fail before an execution claim exists');
 });
 
 test('mission execution rejects malformed local worker env allowlist before spawn', async () => {

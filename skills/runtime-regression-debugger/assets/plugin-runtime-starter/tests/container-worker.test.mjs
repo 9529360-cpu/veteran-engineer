@@ -25,7 +25,8 @@ test('container worker invocation is fail-closed and host-isolated by default', 
     worktreePath: '/tmp/task-worktree',
     packetPath: '/tmp/artifacts/task.json',
     task,
-    mission
+    mission,
+    runtimeNamespace: 'M1:T1:dispatch-123'
   });
   assert.equal(invocation.command, 'docker');
   assert.equal(invocation.container.engine, 'docker');
@@ -43,6 +44,7 @@ test('container worker invocation is fail-closed and host-isolated by default', 
   assert.ok(invocation.args.includes('type=bind,source=/tmp/task-worktree/.git,target=/workspace/.git,readonly'));
   assert.ok(invocation.args.includes('type=bind,source=/tmp/artifacts/task.json,target=/veteran/task.json,readonly'));
   assert.ok(invocation.args.includes('VETERAN_TASK_PACKET=/veteran/task.json'));
+  assert.ok(invocation.args.includes('VETERAN_RUNTIME_NAMESPACE=M1:T1:dispatch-123'));
   assert.ok(invocation.args.includes('WORKER_TOKEN'));
   if (typeof process.getuid === 'function' && typeof process.getgid === 'function') {
     const expectedUser = `${process.getuid()}:${process.getgid()}`;
@@ -53,7 +55,7 @@ test('container worker invocation is fail-closed and host-isolated by default', 
   assert.equal(invocation.args.at(-3), digestImage);
   assert.deepEqual(invocation.args.slice(-2), ['node', '/opt/worker.mjs']);
 
-  const routed = buildWorkerInvocation({ config, worktreePath: '/tmp/task-worktree', packetPath: '/tmp/artifacts/task.json', task, mission });
+  const routed = buildWorkerInvocation({ config, worktreePath: '/tmp/task-worktree', packetPath: '/tmp/artifacts/task.json', task, mission, runtimeNamespace: 'M1:T1:dispatch-123' });
   assert.deepEqual(routed, invocation);
 });
 
