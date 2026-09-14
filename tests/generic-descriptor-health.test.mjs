@@ -67,7 +67,7 @@ test('generic status fails closed when the Veteran server launch contract gains 
     const doctor = await installer.doctor('generic');
     assert.equal(doctor.ok, false);
     assert.equal(doctor.hosts.generic.ok, false);
-    assert.equal(doctor.hosts.generic.status.installed, false);
+    assert.equal(doctor.hosts.generic.checks[0].details.installed, false);
   } finally {
     await cleanup(home);
   }
