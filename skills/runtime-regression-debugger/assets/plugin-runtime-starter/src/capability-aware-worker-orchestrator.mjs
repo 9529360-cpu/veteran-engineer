@@ -296,7 +296,9 @@ export class CapabilityAwareWorkerOrchestrator {
   async execute(args) {
     const runWorkers = args.runWorkers === true;
     const { mission } = await this.missionService.status({ missionId: args.missionId });
-    await this.projectService.snapshot({ projectId: mission.projectId });
+    if (typeof this.projectService.snapshot === 'function') {
+      await this.projectService.snapshot({ projectId: mission.projectId });
+    }
     const preflightSnapshot = await this.#snapshot(args.missionId);
     const reservation = await this.#reserve({ missionId: args.missionId, runWorkers });
     if (reservation.reason === 'capability-preflight-blocked') {
