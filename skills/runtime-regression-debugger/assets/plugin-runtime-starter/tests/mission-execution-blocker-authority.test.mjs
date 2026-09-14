@@ -42,6 +42,31 @@ test('mission_readiness treats an active cancelled task as retry-required execut
   }
 });
 
+test('mission_readiness is not ready while an execution task is still outstanding', async () => {
+  const fixture = await createGitRepo({ files: { 'src/a.txt': 'a\n', 'src/b.txt': 'b\n' } });
+  try {
+    const app = await createVeteranApp({ stateRoot: fixture.stateRoot });
+    const project = await app.callTool('project_open', {
+      requestId: 'execution-blockers-open-outstanding',
+      repoPath: fixture.repo
+    });
+    const planned = await planTwoTasks(app, project.id, 'outstanding');
+    const missionId = planned.mission.id;
+
+    await app.store.transaction('test_seed_outstanding_task', (state) => {
+      state.tasks[`${missionId}:T1`].status = 'dispatched';
+      state.missions[missionId].status = 'ready';
+    }, { missionId });
+
+    const readiness = await app.callTool('mission_readiness', { missionId });
+    assert.equal(readiness.ready, false);
+    assert.equal(readiness.status, 'ready');
+    assert.deepEqual(readiness.blockers.find((item) => item.code === 'OUTSTANDING_TASKS')?.taskIds, ['T1']);
+  } finally {
+    await cleanup(fixture.root);
+  }
+});
+
 test('mission status cannot report ready while failed or cancelled execution siblings remain', async () => {
   const fixture = await createGitRepo({ files: { 'src/a.txt': 'a\n', 'src/b.txt': 'b\n' } });
   try {
