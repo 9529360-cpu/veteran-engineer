@@ -138,7 +138,13 @@ test('late successful worker result is discarded and mission integration worktre
 
     await rt.missionService.cancel({ missionId, reason: 'late-success-regression' });
     await fs.writeFile(release, 'release\n');
-    await execution;
+    const result = await execution;
+
+    assert.equal(result.results[0].ok, false);
+    assert.equal(result.results[0].commitSha, null);
+    assert.equal(result.results[0].error.code, 'MISSION_CANCELLED');
+    assert.equal(typeof result.results[0].discardedCommitSha, 'string');
+    assert.ok(result.results[0].discardedCommitSha.length >= 7);
 
     const status = await rt.missionService.status({ missionId });
     const dispatch = status.tasks[0].dispatches.at(-1);
@@ -147,8 +153,7 @@ test('late successful worker result is discarded and mission integration worktre
     assert.equal(status.tasks[0].status, 'cancelled');
     assert.equal(dispatch.status, 'cancelled');
     assert.equal(dispatch.error.code, 'MISSION_CANCELLED');
-    assert.equal(typeof dispatch.discardedCommitSha, 'string');
-    assert.ok(dispatch.discardedCommitSha.length >= 7);
+    assert.equal(dispatch.discardedCommitSha, result.results[0].discardedCommitSha);
     assert.deepEqual(dispatch.discardedChangedPaths, ['src/a.txt']);
 
     const missionWorktree = rt.worktreeManager.missionPath(planned.mission);
