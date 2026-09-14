@@ -26,7 +26,7 @@ Add recovery when failure can cross a durable or network boundary:
 
 `failure point -> retry/rollback/compensation/reconciliation -> visible state -> operator evidence`
 
-Capture only facts that can change implementation or acceptance:
+Capture only what changes the engineering decision:
 
 - actor and tenant/account scope;
 - success plus reachable invalid/unauthorized/conflict/partial states;
@@ -185,7 +185,7 @@ Use the lowest-cost test that can falsify the changed owner, then cross the real
 9. durable changes have rollback or forward-repair semantics;
 10. temporary compatibility/diagnostic code has a removal condition.
 
-Use `scripts/delivery_slice_gate.py` only when a structured closure record reduces omissions. Within a delivery slice, `transition`, `companion`, and `consumer` names are trace-link identities: names must be unique inside each kind so a requirements-to-delivery link cannot ambiguously target multiple rows. The same text may appear in different kinds because the trace identity is the pair `(kind, name)`.
+Use `scripts/delivery_slice_gate.py` only when a structured closure record reduces omissions. Within a delivery slice, `transition`, `companion`, and `consumer` names are trace-link identities: names must be unique inside each kind so a requirements-to-delivery link cannot ambiguously target multiple rows. The same text may appear in different kinds because the trace identity is the pair `(kind, name)`. Treat malformed scalar/container values in these deterministic delivery/trace manifests as structured validation failures rather than letting Python collection operations decide behavior or escape as tracebacks; a gate is useful to automation only when bad input still produces a stable fail-closed verdict.
 
 ## Finish at the visible boundary
 
