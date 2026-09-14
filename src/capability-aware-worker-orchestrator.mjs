@@ -52,6 +52,20 @@ function sameReservationConflicts(tasks, mission, project) {
   return conflicts;
 }
 
+function missionSourceAuthorityEstablished(tasks = []) {
+  return tasks.some((task) => Boolean(task.integrationSha) || (task.dispatches || []).length > 0);
+}
+
+function unavailableMissionSourceIdentity() {
+  return {
+    head: null,
+    branch: null,
+    dirty: true,
+    dirtyPaths: [],
+    unavailable: true
+  };
+}
+
 export class CapabilityAwareWorkerOrchestrator {
   constructor({ delegate, store, projectService, missionService, worktreeManager = null }) {
     this.delegate = delegate;
@@ -65,15 +79,37 @@ export class CapabilityAwareWorkerOrchestrator {
     const { mission, tasks } = await this.missionService.status({ missionId });
     const project = await this.projectService.get(mission.projectId);
     const projectSourceIdentity = await sourceIdentity(project.repoPath);
+    const missionSourceExpected = Boolean(this.worktreeManager) && missionSourceAuthorityEstablished(tasks);
     let missionSourceIdentity = null;
+    let missionSourceErrorCode = null;
     if (this.worktreeManager) {
       const missionPath = this.worktreeManager.missionPath(mission);
-      missionSourceIdentity = await sourceIdentity(missionPath).catch(() => null);
+      try {
+        missionSourceIdentity = await sourceIdentity(missionPath);
+      } catch (error) {
+        missionSourceErrorCode = error?.code || 'SOURCE_IDENTITY_UNAVAILABLE';
+      }
     }
-    const currentSourceIdentity = missionSourceIdentity || projectSourceIdentity;
+    const missionSourceUnavailable = missionSourceExpected && !missionSourceIdentity;
+    const currentSourceIdentity = missionSourceIdentity
+      || (missionSourceUnavailable ? unavailableMissionSourceIdentity() : projectSourceIdentity);
     const state = await this.store.read();
     const snapshot = buildCapabilitySnapshot({ project, mission, tasks, liveSourceIdentity: currentSourceIdentity, state });
-    snapshot.sourceScope = missionSourceIdentity ? 'mission-worktree' : 'project-checkout';
+    snapshot.sourceScope = missionSourceIdentity
+      ? 'mission-worktree'
+      : missionSourceUnavailable
+        ? 'mission-worktree-unavailable'
+        : 'project-checkout';
+    snapshot.sourceAuthority = missionSourceIdentity
+      ? { expectedScope: 'mission-worktree', available: true }
+      : missionSourceUnavailable
+        ? {
+            expectedScope: 'mission-worktree',
+            available: false,
+            reason: 'mission-worktree-source-unavailable',
+            errorCode: missionSourceErrorCode
+          }
+        : { expectedScope: 'project-checkout', available: true };
     snapshot.projectSourceIdentity = projectSourceIdentity;
     const byId = new Map(tasks.map((task) => [task.id, task]));
     snapshot.wave = snapshot.wave.map((item) => {
