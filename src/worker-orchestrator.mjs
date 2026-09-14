@@ -299,7 +299,7 @@ export class WorkerOrchestrator {
           sourceIdentity: { head: waveBase },
           artifact: error.details || null
         });
-        if (this.experienceService && !['WORKER_CANCELLED', 'WORKER_TIMEOUT'].includes(failureCode)) {
+        if (this.experienceService && !['WORKER_CANCELLED', 'WORKER_TIMEOUT', 'WORKER_SUPERVISOR_LOST'].includes(failureCode)) {
           await this.experienceService.commit({
             projectId: project.id,
             mechanism: 'worker-execution',
