@@ -12,6 +12,7 @@ import { normalizeValidationArtifacts, collectValidationArtifacts } from './vali
 import { normalizeBrowserValidation, runBrowserValidation } from './browser-validation-provider.mjs';
 import { CredentialBroker } from './credential-broker.mjs';
 import { normalizeObservabilityValidation, runObservabilityValidation } from './observability-validation-provider.mjs';
+import { LiveValidationSessionManager } from './live-validation-session-manager.mjs';
 
 const VALIDATION_PURPOSES = new Set(['final-validation', 'runtime-feedback']);
 
@@ -70,19 +71,32 @@ function validationArtifact({ result, serviceRun }) {
   return `${sections.join('\n')}\n`;
 }
 
+function appendResultError(result, message) {
+  return {
+    ...result,
+    code: result?.code === 0 ? 1 : (result?.code ?? 1),
+    stderr: [result?.stderr || '', message].filter(Boolean).join('\n')
+  };
+}
+
 export class ValidationService {
-  constructor({ store, projectService, missionService, worktreeManager, evidenceService, credentialBroker = null }) {
+  constructor({ store, projectService, missionService, worktreeManager, evidenceService, credentialBroker = null, liveSessionManager = null }) {
     this.store = store;
     this.projectService = projectService;
     this.missionService = missionService;
     this.worktreeManager = worktreeManager;
     this.evidenceService = evidenceService;
     this.credentialBroker = credentialBroker || new CredentialBroker();
+    this.liveSessionManager = liveSessionManager || new LiveValidationSessionManager({ store });
   }
 
   async capabilities({ projectId }) {
     const project = await this.projectService.get(projectId);
     return (project.validationCapabilities || []).map(normalizeCapability).filter(Boolean);
+  }
+
+  async releaseRuntimeFeedbackSessions({ missionId, reason = 'mission-finished' } = {}) {
+    return this.liveSessionManager.releaseMission({ missionId, reason });
   }
 
   async run({
@@ -160,13 +174,34 @@ export class ValidationService {
       commitSha = project.sourceIdentity.head;
     }
 
-    const validationId = randomId('validation');
-    const wt = path.join(this.store.worktreesDir, `validation-${validationId}`);
-    await git(project.repoPath, ['worktree', 'add', '--detach', wt, commitSha]);
+    const liveSupport = purpose === 'runtime-feedback' && selected.service
+      ? this.liveSessionManager.support({ project, service: selected.service })
+      : { enabled: false, reason: purpose === 'runtime-feedback' ? 'validation-service-required' : 'not-runtime-feedback' };
+    let wt = null;
+    let ownsEphemeralWorktree = false;
+    let liveSession = null;
+    if (liveSupport.enabled) {
+      liveSession = await this.liveSessionManager.acquire({
+        project,
+        mission,
+        capability: selected.name,
+        commitSha,
+        service: selected.service
+      });
+      wt = liveSession.worktreePath;
+    } else {
+      const validationId = randomId('validation');
+      wt = path.join(this.store.worktreesDir, `validation-${validationId}`);
+      await git(project.repoPath, ['worktree', 'add', '--detach', wt, commitSha]);
+      ownsEphemeralWorktree = true;
+    }
+
     let result = { code: 1, signal: null, stdout: '', stderr: '' };
-    let serviceRun = null;
-    let readiness = null;
+    let serviceRun = liveSession?.serviceRun || null;
+    let readiness = liveSession?.readiness || null;
     let cleanup = null;
+    let liveSessionFinish = null;
+    let liveSourceCheck = null;
     let failureStage = null;
     let browserSummary = null;
     let observabilitySummary = null;
@@ -175,19 +210,27 @@ export class ValidationService {
     try {
       const cwd = await resolveWorktreeCwd(wt, selected.cwd);
       if (selected.service) {
-        const serviceCwd = await resolveWorktreeCwd(wt, selected.service.cwd, 'Validation service');
-        serviceRun = startValidationService(selected.service, { cwd: serviceCwd });
-        readiness = await waitForValidationReadiness(serviceRun, selected.service.readiness);
-        if (!readiness.ready) {
-          failureStage = readiness.reason === 'service-exited' ? 'service-startup' : 'readiness';
+        if (!liveSession) {
+          const serviceCwd = await resolveWorktreeCwd(wt, selected.service.cwd, 'Validation service');
+          serviceRun = startValidationService(selected.service, { cwd: serviceCwd });
+          readiness = await waitForValidationReadiness(serviceRun, selected.service.readiness);
+        }
+        if (!readiness?.ready) {
+          failureStage = readiness?.reason === 'service-exited' ? 'service-startup' : 'readiness';
           result = {
             code: 1,
             signal: null,
             stdout: '',
-            stderr: readiness.reason === 'service-exited'
+            stderr: readiness?.reason === 'service-exited'
               ? 'Validation service exited before readiness was established.'
               : `Validation service did not become ready within ${selected.service.readiness.timeoutMs}ms.`
           };
+        } else if (liveSession) {
+          liveSourceCheck = await this.liveSessionManager.checkSource({ sessionId: liveSession.sessionId, expectedHead: commitSha });
+          if (!liveSourceCheck.ok) {
+            failureStage = 'live-session-source-drift';
+            result = appendResultError(result, `Persistent live validation source drifted before observation (${liveSourceCheck.reason}).`);
+          }
         }
       }
       if (!failureStage) {
@@ -253,7 +296,6 @@ export class ValidationService {
         }
       }
     } finally {
-      if (serviceRun) cleanup = await stopValidationService(serviceRun, selected.service.shutdownGraceMs);
       if (selected.artifacts?.length) {
         try {
           artifactCollection = await collectValidationArtifacts(wt, selected.artifacts);
@@ -269,10 +311,40 @@ export class ValidationService {
           }
         }
       }
-      await git(project.repoPath, ['worktree', 'remove', '--force', wt], { allowFailure: true });
-      await fs.rm(wt, { recursive: true, force: true });
+      if (liveSession) {
+        const finalSourceCheck = await this.liveSessionManager.checkSource({ sessionId: liveSession.sessionId, expectedHead: commitSha });
+        if (!finalSourceCheck.ok) {
+          liveSourceCheck = finalSourceCheck;
+          failureStage ||= 'live-session-source-drift';
+          result = appendResultError(result, `Persistent live validation source drifted during observation (${finalSourceCheck.reason}).`);
+        } else if (!liveSourceCheck) {
+          liveSourceCheck = finalSourceCheck;
+        }
+        liveSessionFinish = await this.liveSessionManager.finish({
+          sessionId: liveSession.sessionId,
+          keepAlive: liveSession.active === true && finalSourceCheck.ok,
+          reason: finalSourceCheck.ok ? null : 'source-drift'
+        });
+      } else if (serviceRun) {
+        cleanup = await stopValidationService(serviceRun, selected.service.shutdownGraceMs);
+      }
+      if (ownsEphemeralWorktree) {
+        await git(project.repoPath, ['worktree', 'remove', '--force', wt], { allowFailure: true });
+        await fs.rm(wt, { recursive: true, force: true });
+      }
     }
     const passed = !failureStage && result.code === 0;
+    const sessionSummary = selected.service && purpose === 'runtime-feedback'
+      ? (liveSession
+          ? {
+              ...liveSession.summary,
+              active: liveSessionFinish?.released !== true && liveSession.active === true,
+              sourceCheck: liveSourceCheck,
+              released: liveSessionFinish?.released === true,
+              releaseReason: liveSessionFinish?.cleanup?.reason || liveSessionFinish?.reason || null
+            }
+          : { mode: 'ephemeral', reason: liveSupport.reason || 'persistent-session-unavailable' })
+      : null;
     const serviceSummary = serviceRun ? {
       configured: true,
       ready: readiness?.ready === true,
@@ -285,7 +357,8 @@ export class ValidationService {
       } : null,
       stdoutTruncated: serviceRun.logs.stdoutTruncated,
       stderrTruncated: serviceRun.logs.stderrTruncated,
-      cleanup
+      cleanup,
+      session: sessionSummary
     } : null;
     const artifactSummary = selected.artifacts?.length ? {
       ...(artifactCollection.summary || { configured: true, complete: false, requiredMissing: false, files: 0, bytes: 0, items: [] }),

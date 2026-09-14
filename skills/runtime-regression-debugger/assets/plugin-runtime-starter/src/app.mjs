@@ -12,6 +12,7 @@ import { WorkerAdapter } from './worker-adapter.mjs';
 import { WorkerOrchestrator } from './worker-orchestrator.mjs';
 import { FeedbackAwareWorkerOrchestrator } from './feedback-aware-worker-orchestrator.mjs';
 import { ValidationService } from './validation-service.mjs';
+import { LiveValidationSessionManager } from './live-validation-session-manager.mjs';
 import { RuntimeFeedbackService } from './runtime-feedback-service.mjs';
 import { ReviewService } from './review-service.mjs';
 import { CandidateService } from './candidate-service.mjs';
@@ -87,15 +88,41 @@ export async function createVeteranApp({
   const missionService = new MissionService({ store, projectService, experienceService, evidenceService });
   const worktreeManager = new WorktreeManager({ store });
   const workerAdapter = new WorkerAdapter();
+  const liveSessionManager = new LiveValidationSessionManager({ store });
   const coreWorkerOrchestrator = new WorkerOrchestrator({ store, projectService, missionService, worktreeManager, workerAdapter, evidenceService, experienceService });
-  const validationService = new ValidationService({ store, projectService, missionService, worktreeManager, evidenceService });
+  const validationService = new ValidationService({ store, projectService, missionService, worktreeManager, evidenceService, liveSessionManager });
   const runtimeFeedbackService = new RuntimeFeedbackService({ store, projectService, missionService, validationService, evidenceService });
-  const workerOrchestrator = new FeedbackAwareWorkerOrchestrator({ delegate: coreWorkerOrchestrator, missionService, runtimeFeedbackService });
+  const workerOrchestrator = new FeedbackAwareWorkerOrchestrator({ delegate: coreWorkerOrchestrator, missionService, runtimeFeedbackService, validationService });
   const reviewService = new ReviewService({ store, projectService, missionService, worktreeManager, evidenceService, experienceService });
   const candidateService = new CandidateService({ store, projectService, missionService, worktreeManager, evidenceService });
   const runtimeService = new RuntimeService({ store, experienceService, protocolMode, surfaceProfile: resolvedSurfaceProfile });
   const handoffService = new HandoffService({ store, missionService });
   const missionAdvanceService = new MissionAdvanceService({ store, projectService, missionService, worktreeManager, workerOrchestrator, validationService, reviewService, candidateService, evidenceService });
+
+  async function cancelMission(args) {
+    const result = await missionService.cancel(args);
+    const released = await validationService.releaseRuntimeFeedbackSessions({ missionId: args.missionId, reason: 'mission-cancelled' });
+    return { ...result, runtimeFeedbackSessionsReleased: released.length };
+  }
+
+  async function cleanupRuntime(args = {}) {
+    const before = liveSessionManager.snapshot();
+    const released = args.apply === true
+      ? await liveSessionManager.releaseAll({ reason: 'runtime-cleanup' })
+      : [];
+    const result = await runtimeService.cleanup(args);
+    if (args.apply !== true && before.length) {
+      const activeNames = new Set(before.map((session) => session.worktreeName));
+      result.orphans = (result.orphans || []).filter((name) => !activeNames.has(name));
+    }
+    return {
+      ...result,
+      liveSessions: {
+        active: args.apply === true ? liveSessionManager.snapshot() : before,
+        released
+      }
+    };
+  }
 
   const handlers = {
     project_open: (a) => projectService.open(a),
@@ -106,7 +133,7 @@ export async function createVeteranApp({
     mission_advance: (a) => missionAdvanceService.advance(a),
     mission_readiness: (a) => missionService.readiness(a),
     mission_timeline: (a) => missionService.timeline(a),
-    mission_cancel: (a) => missionService.cancel(a),
+    mission_cancel: (a) => cancelMission(a),
     mission_resume: (a) => missionService.resume(a),
     task_result_commit: (a) => workerOrchestrator.commitExternalTaskResult(a),
     worker_cancel: (a) => workerOrchestrator.cancelWorker(a),
@@ -129,7 +156,7 @@ export async function createVeteranApp({
     experience_compact: (a) => experienceService.compact(a),
     runtime_health: () => runtimeService.health(),
     runtime_integrity: () => runtimeService.integrity(),
-    runtime_cleanup: (a) => runtimeService.cleanup(a),
+    runtime_cleanup: (a) => cleanupRuntime(a),
     runtime_maintenance: (a) => runtimeService.maintenance(a),
     handoff_export: (a) => handoffService.export(a)
   };
@@ -196,7 +223,7 @@ export async function createVeteranApp({
 
   return {
     store,
-    services: { projectService, missionService, evidenceService, experienceService, worktreeManager, workerAdapter, coreWorkerOrchestrator, workerOrchestrator, validationService, runtimeFeedbackService, reviewService, candidateService, runtimeService, handoffService, missionAdvanceService },
+    services: { projectService, missionService, evidenceService, experienceService, worktreeManager, workerAdapter, liveSessionManager, coreWorkerOrchestrator, workerOrchestrator, validationService, runtimeFeedbackService, reviewService, candidateService, runtimeService, handoffService, missionAdvanceService },
     handlers,
     callTool,
     operatorConfigPath,

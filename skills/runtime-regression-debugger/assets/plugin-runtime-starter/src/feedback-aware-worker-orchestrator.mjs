@@ -1,8 +1,9 @@
 export class FeedbackAwareWorkerOrchestrator {
-  constructor({ delegate, missionService, runtimeFeedbackService }) {
+  constructor({ delegate, missionService, runtimeFeedbackService, validationService = null }) {
     this.delegate = delegate;
     this.missionService = missionService;
     this.runtimeFeedbackService = runtimeFeedbackService;
+    this.validationService = validationService;
   }
 
   async #runWithFeedback(missionId, operation) {
@@ -18,6 +19,10 @@ export class FeedbackAwareWorkerOrchestrator {
         const repair = await this.runtimeFeedbackService.scheduleRepairWaveSafe({ missionId, feedbackRound: feedback });
         rounds.push({ ...feedback, repair });
       }
+    }
+    const latest = await this.missionService.status({ missionId });
+    if (latest.mission.phase !== 'execution' && this.validationService) {
+      await this.validationService.releaseRuntimeFeedbackSessions({ missionId, reason: `mission-${latest.mission.phase}` });
     }
     if (!rounds.length) return result;
     return {
