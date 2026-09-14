@@ -4,13 +4,14 @@ import os from 'node:os';
 import path from 'node:path';
 
 export const BROWSER_VALIDATION_CONTRACT = 'veteran-browser-validation-v1';
+export const BROWSER_SESSION_CONTRACT = 'veteran-browser-session-jsonl-v1';
 
 const MAX_COMMAND_PARTS = 64;
 const MAX_COMMAND_PART_LENGTH = 4096;
 const MAX_ENV_NAMES = 64;
 const MAX_ASSERTIONS = 256;
-const MAX_STDOUT_BYTES = 512 * 1024;
-const MAX_STDERR_BYTES = 256 * 1024;
+export const MAX_BROWSER_STDOUT_BYTES = 512 * 1024;
+export const MAX_BROWSER_STDERR_BYTES = 256 * 1024;
 const MAX_TIMEOUT_MS = 10 * 60_000;
 const SAFE_ENV_KEYS = [
   'PATH', 'Path', 'PATHEXT', 'SystemRoot', 'WINDIR', 'COMSPEC',
@@ -94,15 +95,29 @@ function normalizeEnvAllowlist(raw) {
   return output;
 }
 
+function normalizeTimeout(value, fallback = 120_000) {
+  const numeric = Number(value ?? fallback);
+  return Number.isFinite(numeric) ? Math.max(1000, Math.min(MAX_TIMEOUT_MS, numeric)) : fallback;
+}
+
+function normalizeBrowserSession(raw, browserTimeoutMs) {
+  if (raw === undefined || raw === null || raw === false) return null;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw errorWithCode('Browser session configuration must be an object', 'BROWSER_SESSION_CONFIG_INVALID');
+  }
+  return {
+    contract: BROWSER_SESSION_CONTRACT,
+    command: normalizeCommand(raw.command),
+    timeoutMs: normalizeTimeout(raw.timeoutMs, browserTimeoutMs)
+  };
+}
+
 export function normalizeBrowserValidation(raw) {
   if (raw === undefined || raw === null) return null;
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw errorWithCode('Browser validation configuration must be an object', 'BROWSER_VALIDATION_CONFIG_INVALID');
   }
-  const timeoutValue = Number(raw.timeoutMs ?? 120_000);
-  const timeoutMs = Number.isFinite(timeoutValue)
-    ? Math.max(1000, Math.min(MAX_TIMEOUT_MS, timeoutValue))
-    : 120_000;
+  const timeoutMs = normalizeTimeout(raw.timeoutMs);
   return {
     contract: BROWSER_VALIDATION_CONTRACT,
     command: normalizeCommand(raw.command),
@@ -110,7 +125,8 @@ export function normalizeBrowserValidation(raw) {
     timeoutMs,
     envAllowlist: normalizeEnvAllowlist(raw.envAllowlist),
     scenarioFile: normalizeRelativeFile(raw.scenarioFile),
-    baseUrl: raw.baseUrl ? normalizeLoopbackUrl(raw.baseUrl) : null
+    baseUrl: raw.baseUrl ? normalizeLoopbackUrl(raw.baseUrl) : null,
+    session: normalizeBrowserSession(raw.session, timeoutMs)
   };
 }
 
@@ -140,7 +156,7 @@ async function resolveContainedFile(root, relativePath) {
   return absolute;
 }
 
-async function isolatedEnvironment(allowlist, environment) {
+export async function createBrowserIsolatedEnvironment(allowlist, environment) {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'veteran-browser-home-'));
   try {
     const env = {};
@@ -164,14 +180,14 @@ async function isolatedEnvironment(allowlist, environment) {
 function appendBounded(state, chunk, limit) {
   const text = String(chunk);
   state.bytes += Buffer.byteLength(text);
-  if (state.text.length < limit) {
+  if (Buffer.byteLength(state.text) < limit) {
     const remaining = Math.max(0, limit - Buffer.byteLength(state.text));
     if (remaining > 0) state.text += Buffer.from(text).subarray(0, remaining).toString('utf8');
   }
   if (state.bytes > limit) state.truncated = true;
 }
 
-function terminateProviderTree(child) {
+export function terminateBrowserProviderTree(child) {
   if (!child?.pid) return;
   if (process.platform === 'win32') {
     spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
@@ -198,12 +214,12 @@ async function runProviderProcess(command, args, { cwd, env, timeoutMs, input })
     });
     const timer = setTimeout(() => {
       timedOut = true;
-      terminateProviderTree(child);
+      terminateBrowserProviderTree(child);
     }, timeoutMs);
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
-    child.stdout.on('data', (chunk) => appendBounded(stdout, chunk, MAX_STDOUT_BYTES));
-    child.stderr.on('data', (chunk) => appendBounded(stderr, chunk, MAX_STDERR_BYTES));
+    child.stdout.on('data', (chunk) => appendBounded(stdout, chunk, MAX_BROWSER_STDOUT_BYTES));
+    child.stderr.on('data', (chunk) => appendBounded(stderr, chunk, MAX_BROWSER_STDERR_BYTES));
     child.on('error', (error) => {
       if (settled) return;
       settled = true;
@@ -234,7 +250,7 @@ function normalizeAssertion(raw, index) {
   return assertion;
 }
 
-function normalizeProviderResult(raw, baseUrl) {
+export function normalizeBrowserProviderResult(raw, baseUrl) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw) || raw.contract !== BROWSER_VALIDATION_CONTRACT || typeof raw.passed !== 'boolean') {
     throw errorWithCode('Browser provider returned an invalid result contract', 'BROWSER_PROVIDER_RESULT_INVALID');
   }
@@ -265,19 +281,27 @@ function normalizeProviderResult(raw, baseUrl) {
   };
 }
 
-export async function runBrowserValidation(browser, { cwd, serviceReadinessUrl = null, environment = process.env } = {}) {
-  const scenarioFile = await resolveContainedFile(cwd, browser.scenarioFile);
+export async function prepareBrowserValidationRequest(browser, { cwd, serviceReadinessUrl = null } = {}) {
+  await resolveContainedFile(cwd, browser.scenarioFile);
   const baseUrl = browser.baseUrl || (serviceReadinessUrl ? `${new URL(serviceReadinessUrl).origin}/` : null);
   if (!baseUrl) throw errorWithCode('Browser validation requires browser.baseUrl or service readiness URL', 'BROWSER_BASE_URL_REQUIRED');
   const normalizedBaseUrl = normalizeLoopbackUrl(baseUrl);
-  const payload = `${JSON.stringify({
-    contract: BROWSER_VALIDATION_CONTRACT,
-    baseUrl: normalizedBaseUrl,
-    scenario: { path: browser.scenarioFile },
-    artifactsManagedByValidation: true
-  })}\n`;
+  return {
+    normalizedBaseUrl,
+    payload: {
+      contract: BROWSER_VALIDATION_CONTRACT,
+      baseUrl: normalizedBaseUrl,
+      scenario: { path: browser.scenarioFile },
+      artifactsManagedByValidation: true
+    }
+  };
+}
+
+export async function runBrowserValidation(browser, { cwd, serviceReadinessUrl = null, environment = process.env } = {}) {
+  const request = await prepareBrowserValidationRequest(browser, { cwd, serviceReadinessUrl });
+  const payload = `${JSON.stringify(request.payload)}\n`;
   const [command, ...args] = browser.command;
-  const { env, home } = await isolatedEnvironment(browser.envAllowlist, environment);
+  const { env, home } = await createBrowserIsolatedEnvironment(browser.envAllowlist, environment);
   let processResult;
   try {
     processResult = await runProviderProcess(command, args, {
@@ -317,7 +341,7 @@ export async function runBrowserValidation(browser, { cwd, serviceReadinessUrl =
     return { passed: false, failureCode: 'BROWSER_PROVIDER_RESULT_INVALID', summary: 'Browser provider stdout was not one valid JSON result object.', assertions: [], currentUrl: null, diagnostics };
   }
   try {
-    const normalized = normalizeProviderResult(parsed, normalizedBaseUrl);
+    const normalized = normalizeBrowserProviderResult(parsed, request.normalizedBaseUrl);
     return { ...normalized, failureCode: normalized.passed ? null : 'BROWSER_ASSERTION_FAILED', diagnostics };
   } catch (error) {
     return { passed: false, failureCode: error?.code || 'BROWSER_PROVIDER_RESULT_INVALID', summary: String(error?.message || error).slice(0, 1000), assertions: [], currentUrl: null, diagnostics };
