@@ -171,6 +171,33 @@ function reusedRound(mission, waveIndex, commitSha) {
   ) || null;
 }
 
+function repairRootTaskId(task) {
+  return task.feedbackRemediation?.rootTaskId || task.id;
+}
+
+function repairAttemptsFor(tasks, rootTaskId) {
+  return tasks.filter((task) => task.feedbackRemediation?.rootTaskId === rootTaskId).length;
+}
+
+function uniqueRepairTaskId(rootTaskId, attempt, tasks) {
+  const existing = new Set(tasks.map((task) => task.id));
+  const base = `${rootTaskId}-rf${attempt}`;
+  if (!existing.has(base)) return base;
+  let suffix = 2;
+  while (existing.has(`${base}-${suffix}`)) suffix += 1;
+  return `${base}-${suffix}`;
+}
+
+function repairPolicy(project) {
+  const raw = project.runtimeFeedbackPolicy || {};
+  return {
+    autoRepair: raw.autoRepair === true,
+    maxRepairAttempts: Number.isInteger(raw.maxRepairAttempts)
+      ? Math.max(0, Math.min(3, raw.maxRepairAttempts))
+      : 1
+  };
+}
+
 export class RuntimeFeedbackService {
   constructor({ store, projectService, missionService, validationService, evidenceService }) {
     Object.assign(this, { store, projectService, missionService, validationService, evidenceService });
@@ -274,6 +301,148 @@ export class RuntimeFeedbackService {
     }, { missionId, waveIndex, commitSha, passed, evidenceId: aggregateEvidence.id });
   }
 
+  async scheduleRepairWave({ missionId, feedbackRound }) {
+    const { mission, tasks } = await this.missionService.status({ missionId });
+    const project = await this.projectService.get(mission.projectId);
+    const policy = repairPolicy(project);
+    if (!policy.autoRepair) {
+      return { configured: false, scheduled: false, reason: 'auto-repair-disabled', maxRepairAttempts: policy.maxRepairAttempts };
+    }
+    if (!feedbackRound?.recorded || feedbackRound.passed !== false) {
+      return { configured: true, scheduled: false, reason: 'feedback-does-not-require-repair', maxRepairAttempts: policy.maxRepairAttempts };
+    }
+    if (mission.phase !== 'execution') {
+      return { configured: true, scheduled: false, reason: 'mission-not-in-execution', maxRepairAttempts: policy.maxRepairAttempts };
+    }
+    const latest = mission.runtimeFeedback?.latestRound || null;
+    if (!latest || latest.commitSha !== feedbackRound.commitSha || latest.waveIndex !== feedbackRound.waveIndex) {
+      return { configured: true, scheduled: false, reason: 'feedback-not-current', maxRepairAttempts: policy.maxRepairAttempts };
+    }
+    const priorRepair = (mission.runtimeFeedback?.repairWaves || []).find((item) => item.feedbackEvidenceId === feedbackRound.aggregateEvidenceId);
+    if (priorRepair) return { configured: true, scheduled: true, reused: true, maxRepairAttempts: policy.maxRepairAttempts, ...priorRepair };
+
+    const nextWaveIds = mission.waves?.[mission.nextWaveIndex] || [];
+    const byId = new Map(tasks.map((task) => [task.id, task]));
+    if (nextWaveIds.some((id) => byId.get(id)?.status !== 'planned')) {
+      return { configured: true, scheduled: false, reason: 'next-wave-already-active', maxRepairAttempts: policy.maxRepairAttempts };
+    }
+
+    const sourceWave = completedWaveTasks(mission, tasks, feedbackRound.waveIndex);
+    if (!sourceWave.ready) {
+      return { configured: true, scheduled: false, reason: sourceWave.reason, maxRepairAttempts: policy.maxRepairAttempts };
+    }
+    const failedCapabilities = new Set((feedbackRound.capabilities || []).filter((item) => item?.passed === false).map((item) => item.capability));
+    const owned = sourceWave.tasks.filter((task) => task.validationCapability && failedCapabilities.has(task.validationCapability));
+    if (!owned.length) {
+      return { configured: true, scheduled: false, reason: 'no-owned-failed-capability', maxRepairAttempts: policy.maxRepairAttempts };
+    }
+
+    const createdAt = nowIso();
+    const repairTasks = [];
+    const exhausted = [];
+    for (const sourceTask of owned) {
+      const rootTaskId = repairRootTaskId(sourceTask);
+      const used = repairAttemptsFor(tasks, rootTaskId);
+      if (used >= policy.maxRepairAttempts) {
+        exhausted.push({ rootTaskId, sourceTaskId: sourceTask.id, attempts: used });
+        continue;
+      }
+      const attempt = used + 1;
+      const id = uniqueRepairTaskId(rootTaskId, attempt, [...tasks, ...repairTasks]);
+      repairTasks.push({
+        id,
+        key: `${missionId}:${id}`,
+        missionId,
+        projectId: project.id,
+        contract: `Repair runtime feedback failure for ${sourceTask.validationCapability} while preserving the original task contract: ${sourceTask.contract}`,
+        owner: sourceTask.owner,
+        dependencies: [sourceTask.id],
+        writeSet: [...(sourceTask.writeSet || [])],
+        protectedPaths: [...(sourceTask.protectedPaths || [])],
+        risk: sourceTask.risk,
+        validationCapability: sourceTask.validationCapability,
+        worker: sourceTask.worker || 'default',
+        notes: `Auto-repair attempt ${attempt} from runtime feedback ${feedbackRound.aggregateEvidenceId || 'unknown'}.`,
+        feedbackRemediation: {
+          rootTaskId,
+          sourceTaskId: sourceTask.id,
+          attempt,
+          feedbackWaveIndex: feedbackRound.waveIndex,
+          feedbackCommitSha: feedbackRound.commitSha,
+          feedbackEvidenceId: feedbackRound.aggregateEvidenceId || null,
+          capability: sourceTask.validationCapability
+        },
+        status: 'planned',
+        attempts: 0,
+        dispatches: [],
+        commitSha: null,
+        integrationSha: null,
+        evidenceIds: [],
+        createdAt,
+        updatedAt: createdAt
+      });
+    }
+    if (!repairTasks.length) {
+      return {
+        configured: true,
+        scheduled: false,
+        reason: exhausted.length ? 'repair-attempts-exhausted' : 'no-repairable-tasks',
+        maxRepairAttempts: policy.maxRepairAttempts,
+        exhausted
+      };
+    }
+
+    return this.store.transaction('mission_runtime_feedback_repair_scheduled', (state) => {
+      const target = state.missions[missionId];
+      if (!target) throw Object.assign(new Error(`Unknown mission: ${missionId}`), { code: 'MISSION_NOT_FOUND' });
+      const currentLatest = target.runtimeFeedback?.latestRound || null;
+      if (target.phase !== 'execution' || !currentLatest || currentLatest.commitSha !== feedbackRound.commitSha || currentLatest.waveIndex !== feedbackRound.waveIndex) {
+        return { configured: true, scheduled: false, reason: 'feedback-not-current', maxRepairAttempts: policy.maxRepairAttempts };
+      }
+      target.runtimeFeedback.repairWaves ||= [];
+      const duplicate = target.runtimeFeedback.repairWaves.find((item) => item.feedbackEvidenceId === feedbackRound.aggregateEvidenceId);
+      if (duplicate) return { configured: true, scheduled: true, reused: true, maxRepairAttempts: policy.maxRepairAttempts, ...duplicate };
+      const currentNextIds = target.waves?.[target.nextWaveIndex] || [];
+      if (currentNextIds.some((id) => state.tasks[`${missionId}:${id}`]?.status !== 'planned')) {
+        return { configured: true, scheduled: false, reason: 'next-wave-already-active', maxRepairAttempts: policy.maxRepairAttempts };
+      }
+      for (const task of repairTasks) {
+        if (state.tasks[task.key]) throw Object.assign(new Error(`Repair task already exists: ${task.id}`), { code: 'RUNTIME_FEEDBACK_REPAIR_TASK_CONFLICT' });
+      }
+      const waveIndex = target.nextWaveIndex;
+      const taskIds = repairTasks.map((task) => task.id);
+      target.waves.splice(waveIndex, 0, taskIds);
+      for (const task of repairTasks) state.tasks[task.key] = task;
+      const record = {
+        feedbackEvidenceId: feedbackRound.aggregateEvidenceId || null,
+        feedbackCommitSha: feedbackRound.commitSha,
+        sourceWaveIndex: feedbackRound.waveIndex,
+        waveIndex,
+        taskIds,
+        createdAt
+      };
+      target.runtimeFeedback.repairWaves.push(record);
+      target.status = 'ready';
+      target.updatedAt = nowIso();
+      state.runtime.timeline.push({
+        type: 'mission_runtime_feedback_repair_scheduled',
+        missionId,
+        feedbackEvidenceId: feedbackRound.aggregateEvidenceId || null,
+        waveIndex,
+        taskIds,
+        at: createdAt
+      });
+      return {
+        configured: true,
+        scheduled: true,
+        reused: false,
+        maxRepairAttempts: policy.maxRepairAttempts,
+        exhausted,
+        ...record
+      };
+    }, { missionId, feedbackEvidenceId: feedbackRound.aggregateEvidenceId || null, repairTaskIds: repairTasks.map((task) => task.id) });
+  }
+
   async runAfterWaveSafe(args) {
     try {
       return await this.runAfterWave(args);
@@ -287,6 +456,22 @@ export class RuntimeFeedbackService {
         waveIndex: Number.isInteger(args?.waveIndex) ? args.waveIndex : null,
         error: {
           code: error?.code || 'RUNTIME_FEEDBACK_UNAVAILABLE',
+          message: String(error?.message || error).slice(0, 500)
+        }
+      };
+    }
+  }
+
+  async scheduleRepairWaveSafe(args) {
+    try {
+      return await this.scheduleRepairWave(args);
+    } catch (error) {
+      return {
+        configured: true,
+        scheduled: false,
+        reason: 'auto-repair-unavailable',
+        error: {
+          code: error?.code || 'RUNTIME_FEEDBACK_REPAIR_UNAVAILABLE',
           message: String(error?.message || error).slice(0, 500)
         }
       };
