@@ -28,6 +28,27 @@ export function clone(value) {
   return structuredClone(value);
 }
 
+export function redactKnownSecrets(value, secrets = [], replacement = '[REDACTED]') {
+  const known = [...new Set(secrets.filter((secret) => typeof secret === 'string' && secret.length > 0))]
+    .sort((left, right) => right.length - left.length);
+  if (known.length === 0) return value;
+
+  const redactString = (input) => {
+    let output = input;
+    for (const secret of known) output = output.split(secret).join(replacement);
+    return output;
+  };
+  const visit = (input) => {
+    if (typeof input === 'string') return redactString(input);
+    if (Array.isArray(input)) return input.map(visit);
+    if (input && typeof input === 'object') {
+      return Object.fromEntries(Object.entries(input).map(([key, item]) => [redactString(key), visit(item)]));
+    }
+    return input;
+  };
+  return visit(value);
+}
+
 export function randomId(prefix) {
   return `${prefix}_${crypto.randomUUID()}`;
 }

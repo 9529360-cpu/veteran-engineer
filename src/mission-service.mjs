@@ -7,7 +7,7 @@ import {
   compileMissionExecutionStrategy,
   plannerProjectAwareness
 } from './adaptive-mission-strategy.mjs';
-import { normalizePathList, nowIso, randomId } from './util.mjs';
+import { normalizePathList, nowIso, randomId, redactKnownSecrets } from './util.mjs';
 
 const TERMINAL_TASKS = new Set(['done', 'failed', 'cancelled', 'blocked', 'superseded']);
 const SUCCESS_TASKS = new Set(['done']);
@@ -148,20 +148,25 @@ export class MissionService {
         experiencePrecedence: experience.precedence,
         limits: { maxTasks: 64 }
       };
+      const providerEnv = allowlistedProcessEnvironment(provider.envAllowlist || []);
+      const providerSecrets = (provider.envAllowlist || [])
+        .map((key) => providerEnv[key.trim()])
+        .filter((value) => typeof value === 'string' && value.length > 0);
       const result = await runProcess(provider.command, provider.args || [], {
         cwd: project.repoPath,
-        env: allowlistedProcessEnvironment(provider.envAllowlist || []),
+        env: providerEnv,
         inheritEnv: false,
         input: JSON.stringify(payload),
         allowFailure: true,
         timeoutMs: provider.timeoutMs || 180_000
       });
       let parsed = null;
-      try { parsed = JSON.parse(result.stdout); } catch { }
+      try { parsed = redactKnownSecrets(JSON.parse(result.stdout), providerSecrets); } catch { }
+      const safeStderr = redactKnownSecrets(result.stderr, providerSecrets);
       if (result.code !== 0 || !Array.isArray(parsed?.tasks) || parsed.tasks.length === 0 || parsed.tasks.length > 64) {
         const error = new Error('Planner provider failed or returned an invalid task graph');
         error.code = 'PLANNER_PROVIDER_FAILED';
-        error.details = { exitCode: result.code, stderr: result.stderr.slice(0, 2000), taskCount: Array.isArray(parsed?.tasks) ? parsed.tasks.length : null };
+        error.details = { exitCode: result.code, stderr: safeStderr.slice(0, 2000), taskCount: Array.isArray(parsed?.tasks) ? parsed.tasks.length : null };
         throw error;
       }
       proposedTasks = parsed.tasks;
@@ -176,7 +181,7 @@ export class MissionService {
             activeProjectMissionCount: continuity.activeMissionCount
           },
           sourceIdentity: live,
-          artifact: `${result.stdout}\n--- stderr ---\n${result.stderr}`
+          artifact: `${JSON.stringify(parsed, null, 2)}\n--- stderr ---\n${safeStderr}`
         });
         plannerEvidenceId = evidence.id;
       }

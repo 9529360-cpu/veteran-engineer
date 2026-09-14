@@ -1,5 +1,5 @@
 import { allowlistedProcessEnvironment, runProcess, git } from './git.mjs';
-import { nowIso, randomId } from './util.mjs';
+import { nowIso, randomId, redactKnownSecrets } from './util.mjs';
 
 export class ReviewService {
   constructor({ store, projectService, missionService, worktreeManager, evidenceService, experienceService = null }) {
@@ -100,19 +100,27 @@ export class ReviewService {
       ],
       limits: { maxFindings: 20, maxRemediationTasks: 8 }
     };
+    const providerEnv = allowlistedProcessEnvironment(provider.envAllowlist || []);
+    const providerSecrets = (provider.envAllowlist || [])
+      .map((key) => providerEnv[key.trim()])
+      .filter((value) => typeof value === 'string' && value.length > 0);
     const result = await runProcess(provider.command, provider.args || [], {
       cwd: project.repoPath,
-      env: allowlistedProcessEnvironment(provider.envAllowlist || []),
+      env: providerEnv,
       inheritEnv: false,
       input: JSON.stringify(payload),
       allowFailure: true,
       timeoutMs: provider.timeoutMs || 180_000
     });
     let parsed = null;
-    try { parsed = JSON.parse(result.stdout); } catch { /* handled below */ }
-    const findings = Array.isArray(parsed?.findings) ? parsed.findings.slice(0, 20) : [{ severity: 'high', code: 'SEMANTIC_REVIEWER_INVALID_OUTPUT', message: result.stderr.slice(0, 1000) }];
+    try { parsed = redactKnownSecrets(JSON.parse(result.stdout), providerSecrets); } catch { /* handled below */ }
+    const safeStderr = redactKnownSecrets(result.stderr, providerSecrets);
+    const findings = Array.isArray(parsed?.findings) ? parsed.findings.slice(0, 20) : [{ severity: 'high', code: 'SEMANTIC_REVIEWER_INVALID_OUTPUT', message: safeStderr.slice(0, 1000) }];
     const passed = result.code === 0 && parsed?.passed === true && findings.every((item) => item.severity !== 'critical');
-    const evidence = await this.evidenceService.record({ projectId: project.id, missionId, type: 'semantic-review', summary: { passed, head, findings }, sourceIdentity: { head }, artifact: `${result.stdout}\n--- stderr ---\n${result.stderr}` });
+    const artifact = parsed
+      ? `${JSON.stringify(parsed, null, 2)}\n--- stderr ---\n${safeStderr}`
+      : `semantic reviewer returned invalid JSON\n--- stderr ---\n${safeStderr}`;
+    const evidence = await this.evidenceService.record({ projectId: project.id, missionId, type: 'semantic-review', summary: { passed, head, findings }, sourceIdentity: { head }, artifact });
     await this.store.transaction('semantic_review_completed', (state) => {
       const target = state.missions[missionId];
       target.semanticReview.status = passed ? 'passed' : 'failed';
