@@ -52,9 +52,20 @@ def main() -> int:
     if not isinstance(actors, list) or not actors:
         add(blockers, "ACTORS_REQUIRED", "at least one actor is required")
         actors = []
+    actor_ids = set()
     for index, actor in enumerate(actors):
-        if not isinstance(actor, dict) or not nonempty(actor.get("id")) or not nonempty(actor.get("scope")):
-            add(blockers, "ACTOR_INVALID", "actor requires non-empty id and scope", f"actors[{index}]")
+        path = f"actors[{index}]"
+        if not isinstance(actor, dict):
+            add(blockers, "ACTOR_INVALID", "actor requires non-empty id and scope", path)
+            continue
+        actor_id = actor.get("id")
+        if not nonempty(actor_id) or not nonempty(actor.get("scope")):
+            add(blockers, "ACTOR_INVALID", "actor requires non-empty id and scope", path)
+            continue
+        if actor_id in actor_ids:
+            add(blockers, "ACTOR_ID_DUPLICATE", f"duplicate actor id {actor_id}", f"{path}.id")
+        else:
+            actor_ids.add(actor_id)
 
     requirements = payload.get("requirements")
     if not isinstance(requirements, list) or not requirements:
@@ -77,6 +88,14 @@ def main() -> int:
         for key in ("actor", "starting_state", "action", "postcondition"):
             if not nonempty(req.get(key)):
                 add(blockers, "REQUIREMENT_FIELD_REQUIRED", f"{path}.{key} must be non-empty", f"{path}.{key}")
+        actor_id = req.get("actor")
+        if nonempty(actor_id) and actor_id not in actor_ids:
+            add(
+                blockers,
+                "REQUIREMENT_ACTOR_UNKNOWN",
+                f"requirement actor {actor_id!r} must reference an existing actor",
+                f"{path}.actor",
+            )
 
     criteria = payload.get("acceptance_criteria")
     if not isinstance(criteria, list) or not criteria:
