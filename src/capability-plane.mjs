@@ -136,10 +136,11 @@ export function activeRuntimeResourceConflicts({ state, task, mission, project }
   return conflicts;
 }
 
-function leaseVisibleToSnapshot(task, project, mission) {
-  if (task.missionId === mission.id) return true;
+function visibleLeaseResources(task, project, mission) {
+  const resources = task.capabilityLease?.resources || [];
+  if (task.missionId === mission.id) return resources;
   const projectPrefix = `project:${project.id}:`;
-  return (task.capabilityLease?.resources || []).some((resource) => {
+  return resources.filter((resource) => {
     const identity = typeof resource.identity === 'string' ? resource.identity : '';
     return identity.startsWith('global:') || identity.startsWith(projectPrefix);
   });
@@ -154,13 +155,14 @@ export function buildCapabilitySnapshot({ project, mission, tasks, liveSourceIde
     : false;
   const activeLeases = Object.values(state.tasks || {})
     .filter((task) => task.capabilityLease && !TERMINAL_TASK_STATUSES.has(task.status))
-    .filter((task) => leaseVisibleToSnapshot(task, project, mission))
-    .map((task) => ({
+    .map((task) => ({ task, resources: visibleLeaseResources(task, project, mission) }))
+    .filter(({ task, resources }) => task.missionId === mission.id || resources.length > 0)
+    .map(({ task, resources }) => ({
       missionId: task.missionId,
       taskId: task.id,
       status: task.status,
       leaseId: task.capabilityLease.id,
-      resources: task.capabilityLease.resources || []
+      resources
     }));
   return {
     contract: 'veteran-capability-snapshot-v1',
