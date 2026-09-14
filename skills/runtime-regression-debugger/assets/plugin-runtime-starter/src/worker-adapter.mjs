@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { nowIso } from './util.mjs';
@@ -13,7 +14,19 @@ const FORBIDDEN_CODEX_FLAGS = new Set([
 ]);
 
 function substitute(value, vars) {
-  return String(value).replace(/\{(packet|worktree|taskId|missionId)\}/g, (_, key) => vars[key]);
+  return String(value).replace(/\{(packet|worktree|taskId|missionId|runtimeNamespace)\}/g, (_, key) => vars[key]);
+}
+
+function safeRuntimeNamespace(value) {
+  return String(value || 'task')
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^[-_.]+|[-_.]+$/g, '')
+    .slice(0, 120) || 'task';
+}
+
+function localRuntimeTempDir(runtimeNamespace) {
+  return path.join(os.tmpdir(), 'veteran-engineer', safeRuntimeNamespace(runtimeNamespace));
 }
 
 function terminateTree(child, signal = 'SIGTERM') {
@@ -124,9 +137,9 @@ function codexPrompt(packet) {
   ].join('\n');
 }
 
-export function buildWorkerInvocation({ config, worktreePath, packetPath, task, mission }) {
-  if (config.type === 'container') return buildContainerInvocation({ config, worktreePath, packetPath, task, mission });
-  const vars = { packet: packetPath, worktree: worktreePath, taskId: task.id, missionId: mission.id };
+export function buildWorkerInvocation({ config, worktreePath, packetPath, task, mission, runtimeNamespace = null }) {
+  if (config.type === 'container') return buildContainerInvocation({ config, worktreePath, packetPath, task, mission, runtimeNamespace });
+  const vars = { packet: packetPath, worktree: worktreePath, taskId: task.id, missionId: mission.id, runtimeNamespace: runtimeNamespace || '' };
   return { command: config.command, args: (config.args || []).map((arg) => substitute(arg, vars)) };
 }
 
@@ -138,17 +151,27 @@ export class WorkerAdapter {
   async run({ project, mission, task, worktreePath, packet, packetPath = null, config, timeoutMs = null }) {
     enforceWorkerPolicy(project, task, config);
     const resolvedPacketPath = packetPath || path.join(path.dirname(worktreePath), `.veteran-task-${task.id}-${Date.now()}.json`);
+    const dispatchIdentity = path.basename(resolvedPacketPath, path.extname(resolvedPacketPath));
+    const runtimeNamespace = packet?.runtimeIsolation?.namespace || `${mission.id}:${task.id}:${dispatchIdentity}`;
+    const runtimeTempDir = config.type === 'container' ? null : localRuntimeTempDir(runtimeNamespace);
     await fs.mkdir(path.dirname(resolvedPacketPath), { recursive: true });
     await fs.writeFile(resolvedPacketPath, `${JSON.stringify(packet, null, 2)}\n`, { mode: 0o600 });
-    const invocation = buildWorkerInvocation({ config, worktreePath, packetPath: resolvedPacketPath, task, mission });
+    if (runtimeTempDir) await fs.mkdir(runtimeTempDir, { recursive: true, mode: 0o700 });
+    const invocation = buildWorkerInvocation({ config, worktreePath, packetPath: resolvedPacketPath, task, mission, runtimeNamespace });
     const env = {};
     for (const key of SAFE_ENV_KEYS) if (process.env[key] !== undefined) env[key] = process.env[key];
     for (const key of config.envAllowlist || []) if (process.env[key] !== undefined) env[key] = process.env[key];
     if (config.type !== 'container') Object.assign(env, config.env || {});
+    if (runtimeTempDir) {
+      env.TMP = runtimeTempDir;
+      env.TEMP = runtimeTempDir;
+      env.TMPDIR = runtimeTempDir;
+    }
     env.VETERAN_TASK_PACKET = resolvedPacketPath;
     env.VETERAN_WORKTREE = worktreePath;
     env.VETERAN_TASK_ID = task.id;
     env.VETERAN_MISSION_ID = mission.id;
+    env.VETERAN_RUNTIME_NAMESPACE = runtimeNamespace;
 
     const startedAt = nowIso();
     const child = spawn(invocation.command, invocation.args, {
@@ -171,22 +194,28 @@ export class WorkerAdapter {
     child.stdout.on('data', (chunk) => { stdout += chunk; if (stdout.length > 2_000_000) stdout = stdout.slice(-2_000_000); });
     child.stderr.on('data', (chunk) => { stderr += chunk; if (stderr.length > 2_000_000) stderr = stderr.slice(-2_000_000); });
     const effectiveTimeoutMs = timeoutMs || config.timeoutMs || 900_000;
-    const outcome = await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => this.#terminateRunning(running), effectiveTimeoutMs);
-      child.on('error', (error) => {
-        clearTimeout(timer);
-        this.#clearTermination(running);
-        this.#cleanupContainer(invocation.container, env);
-        reject(error);
+    let outcome;
+    try {
+      outcome = await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => this.#terminateRunning(running), effectiveTimeoutMs);
+        child.on('error', (error) => {
+          clearTimeout(timer);
+          this.#clearTermination(running);
+          this.#cleanupContainer(invocation.container, env);
+          reject(error);
+        });
+        child.on('close', (code, signal) => {
+          clearTimeout(timer);
+          this.#clearTermination(running);
+          this.#cleanupContainer(invocation.container, env);
+          resolve({ code, signal });
+        });
       });
-      child.on('close', (code, signal) => {
-        clearTimeout(timer);
-        this.#clearTermination(running);
-        this.#cleanupContainer(invocation.container, env);
-        resolve({ code, signal });
-      });
-    }).finally(() => this.running.delete(task.key));
-    return { ...outcome, stdout, stderr, startedAt, endedAt: nowIso(), pid: child.pid, packetPath: resolvedPacketPath };
+    } finally {
+      this.running.delete(task.key);
+      if (runtimeTempDir) await fs.rm(runtimeTempDir, { recursive: true, force: true }).catch(() => {});
+    }
+    return { ...outcome, stdout, stderr, startedAt, endedAt: nowIso(), pid: child.pid, packetPath: resolvedPacketPath, runtimeNamespace };
   }
 
   #terminateRunning(running) {
