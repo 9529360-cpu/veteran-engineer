@@ -35,6 +35,8 @@ A stop control can be:
 
 The stop mechanism must be narrower than the failure whenever practical. A global shutdown is a poor kill switch for a tenant-scoped defect.
 
+When a feature flag or dynamic configuration is itself the production delivery control plane, read `feature-flag-progressive-delivery-product-engineering.md`. That specialist owns evaluation authority, stable cohort assignment, stale-config behavior, progressive ramping, kill-switch propagation, mixed-version behavior, overrides, and eventual flag deletion. Analytics/experiment assignment is evidence about exposure; it must not silently become the runtime authority for effective product behavior.
+
 ## Define fail behavior
 
 When dependencies or control planes fail, decide explicitly whether the path:
