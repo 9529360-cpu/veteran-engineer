@@ -615,6 +615,17 @@ export class WorkerOrchestrator {
     }
     const paths = await changedPaths(dispatch.worktreePath, dispatch.waveBase);
     await assertPathsWithinScope(dispatch.worktreePath, paths, task.writeSet);
+    if (paths.length && ['executing', 'cancelling'].includes(dispatch.status)) {
+      throw Object.assign(new Error('Interrupted runtime-managed worker left partial changes with an unknown completion boundary; explicit retry or reconciliation is required'), {
+        code: 'WORKER_RECONCILIATION_REQUIRED',
+        details: {
+          dispatchId: dispatch.id || null,
+          dispatchStatus: dispatch.status,
+          changedPaths: paths,
+          reason: 'runtime-managed-outcome-unknown'
+        }
+      });
+    }
     if (paths.length) return this.commitExternalTaskResult({ missionId, taskId });
     return this.retryWorker({ missionId, taskId });
   }
