@@ -38,10 +38,14 @@ def validate_bundle(data: dict, *, now: dt.datetime | None = None) -> dict:
 
     ev_by_id: dict[str, dict] = {}
     ev_problems: dict[str, list[str]] = {}
+    seen_evidence_ids: set[str] = set()
     for i, ev in enumerate(evidence, 1):
         if not isinstance(ev, dict):
             continue
         eid = str(ev.get("id", "")).strip() or f"evidence-{i}"
+        if eid in seen_evidence_ids:
+            raise ValueError(f"duplicate evidence id: {eid}")
+        seen_evidence_ids.add(eid)
         problems: list[str] = []
         level = str(ev.get("level", "")).strip().lower()
         if level not in LEVELS:
@@ -73,11 +77,15 @@ def validate_bundle(data: dict, *, now: dt.datetime | None = None) -> dict:
         ev_problems[eid] = problems
 
     rows, blockers = [], []
+    seen_claim_ids: set[str] = set()
     for i, claim in enumerate(claims, 1):
         if not isinstance(claim, dict):
             blockers.append(f"claim-{i}:invalid")
             continue
         cid = str(claim.get("id", "")).strip() or f"claim-{i}"
+        if cid in seen_claim_ids:
+            raise ValueError(f"duplicate claim id: {cid}")
+        seen_claim_ids.add(cid)
         text = str(claim.get("claim", "")).strip()
         required = str(claim.get("required_level", "focused")).strip().lower()
         refs = claim.get("evidence_ids", [])
