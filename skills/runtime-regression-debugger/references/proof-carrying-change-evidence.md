@@ -41,6 +41,8 @@ Prefer evidence that names the exact thing tested:
 
 "CI passed yesterday" is weak if today's head changed. "Production looked healthy" is weak if the candidate was not yet receiving traffic.
 
+Claim IDs and evidence IDs inside one proof bundle are identities, not labels for display. After the gate resolves any omitted ID to its deterministic positional fallback (`claim-N` / `evidence-N`), the resulting IDs must be unique. Never rely on JSON order or dictionary overwrite behavior to decide which duplicate claim/evidence row is authoritative. Duplicate resolved identities make the proof manifest structurally invalid and must be repaired before it can support assumptions or completion claims.
+
 ## Treat evidence as scoped
 
 Evidence can prove only the mechanism and population it exercised.
