@@ -116,6 +116,8 @@ Inspect at least the states and viewport classes that can falsify the intended i
 
 A screenshot alone is not a complete oracle. Also verify real state/data/auth wiring and interaction semantics. Conversely, green unit tests do not prove that a user interface is visually coherent.
 
+For material visual changes, read `visual-ui-quality-assurance-product-engineering.md`. Use `scripts/visual_quality_gate.py` when an explicit surface/viewport/state/content/input evidence matrix would prevent screenshot-only validation or overclaiming.
+
 If browser or visual execution is unavailable, continue lower-boundary implementation and be explicit that visual verification remains unproven rather than claiming the design is finished.
 
 ## Proactive improvements adjacent to non-frontend work
