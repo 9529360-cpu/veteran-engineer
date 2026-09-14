@@ -42,9 +42,7 @@ export function redactKnownSecrets(value, secrets = [], replacement = '[REDACTED
     if (typeof input === 'string') return redactString(input);
     if (Array.isArray(input)) return input.map(visit);
     if (input && typeof input === 'object') {
-      const out = {};
-      for (const [key, item] of Object.entries(input)) out[redactString(key)] = visit(item);
-      return out;
+      return Object.fromEntries(Object.entries(input).map(([key, item]) => [redactString(key), visit(item)]));
     }
     return input;
   };
