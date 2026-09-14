@@ -2,6 +2,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { git } from './git.mjs';
 
 export const BROWSER_VALIDATION_CONTRACT = 'veteran-browser-validation-v1';
 
@@ -142,6 +143,14 @@ async function resolveContainedFile(root, relativePath) {
     throw errorWithCode('Browser scenarioFile resolves outside the browser cwd', 'BROWSER_SCENARIO_PATH_ESCAPE');
   }
   return absolute;
+}
+
+async function resolveExpectedSourceHead(cwd, provided) {
+  if (typeof provided === 'string' && provided.trim()) return provided.trim();
+  const result = await git(cwd, ['rev-parse', 'HEAD'], { allowFailure: true }).catch(() => null);
+  if (!result || result.code !== 0) return null;
+  const head = result.stdout.trim();
+  return head || null;
 }
 
 async function isolatedEnvironment(allowlist, environment) {
@@ -305,12 +314,13 @@ export async function runBrowserValidation(browser, { cwd, serviceReadinessUrl =
   const baseUrl = browser.baseUrl || (serviceReadinessUrl ? `${new URL(serviceReadinessUrl).origin}/` : null);
   if (!baseUrl) throw errorWithCode('Browser validation requires browser.baseUrl or service readiness URL', 'BROWSER_BASE_URL_REQUIRED');
   const normalizedBaseUrl = normalizeLoopbackUrl(baseUrl);
+  const authoritativeSourceHead = await resolveExpectedSourceHead(cwd, expectedSourceHead);
   const payload = `${JSON.stringify({
     contract: BROWSER_VALIDATION_CONTRACT,
     baseUrl: normalizedBaseUrl,
     scenario: { path: browser.scenarioFile },
     artifactsManagedByValidation: true,
-    expectedSourceHead,
+    expectedSourceHead: authoritativeSourceHead,
     requireSourceMatch: browser.requireSourceMatch === true
   })}\n`;
   const [command, ...args] = browser.command;
@@ -356,7 +366,7 @@ export async function runBrowserValidation(browser, { cwd, serviceReadinessUrl =
   }
   try {
     const normalized = normalizeProviderResult(parsed, normalizedBaseUrl, {
-      expectedSourceHead,
+      expectedSourceHead: authoritativeSourceHead,
       requireSourceMatch: browser.requireSourceMatch === true
     });
     const failureCode = normalized.sourceMatch === false
