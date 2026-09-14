@@ -10,18 +10,25 @@ function runtimeFeedbackForPacket(mission, waveBase) {
   const latest = mission.runtimeFeedback?.latestRound || null;
   if (!latest) return null;
   const sourceBound = latest.commitSha === waveBase;
+  const scope = latest.scope === 'checkpoint' ? 'checkpoint' : 'wave';
   return {
     contract: mission.runtimeFeedback?.contract || 'veteran-runtime-feedback-v1',
     sourceBound,
     sourceHead: latest.commitSha || null,
     waveBase,
     observedWaveIndex: Number.isInteger(latest.waveIndex) ? latest.waveIndex : null,
+    scope,
+    completeWave: scope === 'wave',
+    triggerTaskId: sourceBound && scope === 'checkpoint' ? (latest.triggerTaskId || null) : null,
     passed: sourceBound ? latest.passed === true : null,
     aggregateEvidenceId: latest.aggregateEvidenceId || null,
     capabilities: sourceBound ? (latest.capabilities || []) : [],
     reason: sourceBound ? null : 'feedback-source-does-not-match-wave-base',
     advisory: true,
     instructions: [
+      ...(scope === 'checkpoint'
+        ? ['Checkpoint feedback covers a stable partial-wave integration only; do not treat it as complete-wave validation or repair authority.']
+        : []),
       'Treat source-bound failures as current product evidence and adapt within the current task contract and writeSet.',
       'If feedback points outside the current task authority, report it as an unresolved risk instead of broadening scope.'
     ]

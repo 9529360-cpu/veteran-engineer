@@ -32,7 +32,7 @@ test('partial integrated wave checkpoints feed the next capacity slice without t
   let app = null;
   try {
     const worker = path.join(root, 'worker.cjs');
-    await fs.writeFile(worker, `const fs=require('fs'),p=require('path');const packet=JSON.parse(fs.readFileSync(process.env.VETERAN_TASK_PACKET,'utf8'));const id=process.env.VETERAN_TASK_ID;if(id==='T1'){if(packet.runtimeFeedback!==null)process.exit(31);fs.writeFileSync(p.join(process.env.VETERAN_WORKTREE,'src','a.txt'),'a1\\n');}else if(id==='T2'){const f=packet.runtimeFeedback,s=f?.capabilities?.[0]?.observation?.service?.session;if(!f?.sourceBound||f.observedWaveIndex!==0||!f.advisory||s?.mode!=='persistent-live'||s?.generation!==1||s?.reused!==false||s?.sourceCheck?.ok!==true)process.exit(32);fs.writeFileSync(p.join(process.env.VETERAN_WORKTREE,'src','b.txt'),'b1\\n');}else if(id==='T3'){const f=packet.runtimeFeedback,s=f?.capabilities?.[0]?.observation?.service?.session;if(!f?.sourceBound||s?.mode!=='persistent-live'||s?.generation!==2||s?.reused!==true||s?.sourceChanged!==true||s?.sourceCheck?.ok!==true)process.exit(33);fs.writeFileSync(p.join(process.env.VETERAN_WORKTREE,'src','c.txt'),'c1\\n');}`);
+    await fs.writeFile(worker, `const fs=require('fs'),p=require('path');const packet=JSON.parse(fs.readFileSync(process.env.VETERAN_TASK_PACKET,'utf8'));const id=process.env.VETERAN_TASK_ID;if(id==='T1'){if(packet.runtimeFeedback!==null)process.exit(31);fs.writeFileSync(p.join(process.env.VETERAN_WORKTREE,'src','a.txt'),'a1\\n');}else if(id==='T2'){const f=packet.runtimeFeedback,s=f?.capabilities?.[0]?.observation?.service?.session;if(!f?.sourceBound||f.observedWaveIndex!==0||!f.advisory||f.scope!=='checkpoint'||f.completeWave!==false||f.triggerTaskId!=='T1'||s?.mode!=='persistent-live'||s?.generation!==1||s?.reused!==false||s?.sourceCheck?.ok!==true)process.exit(32);fs.writeFileSync(p.join(process.env.VETERAN_WORKTREE,'src','b.txt'),'b1\\n');}else if(id==='T3'){const f=packet.runtimeFeedback,s=f?.capabilities?.[0]?.observation?.service?.session;if(!f?.sourceBound||f.scope!=='checkpoint'||f.completeWave!==false||f.triggerTaskId!=='T2'||s?.mode!=='persistent-live'||s?.generation!==2||s?.reused!==true||s?.sourceChanged!==true||s?.sourceCheck?.ok!==true)process.exit(33);fs.writeFileSync(p.join(process.env.VETERAN_WORKTREE,'src','c.txt'),'c1\\n');}`);
     await fs.mkdir(stateRoot, { recursive: true });
     await fs.writeFile(path.join(stateRoot, 'operator.json'), `${JSON.stringify({
       defaults: {
@@ -96,7 +96,7 @@ test('partial integrated wave checkpoints feed the next capacity slice without t
 
     const second = await app.services.workerOrchestrator.execute({ missionId: planned.mission.id, runWorkers: true });
     assert.equal(second.results[0].taskId, 'T2');
-    assert.equal(second.results[0].ok, true, 'second capacity slice must consume the first exact-source checkpoint');
+    assert.equal(second.results[0].ok, true, 'second capacity slice must consume the first exact-source checkpoint with explicit partial-wave semantics');
     assert.equal(second.runtimeFeedbackCheckpoint.scope, 'checkpoint');
     assert.equal(second.runtimeFeedbackCheckpoint.triggerTaskId, 'T2');
     assert.equal(second.runtimeFeedbackCheckpoint.capabilities[0].observation.service.session.reused, true);
@@ -107,9 +107,9 @@ test('partial integrated wave checkpoints feed the next capacity slice without t
 
     const third = await app.services.workerOrchestrator.execute({ missionId: planned.mission.id, runWorkers: true });
     assert.equal(third.results[0].taskId, 'T3');
-    assert.equal(third.results[0].ok, true, 'third capacity slice must consume the second exact-source checkpoint');
+    assert.equal(third.results[0].ok, true, 'third capacity slice must consume the second exact-source checkpoint with explicit partial-wave semantics');
     assert.equal(third.runtimeFeedback.recorded, true);
-    assert.equal(third.runtimeFeedback.scope, undefined, 'full-wave feedback retains the existing contract shape');
+    assert.equal(third.runtimeFeedback.scope, undefined, 'full-wave feedback retains the existing stored contract shape');
     assert.equal(third.runtimeFeedback.capabilities[0].observation.service.session.reused, true);
     assert.equal(third.runtimeFeedback.capabilities[0].observation.service.session.generation, 3);
 
