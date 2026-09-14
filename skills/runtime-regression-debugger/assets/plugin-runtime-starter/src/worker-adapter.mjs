@@ -6,7 +6,9 @@ import { nowIso } from './util.mjs';
 import { buildContainerInvocation, validateContainerWorkerConfig } from './container-worker.mjs';
 
 const SAFE_ENV_KEYS = ['PATH', 'HOME', 'USERPROFILE', 'TMP', 'TEMP', 'TMPDIR', 'SYSTEMROOT', 'COMSPEC', 'LANG', 'LC_ALL', 'SHELL'];
+const LOCAL_WORKER_TYPES = new Set(['custom', 'custom-unconfined', 'codex']);
 const MAX_ENV_NAMES = 64;
+const MAX_LOCAL_TIMEOUT_MS = 2_147_483_647;
 const MAX_CAPTURED_OUTPUT_CHARS = 2_000_000;
 const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const FORBIDDEN_CODEX_FLAGS = new Set([
@@ -94,6 +96,12 @@ async function resolveThroughExistingAncestor(targetPath) {
 function packetPathError(message) {
   const error = new Error(message);
   error.code = 'WORKER_PACKET_PATH_INVALID';
+  return error;
+}
+
+function localWorkerConfigError(message) {
+  const error = new Error(message);
+  error.code = 'WORKER_CONFIG_INVALID';
   return error;
 }
 
@@ -211,20 +219,44 @@ export function resolveWorkerConfig(project, requestedWorker = 'default') {
   return { type: process.env.VETERAN_WORKER_TYPE || 'custom', command, args };
 }
 
-function validateLocalWorkerEnvironment(config) {
-  if (config?.envAllowlist === undefined) return;
-  if (!Array.isArray(config.envAllowlist) || config.envAllowlist.length > MAX_ENV_NAMES) {
-    const error = new Error(`Local worker envAllowlist must be an array with at most ${MAX_ENV_NAMES} entries`);
-    error.code = 'WORKER_CONFIG_INVALID';
-    throw error;
+function validateLocalWorkerConfig(config) {
+  const type = config?.type || 'custom';
+  if (!LOCAL_WORKER_TYPES.has(type)) {
+    throw localWorkerConfigError(`Unsupported local worker type: ${type}`);
   }
-  for (const key of config.envAllowlist) {
-    if (typeof key !== 'string' || !ENV_KEY.test(key)) {
-      const error = new Error('Local worker envAllowlist contains an invalid environment variable name');
-      error.code = 'WORKER_CONFIG_INVALID';
-      throw error;
+  if (typeof config?.command !== 'string' || !config.command.trim()) {
+    throw localWorkerConfigError('Local worker command must be a non-empty string');
+  }
+  if (config.args !== undefined && (!Array.isArray(config.args) || config.args.some((arg) => typeof arg !== 'string'))) {
+    throw localWorkerConfigError('Local worker args must be an array of strings when supplied');
+  }
+  if (config.envAllowlist !== undefined) {
+    if (!Array.isArray(config.envAllowlist) || config.envAllowlist.length > MAX_ENV_NAMES) {
+      throw localWorkerConfigError(`Local worker envAllowlist must be an array with at most ${MAX_ENV_NAMES} entries`);
+    }
+    for (const key of config.envAllowlist) {
+      if (typeof key !== 'string' || !ENV_KEY.test(key)) {
+        throw localWorkerConfigError('Local worker envAllowlist contains an invalid environment variable name');
+      }
     }
   }
+  if (config.env !== undefined) {
+    if (config.env === null || typeof config.env !== 'object' || Array.isArray(config.env)) {
+      throw localWorkerConfigError('Local worker env must be an object of string environment values when supplied');
+    }
+    for (const [key, value] of Object.entries(config.env)) {
+      if (!ENV_KEY.test(key) || typeof value !== 'string') {
+        throw localWorkerConfigError('Local worker env contains an invalid environment variable name or non-string value');
+      }
+    }
+  }
+  if (config.timeoutMs !== undefined && (!Number.isInteger(config.timeoutMs) || config.timeoutMs <= 0 || config.timeoutMs > MAX_LOCAL_TIMEOUT_MS)) {
+    throw localWorkerConfigError(`Local worker timeoutMs must be an integer from 1 through ${MAX_LOCAL_TIMEOUT_MS}`);
+  }
+  if (config.stdinMode !== undefined && config.stdinMode !== 'codex-prompt') {
+    throw localWorkerConfigError('Local worker stdinMode must be codex-prompt when supplied');
+  }
+  return type;
 }
 
 export function enforceWorkerPolicy(project, task, config) {
@@ -233,17 +265,14 @@ export function enforceWorkerPolicy(project, task, config) {
     error.code = 'WORKER_EXECUTION_DISABLED';
     throw error;
   }
+  let type;
   if (config?.type === 'container') {
     validateContainerWorkerConfig(config);
+    type = 'container';
   } else {
-    validateLocalWorkerEnvironment(config);
-    if (!config?.command) {
-      const error = new Error('No worker executable is configured');
-      error.code = 'WORKER_NOT_CONFIGURED';
-      throw error;
-    }
+    type = validateLocalWorkerConfig(config);
   }
-  const unconfined = config.type === 'custom-unconfined';
+  const unconfined = type === 'custom-unconfined';
   if (unconfined && !project.workerPolicy.allowUnconfinedCustomWorkers) {
     const error = new Error('Custom unconfined worker requires explicit operator opt-in');
     error.code = 'UNCONFINED_WORKER_NOT_ALLOWED';
@@ -368,7 +397,7 @@ export class WorkerAdapter {
       }
 
       const invocation = buildWorkerInvocation({ config, worktreePath, packetPath: resolvedPacketPath, task, mission, runtimeNamespace });
-      const env = {};
+      const env = Object.create(null);
       for (const key of SAFE_ENV_KEYS) if (process.env[key] !== undefined) env[key] = process.env[key];
       for (const key of config.envAllowlist || []) if (process.env[key] !== undefined) env[key] = process.env[key];
       if (config.type !== 'container') Object.assign(env, config.env || {});
@@ -377,7 +406,7 @@ export class WorkerAdapter {
         env.TEMP = runtimeProfile.tmp;
         env.TMPDIR = runtimeProfile.tmp;
       }
-      if (runtimeProfile && config.type === 'custom') {
+      if (runtimeProfile && (config.type || 'custom') === 'custom') {
         env.HOME = runtimeProfile.home;
         env.USERPROFILE = runtimeProfile.home;
         env.XDG_CONFIG_HOME = runtimeProfile.config;
