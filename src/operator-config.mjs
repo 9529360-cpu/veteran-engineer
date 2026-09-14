@@ -50,6 +50,8 @@ function validatePolicyScope(value, pathValue) {
 
   assertBooleanField(value, 'requireSemanticReview', pathValue);
   assertBooleanField(value, 'requireValidation', pathValue);
+  assertStringArrayField(value, 'validationCapabilities', pathValue);
+  assertStringArrayField(value, 'requiredValidationCapabilities', pathValue);
   assertStringArrayField(value, 'runtimeFeedbackCapabilities', pathValue);
   validateRuntimeFeedbackPolicy(value.runtimeFeedbackPolicy, `${pathValue}.runtimeFeedbackPolicy`);
 
