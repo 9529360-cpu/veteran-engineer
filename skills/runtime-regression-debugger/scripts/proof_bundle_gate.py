@@ -25,23 +25,16 @@ def parse_time(value: str) -> dt.datetime:
     return parsed.astimezone(dt.timezone.utc)
 
 
-def main() -> int:
-    p = argparse.ArgumentParser()
-    p.add_argument("path")
-    p.add_argument("--now", help="ISO timestamp for deterministic freshness checks")
-    p.add_argument("--json", action="store_true")
-    a = p.parse_args()
-    try:
-        data = json.loads(pathlib.Path(a.path).read_text(encoding="utf-8"))
-        change_identity = str(data.get("change_identity", "")).strip()
-        claims = data.get("claims")
-        evidence = data.get("evidence")
-        if not change_identity or not isinstance(claims, list) or not claims or not isinstance(evidence, list):
-            raise ValueError("require change_identity plus a non-empty claims list and an evidence list")
-        now = parse_time(a.now) if a.now else dt.datetime.now(dt.timezone.utc)
-    except (OSError, json.JSONDecodeError, ValueError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
+def validate_bundle(data: dict, *, now: dt.datetime | None = None) -> dict:
+    """Return the proof-bundle verdict without duplicating CLI freshness logic."""
+    if not isinstance(data, dict):
+        raise ValueError("proof bundle root must be an object")
+    change_identity = str(data.get("change_identity", "")).strip()
+    claims = data.get("claims")
+    evidence = data.get("evidence")
+    if not change_identity or not isinstance(claims, list) or not claims or not isinstance(evidence, list):
+        raise ValueError("require change_identity plus a non-empty claims list and an evidence list")
+    now = (now or dt.datetime.now(dt.timezone.utc)).astimezone(dt.timezone.utc)
 
     ev_by_id: dict[str, dict] = {}
     ev_problems: dict[str, list[str]] = {}
@@ -116,7 +109,7 @@ def main() -> int:
             blockers.append(cid)
         rows.append({"id": cid, "claim": text, "required_level": required, "problems": sorted(set(problems))})
 
-    payload = {
+    return {
         "change_identity": change_identity,
         "claims": rows,
         "evidence_problems": {k: v for k, v in ev_problems.items() if v},
@@ -124,15 +117,31 @@ def main() -> int:
         "blockers": blockers,
         "note": "Metadata gate only; evidence quality and semantic coverage still require engineering judgment.",
     }
+
+
+def main() -> int:
+    p = argparse.ArgumentParser()
+    p.add_argument("path")
+    p.add_argument("--now", help="ISO timestamp for deterministic freshness checks")
+    p.add_argument("--json", action="store_true")
+    a = p.parse_args()
+    try:
+        data = json.loads(pathlib.Path(a.path).read_text(encoding="utf-8"))
+        now = parse_time(a.now) if a.now else None
+        payload = validate_bundle(data, now=now)
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
     if a.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
         print("# Proof bundle gate")
-        for row in rows:
+        for row in payload["claims"]:
             suffix = f" problems={','.join(row['problems'])}" if row["problems"] else ""
             print(f"- {row['id']}: required={row['required_level']}{suffix}")
-        print("status:", "PASS" if not blockers else "BLOCKED")
-    return 0 if not blockers else 1
+        print("status:", "PASS" if payload["gate_passed"] else "BLOCKED")
+    return 0 if payload["gate_passed"] else 1
 
 
 if __name__ == "__main__":
