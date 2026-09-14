@@ -34,8 +34,12 @@ function validateRuntimeFeedbackPolicy(raw, pathValue) {
   if (raw === undefined || raw === null) return null;
   if (!isRecord(raw)) throw invalidOperatorConfig(pathValue, 'object', raw);
   assertBooleanField(raw, 'autoRepair', pathValue);
+  assertBooleanField(raw, 'liveSession', pathValue);
   if (raw.maxRepairAttempts !== undefined && (!Number.isInteger(raw.maxRepairAttempts) || raw.maxRepairAttempts < 0 || raw.maxRepairAttempts > 3)) {
     throw invalidOperatorConfig(`${pathValue}.maxRepairAttempts`, 'integer from 0 through 3', raw.maxRepairAttempts);
+  }
+  if (raw.liveSessionIdleMs !== undefined && (!Number.isInteger(raw.liveSessionIdleMs) || raw.liveSessionIdleMs < 1_000 || raw.liveSessionIdleMs > 30 * 60_000)) {
+    throw invalidOperatorConfig(`${pathValue}.liveSessionIdleMs`, 'integer from 1000 through 1800000', raw.liveSessionIdleMs);
   }
   return raw;
 }
@@ -93,6 +97,8 @@ export function projectPolicy(operatorConfig, repoPath, remoteUrl = null) {
     runtimeFeedbackPolicy: {
       autoRepair: false,
       maxRepairAttempts: 1,
+      liveSession: false,
+      liveSessionIdleMs: 5 * 60_000,
       ...(defaults.runtimeFeedbackPolicy || {}),
       ...(specific.runtimeFeedbackPolicy || {})
     },
