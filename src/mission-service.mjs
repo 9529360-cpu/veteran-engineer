@@ -1,5 +1,6 @@
 import { RISK_LEVELS } from './constants.mjs';
 import { allowlistedProcessEnvironment, runProcess, sourceIdentity, writeSetsConflict } from './git.mjs';
+import { normalizeTaskCapabilityContract, runtimeResourcesConflict } from './capability-plane.mjs';
 import { normalizePathList, nowIso, randomId } from './util.mjs';
 
 const TERMINAL_TASKS = new Set(['done', 'failed', 'cancelled', 'blocked', 'superseded']);
@@ -11,6 +12,7 @@ function validateTask(raw, index) {
   const dependencies = [...new Set((raw.dependencies || []).map(String))];
   const writeSet = normalizePathList(raw.writeSet || []);
   const risk = raw.risk || 'low';
+  const capabilityContract = normalizeTaskCapabilityContract(raw, id);
   if (!RISK_LEVELS.includes(risk)) throw new Error(`Invalid risk level for ${id}: ${risk}`);
   if (!String(raw.contract || '').trim()) throw new Error(`Task ${id} requires a contract`);
   if (!String(raw.owner || '').trim()) throw new Error(`Task ${id} requires an owner/boundary`);
@@ -24,7 +26,8 @@ function validateTask(raw, index) {
     risk,
     validationCapability: raw.validationCapability || null,
     worker: raw.worker || 'default',
-    notes: raw.notes || null
+    notes: raw.notes || null,
+    ...capabilityContract
   };
 }
 
@@ -62,7 +65,16 @@ export function computeWaves(tasks) {
     if (!ready.length) throw new Error('Unable to compute mission waves');
     const wave = [];
     for (const task of ready) {
-      if (!wave.some((selected) => writeSetsConflict(selected.writeSet, task.writeSet))) wave.push(task);
+      const conflicts = wave.some((selected) =>
+        writeSetsConflict(selected.writeSet, task.writeSet)
+        || runtimeResourcesConflict(
+          selected.runtimeResources || [],
+          task.runtimeResources || [],
+          { taskId: selected.id },
+          { taskId: task.id }
+        )
+      );
+      if (!conflicts) wave.push(task);
     }
     if (!wave.length) wave.push(ready[0]);
     waves.push(wave.map((task) => task.id));
@@ -182,6 +194,7 @@ export class MissionService {
       dispatches: [],
       commitSha: null,
       integrationSha: null,
+      capabilityLease: null,
       evidenceIds: [],
       createdAt,
       updatedAt: createdAt
@@ -271,7 +284,10 @@ export class MissionService {
       for (const task of Object.values(state.tasks).filter((item) => item.missionId === missionId)) {
         if (!TERMINAL_TASKS.has(task.status)) {
           task.status = task.status === 'executing' ? 'cancelling' : 'cancelled';
-          if (task.status === 'cancelled') task.admission = null;
+          if (task.status === 'cancelled') {
+            task.admission = null;
+            task.capabilityLease = null;
+          }
         }
       }
       state.runtime.timeline.push({ type: 'mission_cancelled', missionId, reason, at: nowIso() });
