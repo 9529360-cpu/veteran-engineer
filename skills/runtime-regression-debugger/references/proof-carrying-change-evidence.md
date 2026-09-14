@@ -43,6 +43,8 @@ Prefer evidence that names the exact thing tested:
 
 Claim IDs and evidence IDs inside one proof bundle are identities, not labels for display. After the gate resolves any omitted ID to its deterministic positional fallback (`claim-N` / `evidence-N`), the resulting IDs must be unique. Never rely on JSON order or dictionary overwrite behavior to decide which duplicate claim/evidence row is authoritative. Duplicate resolved identities make the proof manifest structurally invalid and must be repaired before it can support assumptions or completion claims.
 
+Authority metadata is also type-sensitive. `change_identity`, explicit claim/evidence IDs, `applies_to` entries, and `evidence_ids` entries are exact non-empty strings; do not coerce numbers, booleans, objects, or empty values into identities. Evidence and claim rows must be objects. When `max_age_hours` is declared it must be an actual finite non-negative JSON number, not a numeric string or boolean, and `observed_at` must be a timestamp string. Malformed metadata is an invalid proof manifest, not merely weak evidence, because coercion can otherwise make unrelated values appear to name the same proof authority.
+
 ## Treat evidence as scoped
 
 Evidence can prove only the mechanism and population it exercised.

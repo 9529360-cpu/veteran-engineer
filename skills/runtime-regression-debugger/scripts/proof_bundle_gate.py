@@ -25,70 +25,101 @@ def parse_time(value: str) -> dt.datetime:
     return parsed.astimezone(dt.timezone.utc)
 
 
+def require_nonempty_string(value, path: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{path} must be a non-empty string")
+    return value.strip()
+
+
+def resolved_id(row: dict, index: int, prefix: str) -> str:
+    if "id" not in row:
+        return f"{prefix}-{index}"
+    return require_nonempty_string(row.get("id"), f"{prefix}[{index - 1}].id")
+
+
+def optional_string_list(row: dict, key: str, path: str) -> list[str]:
+    value = row.get(key, [])
+    if not isinstance(value, list):
+        raise ValueError(f"{path} must be a string list")
+    result = []
+    for index, item in enumerate(value):
+        result.append(require_nonempty_string(item, f"{path}[{index}]"))
+    return result
+
+
 def validate_bundle(data: dict, *, now: dt.datetime | None = None) -> dict:
     """Return the proof-bundle verdict without duplicating CLI freshness logic."""
     if not isinstance(data, dict):
         raise ValueError("proof bundle root must be an object")
-    change_identity = str(data.get("change_identity", "")).strip()
+    change_identity = require_nonempty_string(data.get("change_identity"), "change_identity")
     claims = data.get("claims")
     evidence = data.get("evidence")
-    if not change_identity or not isinstance(claims, list) or not claims or not isinstance(evidence, list):
-        raise ValueError("require change_identity plus a non-empty claims list and an evidence list")
+    if not isinstance(claims, list) or not claims or not isinstance(evidence, list):
+        raise ValueError("require a non-empty claims list and an evidence list")
     now = (now or dt.datetime.now(dt.timezone.utc)).astimezone(dt.timezone.utc)
 
     ev_by_id: dict[str, dict] = {}
     ev_problems: dict[str, list[str]] = {}
+    ev_levels: dict[str, str] = {}
     seen_evidence_ids: set[str] = set()
     for i, ev in enumerate(evidence, 1):
         if not isinstance(ev, dict):
-            continue
-        eid = str(ev.get("id", "")).strip() or f"evidence-{i}"
+            raise ValueError(f"evidence[{i - 1}] must be an object")
+        eid = resolved_id(ev, i, "evidence")
         if eid in seen_evidence_ids:
             raise ValueError(f"duplicate evidence id: {eid}")
         seen_evidence_ids.add(eid)
         problems: list[str] = []
-        level = str(ev.get("level", "")).strip().lower()
+        level_value = ev.get("level", "")
+        level = level_value.strip().lower() if isinstance(level_value, str) else ""
         if level not in LEVELS:
             problems.append("invalid_level")
-        applies = ev.get("applies_to", [])
-        if not isinstance(applies, list) or change_identity not in [str(x) for x in applies]:
+        applies = optional_string_list(ev, "applies_to", f"evidence[{i - 1}].applies_to")
+        if change_identity not in applies:
             problems.append("foreign_identity")
-        result = str(ev.get("result", "")).strip().lower()
+        result_value = ev.get("result", "")
+        result = result_value.strip().lower() if isinstance(result_value, str) else ""
         if result not in {"pass", "supports"}:
             problems.append("not_supporting")
         max_age = ev.get("max_age_hours")
-        observed = str(ev.get("observed_at", "")).strip()
+        observed_value = ev.get("observed_at")
         if max_age is not None:
-            try:
-                age_limit = float(max_age)
-                if not math.isfinite(age_limit) or age_limit < 0:
-                    problems.append("invalid_freshness")
-                elif not observed:
-                    problems.append("freshness_unverifiable")
-                else:
-                    age_hours = (now - parse_time(observed)).total_seconds() / 3600
+            if isinstance(max_age, bool) or not isinstance(max_age, (int, float)):
+                raise ValueError(f"evidence[{i - 1}].max_age_hours must be a finite non-negative number")
+            age_limit = float(max_age)
+            if not math.isfinite(age_limit) or age_limit < 0:
+                problems.append("invalid_freshness")
+            elif observed_value is None or (isinstance(observed_value, str) and not observed_value.strip()):
+                problems.append("freshness_unverifiable")
+            elif not isinstance(observed_value, str):
+                raise ValueError(f"evidence[{i - 1}].observed_at must be a timestamp string when max_age_hours is set")
+            else:
+                try:
+                    age_hours = (now - parse_time(observed_value)).total_seconds() / 3600
                     if age_hours < -0.01:
                         problems.append("evidence_from_future")
                     elif age_hours > age_limit:
                         problems.append("expired")
-            except (ValueError, TypeError):
-                problems.append("invalid_freshness")
+                except (ValueError, TypeError):
+                    problems.append("invalid_freshness")
         ev_by_id[eid] = ev
+        ev_levels[eid] = level
         ev_problems[eid] = problems
 
     rows, blockers = [], []
     seen_claim_ids: set[str] = set()
     for i, claim in enumerate(claims, 1):
         if not isinstance(claim, dict):
-            blockers.append(f"claim-{i}:invalid")
-            continue
-        cid = str(claim.get("id", "")).strip() or f"claim-{i}"
+            raise ValueError(f"claims[{i - 1}] must be an object")
+        cid = resolved_id(claim, i, "claim")
         if cid in seen_claim_ids:
             raise ValueError(f"duplicate claim id: {cid}")
         seen_claim_ids.add(cid)
-        text = str(claim.get("claim", "")).strip()
-        required = str(claim.get("required_level", "focused")).strip().lower()
-        refs = claim.get("evidence_ids", [])
+        text_value = claim.get("claim")
+        text = text_value.strip() if isinstance(text_value, str) else ""
+        required_value_raw = claim.get("required_level", "focused")
+        required = required_value_raw.strip().lower() if isinstance(required_value_raw, str) else ""
+        refs = optional_string_list(claim, "evidence_ids", f"claims[{i - 1}].evidence_ids")
         problems: list[str] = []
         if not text:
             problems.append("missing_claim")
@@ -97,18 +128,17 @@ def validate_bundle(data: dict, *, now: dt.datetime | None = None) -> dict:
             required_value = 999
         else:
             required_value = LEVELS[required]
-        if not isinstance(refs, list) or not refs:
+        if not refs:
             problems.append("missing_evidence")
-            refs = []
         usable_levels = []
-        for ref in [str(x) for x in refs]:
+        for ref in refs:
             if ref not in ev_by_id:
                 problems.append(f"unknown_evidence:{ref}")
                 continue
             if ev_problems.get(ref):
                 problems.append(f"unusable_evidence:{ref}")
                 continue
-            usable_levels.append(LEVELS[str(ev_by_id[ref].get("level", "")).lower()])
+            usable_levels.append(LEVELS[ev_levels[ref]])
         if usable_levels and max(usable_levels) < required_value:
             problems.append("insufficient_evidence_level")
         if not usable_levels and refs:
