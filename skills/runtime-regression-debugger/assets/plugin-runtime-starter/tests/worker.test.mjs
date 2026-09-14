@@ -217,18 +217,37 @@ test('WorkerAdapter sanitizes and cleans adapter-owned fallback packet files', a
   }
 });
 
-test('local worker receives a dispatch runtime namespace and randomized disposable temp directory', async () => {
+test('custom local worker receives an isolated disposable runtime profile that overrides host state paths', async () => {
   const root = await tempDir('veteran-worker-runtime-');
   try {
     const worktreePath = path.join(root, 'worktree');
     const workerPath = path.join(root, 'worker.mjs');
-    await fs.mkdir(worktreePath, { recursive: true });
+    const hostHome = path.join(root, 'host-home');
+    const hostConfig = path.join(root, 'host-config');
+    const hostCache = path.join(root, 'host-cache');
+    const hostData = path.join(root, 'host-data');
+    const hostState = path.join(root, 'host-state');
+    await Promise.all([worktreePath, hostHome, hostConfig, hostCache, hostData, hostState].map((dir) => fs.mkdir(dir, { recursive: true })));
     await fs.writeFile(workerPath, [
       "import fs from 'node:fs/promises';",
       "import path from 'node:path';",
-      "const tmp = process.env.TMPDIR || process.env.TMP || process.env.TEMP;",
-      "await fs.writeFile(path.join(tmp, 'probe.txt'), 'owned\\n');",
-      "process.stdout.write(JSON.stringify({ runtimeNamespace: process.env.VETERAN_RUNTIME_NAMESPACE, tmp }));"
+      "const observed = {",
+      "  runtimeNamespace: process.env.VETERAN_RUNTIME_NAMESPACE,",
+      "  tmp: process.env.TMPDIR || process.env.TMP || process.env.TEMP,",
+      "  home: process.env.HOME,",
+      "  userProfile: process.env.USERPROFILE,",
+      "  config: process.env.XDG_CONFIG_HOME,",
+      "  cache: process.env.XDG_CACHE_HOME,",
+      "  data: process.env.XDG_DATA_HOME,",
+      "  state: process.env.XDG_STATE_HOME,",
+      "  appData: process.env.APPDATA,",
+      "  localAppData: process.env.LOCALAPPDATA",
+      "};",
+      "for (const [key, dir] of Object.entries(observed)) {",
+      "  if (key === 'runtimeNamespace' || !dir) continue;",
+      "  await fs.writeFile(path.join(dir, `${key}.probe`), 'owned\\n');",
+      "}",
+      "process.stdout.write(JSON.stringify(observed));"
     ].join('\n'));
     const adapter = new WorkerAdapter();
     const result = await adapter.run({
@@ -238,7 +257,21 @@ test('local worker receives a dispatch runtime namespace and randomized disposab
       worktreePath,
       packet: { protocol: 'veteran-worker-v1' },
       packetPath: path.join(root, 'dispatch-123.json'),
-      config: { type: 'custom', command: process.execPath, args: [workerPath] }
+      config: {
+        type: 'custom',
+        command: process.execPath,
+        args: [workerPath],
+        env: {
+          HOME: hostHome,
+          USERPROFILE: hostHome,
+          XDG_CONFIG_HOME: hostConfig,
+          XDG_CACHE_HOME: hostCache,
+          XDG_DATA_HOME: hostData,
+          XDG_STATE_HOME: hostState,
+          APPDATA: hostConfig,
+          LOCALAPPDATA: hostCache
+        }
+      }
     });
     assert.equal(result.code, 0);
     assert.equal(result.termination, null);
@@ -246,8 +279,34 @@ test('local worker receives a dispatch runtime namespace and randomized disposab
     const observed = JSON.parse(result.stdout);
     assert.equal(observed.runtimeNamespace, 'M1:T1:dispatch-123');
     assert.equal(result.runtimeNamespace, observed.runtimeNamespace);
-    assert.match(observed.tmp.replaceAll('\\', '/'), /\/veteran-engineer-m1-t1-dispatch-123-[^/]+$/);
-    await assert.rejects(fs.stat(observed.tmp), (error) => error.code === 'ENOENT', 'task-owned temp directory must be cleaned after worker exit');
+
+    const profileRoot = path.dirname(observed.tmp);
+    assert.ok(path.basename(profileRoot).startsWith('veteran-engineer-m1-t1-dispatch-123-'));
+    assert.equal(path.dirname(observed.home), profileRoot);
+    assert.equal(observed.userProfile, observed.home);
+    assert.equal(path.dirname(observed.config), profileRoot);
+    assert.equal(path.dirname(observed.cache), profileRoot);
+    assert.equal(path.dirname(observed.data), profileRoot);
+    assert.equal(path.dirname(observed.state), profileRoot);
+    assert.equal(observed.appData, observed.config);
+    assert.equal(observed.localAppData, observed.cache);
+    assert.notEqual(observed.home, hostHome);
+    assert.notEqual(observed.config, hostConfig);
+    assert.notEqual(observed.cache, hostCache);
+
+    await assert.rejects(fs.stat(profileRoot), (error) => error.code === 'ENOENT', 'task-owned runtime profile must be cleaned after worker exit');
+    for (const target of [
+      path.join(hostHome, 'home.probe'),
+      path.join(hostHome, 'userProfile.probe'),
+      path.join(hostConfig, 'config.probe'),
+      path.join(hostConfig, 'appData.probe'),
+      path.join(hostCache, 'cache.probe'),
+      path.join(hostCache, 'localAppData.probe'),
+      path.join(hostData, 'data.probe'),
+      path.join(hostState, 'state.probe')
+    ]) {
+      await assert.rejects(fs.access(target), (error) => error.code === 'ENOENT', `worker must not write host state path ${target}`);
+    }
   } finally {
     await cleanup(root);
   }
