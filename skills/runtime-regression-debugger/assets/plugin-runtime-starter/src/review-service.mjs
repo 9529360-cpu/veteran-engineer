@@ -91,6 +91,13 @@ export class ReviewService {
       mission: { id: mission.id, goal: mission.goal, doneDefinition: mission.doneDefinition, baseHead: mission.baseSourceIdentity.head, head },
       projectExperience: experience.items,
       experiencePrecedence: experience.precedence,
+      reviewPolicy: [
+        'Review the whole semantic change, not style in isolation. Look for new authorities, state machines, stores, services, wrappers, adapters, extension points, or dependencies that lack a distinct responsibility, lifecycle, or repeated semantic contract.',
+        'Flag parallel sources of truth, duplicate state machines, wrapper-on-wrapper indirection, speculative generic interfaces, and product policy hidden behind generic plumbing when a simpler existing owner can safely carry the behavior.',
+        'Check negative space after the change: obsolete branches, superseded compatibility, redundant helpers, duplicate tests, old owners, and temporary scaffolding should be removed when their live consumer is gone.',
+        'Do not recommend simplification that erases real authorization, concurrency, durability, failure-recovery, observability, compatibility, isolation, or cleanup guarantees.',
+        'Treat complexity as justified when current repository evidence demonstrates a distinct correctness boundary; do not report mere line count, file size, or personal style preference as a finding.'
+      ],
       limits: { maxFindings: 20, maxRemediationTasks: 8 }
     };
     const result = await runProcess(provider.command, provider.args || [], {
