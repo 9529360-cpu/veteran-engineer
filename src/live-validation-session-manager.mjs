@@ -87,19 +87,22 @@ export class LiveValidationSessionManager {
   }
 
   snapshot() {
-    return [...this.sessions.values()].map((session) => ({
-      id: session.id,
-      projectId: session.projectId,
-      missionId: session.missionId,
-      capability: session.capability,
-      worktreeName: session.worktreeName,
-      commitSha: session.commitSha,
-      generation: session.generation,
-      startedAt: session.startedAt,
-      lastUsedAt: session.lastUsedAt,
-      running: session.serviceRun.status().running,
-      treeRunning: session.serviceRun.status().treeRunning
-    }));
+    return [...this.sessions.values()].map((session) => {
+      const status = session.serviceRun.status();
+      return {
+        id: session.id,
+        projectId: session.projectId,
+        missionId: session.missionId,
+        capability: session.capability,
+        worktreeName: session.worktreeName,
+        commitSha: session.commitSha,
+        generation: session.generation,
+        startedAt: session.startedAt,
+        lastUsedAt: session.lastUsedAt,
+        running: status.running,
+        treeRunning: status.treeRunning
+      };
+    });
   }
 
   async acquire({ project, mission, capability, commitSha, service }) {
@@ -108,6 +111,7 @@ export class LiveValidationSessionManager {
     const key = sessionKey(project.id, mission.id, capability);
     return this.#withKeyLock(key, async () => {
       let session = this.sessions.get(key) || null;
+      let reused = Boolean(session);
       let restarted = false;
       let restartReason = null;
       let sourceChanged = false;
@@ -123,6 +127,7 @@ export class LiveValidationSessionManager {
         if (restartReason) {
           await this.#releaseSession(session, restartReason);
           session = null;
+          reused = false;
           restarted = true;
         }
       }
@@ -136,10 +141,11 @@ export class LiveValidationSessionManager {
       if (!session) {
         session = await this.#startSession({ project, mission, capability, commitSha, service, idleMs: support.idleMs });
       } else if (session.commitSha !== commitSha) {
-        const moved = await this.#moveSessionSource(session, project, commitSha);
+        const moved = await this.#moveSessionSource(session, commitSha);
         if (!moved.ok) {
           await this.#releaseSession(session, 'source-transition-failed');
           session = await this.#startSession({ project, mission, capability, commitSha, service, idleMs: support.idleMs });
+          reused = false;
           restarted = true;
           restartReason = 'source-transition-failed';
         } else {
@@ -147,15 +153,25 @@ export class LiveValidationSessionManager {
         }
       }
 
-      let readiness = await waitForValidationReadiness(session.serviceRun, service.readiness);
-      let reused = session.generation > 1 || session.reuseCount > 0;
-      if (!readiness.ready && !restarted) {
+      let readiness;
+      try {
+        readiness = await waitForValidationReadiness(session.serviceRun, service.readiness);
+      } catch (error) {
+        await this.#releaseSession(session, 'readiness-error');
+        throw error;
+      }
+      if (!readiness.ready && reused) {
         await this.#releaseSession(session, 'reuse-readiness-failed');
         session = await this.#startSession({ project, mission, capability, commitSha, service, idleMs: support.idleMs });
-        readiness = await waitForValidationReadiness(session.serviceRun, service.readiness);
+        try {
+          readiness = await waitForValidationReadiness(session.serviceRun, service.readiness);
+        } catch (error) {
+          await this.#releaseSession(session, 'restart-readiness-error');
+          throw error;
+        }
+        reused = false;
         restarted = true;
         restartReason = 'reuse-readiness-failed';
-        reused = false;
       }
 
       session.lastUsedAt = nowIso();
@@ -233,8 +249,16 @@ export class LiveValidationSessionManager {
     await fs.rm(worktreePath, { recursive: true, force: true });
     await git(project.repoPath, ['worktree', 'prune', '--expire', 'now'], { allowFailure: true });
     await git(project.repoPath, ['worktree', 'add', '--detach', worktreePath, commitSha]);
-    const serviceCwd = await resolveContainedCwd(worktreePath, service.cwd);
-    const serviceRun = startValidationService(service, { cwd: serviceCwd });
+    let serviceRun;
+    try {
+      const serviceCwd = await resolveContainedCwd(worktreePath, service.cwd);
+      serviceRun = startValidationService(service, { cwd: serviceCwd });
+    } catch (error) {
+      await git(project.repoPath, ['worktree', 'remove', '--force', worktreePath], { allowFailure: true });
+      await fs.rm(worktreePath, { recursive: true, force: true });
+      await git(project.repoPath, ['worktree', 'prune', '--expire', 'now'], { allowFailure: true });
+      throw error;
+    }
     const session = {
       id: randomId('livesession'),
       key,
@@ -259,7 +283,7 @@ export class LiveValidationSessionManager {
     return session;
   }
 
-  async #moveSessionSource(session, project, commitSha) {
+  async #moveSessionSource(session, commitSha) {
     const checkout = await git(session.worktreePath, ['checkout', '--detach', '--force', commitSha], { allowFailure: true });
     if (checkout.code !== 0) return { ok: false, code: checkout.code };
     const head = (await git(session.worktreePath, ['rev-parse', 'HEAD'], { allowFailure: true })).stdout.trim();
