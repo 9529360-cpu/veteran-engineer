@@ -93,6 +93,22 @@ export class CapabilityAwareWorkerOrchestrator {
     return snapshot;
   }
 
+  async #snapshotAfterExecution(missionId, fallback) {
+    try {
+      const current = await this.#snapshot(missionId);
+      return { ...current, observation: { stage: 'post-execution', currentAtReturn: true } };
+    } catch (error) {
+      return {
+        ...fallback,
+        observation: {
+          stage: 'preflight-fallback',
+          currentAtReturn: false,
+          refreshError: { code: error?.code || 'SNAPSHOT_REFRESH_FAILED' }
+        }
+      };
+    }
+  }
+
   snapshot({ missionId }) {
     return this.#snapshot(missionId);
   }
@@ -239,19 +255,23 @@ export class CapabilityAwareWorkerOrchestrator {
 
   async execute(args) {
     const runWorkers = args.runWorkers === true;
-    const snapshot = await this.#snapshot(args.missionId);
+    const preflightSnapshot = await this.#snapshot(args.missionId);
     const reservation = await this.#reserve({ missionId: args.missionId, runWorkers });
     if (reservation.reason === 'capability-preflight-blocked') {
       return {
         missionId: args.missionId,
         reason: reservation.reason,
         blocked: reservation.blocked,
-        capabilitySnapshot: snapshot
+        capabilitySnapshot: {
+          ...preflightSnapshot,
+          observation: { stage: 'preflight-blocked', currentAtReturn: true }
+        }
       };
     }
     if (!reservation.taskIds.length) {
       const result = await this.delegate.execute(args);
-      return { ...result, capabilitySnapshot: snapshot };
+      const capabilitySnapshot = await this.#snapshotAfterExecution(args.missionId, preflightSnapshot);
+      return { ...result, capabilitySnapshot };
     }
 
     let result;
@@ -263,7 +283,8 @@ export class CapabilityAwareWorkerOrchestrator {
     }
 
     await this.#reconcileReservation(reservation, 'delegate-returned');
-    return { ...result, capabilitySnapshot: snapshot };
+    const capabilitySnapshot = await this.#snapshotAfterExecution(args.missionId, preflightSnapshot);
+    return { ...result, capabilitySnapshot };
   }
 
   async commitExternalTaskResult(args) {
