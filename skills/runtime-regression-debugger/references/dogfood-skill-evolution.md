@@ -24,6 +24,18 @@ Every painful outcome is not a Skill-policy defect. Classify the observation fir
 
 Only the last category is a direct candidate for changing `SKILL.md` or a general reference. Do not encode one repository's accident as universal engineering law.
 
+## Converge before expanding
+
+Treat Skill surface area as a cost. Before adding a reference, script, gate, route, specialist, or runtime layer, prove that the existing owner cannot express the mechanism cleanly.
+
+Prefer this order:
+
+`strengthen existing owner -> consolidate overlap -> delete superseded material -> add a new module only if a distinct reusable contract remains`
+
+A new module must buy a real boundary: materially different authority, failure model, routing need, or deterministic validation contract. One awkward task, one extra checklist, or one more domain label is not enough. A new gate should protect a fragile machine-checkable invariant; do not turn prose guidance into ceremony just because a script can validate its shape.
+
+When an evolution increases file count, indirection, or parallel authorities, state why that complexity is cheaper than extending or simplifying the current owner. If that case is weak, converge instead of expanding.
+
 ## Distinguish prohibited self-rewrite from authorized evolution
 
 Runtime feedback must never automatically rewrite or publish the Skill.
