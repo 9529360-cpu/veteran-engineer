@@ -166,3 +166,41 @@ test('uncertain execution keeps its runtime resource lease when the delegate thr
     await cleanup(fixture.root);
   }
 });
+
+test('post-execution snapshot refresh failure does not reverse a successful delegate outcome', async () => {
+  const fixture = await createGitRepo();
+  try {
+    const app = await createConfiguredApp(fixture.stateRoot);
+    const project = await app.services.projectService.open({ repoPath: fixture.repo });
+    const planned = await app.services.missionService.plan({
+      projectId: project.id,
+      goal: 'preserve execution outcome across sensing refresh failure',
+      doneDefinition: 'return success with explicitly stale capability sensing',
+      tasks: [missionTask('A')]
+    });
+    let projectReads = 0;
+    const projectService = {
+      get: async (projectId) => {
+        projectReads += 1;
+        if (projectReads > 1) {
+          throw Object.assign(new Error('simulated snapshot refresh failure'), { code: 'SIMULATED_SNAPSHOT_REFRESH_FAILURE' });
+        }
+        return app.services.projectService.get(projectId);
+      }
+    };
+    const guarded = new CapabilityAwareWorkerOrchestrator({
+      delegate: { execute: async () => ({ ok: true, missionId: planned.mission.id }) },
+      store: app.store,
+      projectService,
+      missionService: app.services.missionService
+    });
+
+    const result = await guarded.execute({ missionId: planned.mission.id, runWorkers: false });
+    assert.equal(result.ok, true);
+    assert.equal(result.capabilitySnapshot.observation.stage, 'preflight-fallback');
+    assert.equal(result.capabilitySnapshot.observation.currentAtReturn, false);
+    assert.equal(result.capabilitySnapshot.observation.refreshError.code, 'SIMULATED_SNAPSHOT_REFRESH_FAILURE');
+  } finally {
+    await cleanup(fixture.root);
+  }
+});
