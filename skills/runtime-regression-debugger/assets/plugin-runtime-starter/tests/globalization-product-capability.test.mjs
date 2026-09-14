@@ -70,5 +70,5 @@ test('globalization routes to the focused cross-client owner and keeps machine/t
   assert.match(specialist, /offset such as `\+02:00` is not a durable timezone rule/);
   assert.match(specialist, /A visually mirrored layout does not prove semantic order/);
   assert.match(specialist, /IME composition is not finalized text/);
-  assert.match(specialist, /A UI can show the right translation while submitting the wrong enum/);
+  assert.match(specialist, /submitting the wrong enum, amount, date, or timezone/);
 });
