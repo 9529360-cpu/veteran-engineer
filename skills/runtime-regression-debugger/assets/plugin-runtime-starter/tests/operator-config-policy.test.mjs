@@ -69,6 +69,10 @@ test('operator policy validates executable planner and reviewer provider contrac
     'defaults.plannerProvider.command'
   );
   rejectsConfig(
+    { defaults: { plannerProvider: { args: ['planner.mjs'] } } },
+    'defaults.plannerProvider.command'
+  );
+  rejectsConfig(
     { defaults: { plannerProvider: { command: 'node', args: '--planner' } } },
     'defaults.plannerProvider.args'
   );
@@ -92,6 +96,18 @@ test('operator policy validates executable planner and reviewer provider contrac
     { projects: { '/repo': { reviewerProvider: { command: 'node', timeoutMs: 0 } } } },
     'projects./repo.reviewerProvider.timeoutMs'
   );
+});
+
+test('inert provider objects without execution fields remain backward compatible', () => {
+  const policy = projectPolicy({
+    defaults: {
+      plannerProvider: {},
+      reviewerProvider: { futureOption: { mode: 'disabled' } }
+    }
+  }, '/repo');
+
+  assert.deepEqual(policy.plannerProvider, {});
+  assert.deepEqual(policy.reviewerProvider, { futureOption: { mode: 'disabled' } });
 });
 
 test('operator config file fails closed before malformed policy reaches project services', async () => {

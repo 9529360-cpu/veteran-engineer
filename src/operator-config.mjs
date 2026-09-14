@@ -35,6 +35,8 @@ function validateProcessProviderField(scope, key, pathValue) {
   const provider = scope[key];
   const providerPath = `${pathValue}.${key}`;
   if (!isRecord(provider)) throw invalidOperatorConfig(providerPath, 'provider object', provider);
+  const hasExecutionFields = ['args', 'envAllowlist', 'timeoutMs'].some((field) => provider[field] !== undefined);
+  if (provider.command === undefined && !hasExecutionFields) return;
   if (typeof provider.command !== 'string' || !provider.command.trim()) {
     throw invalidOperatorConfig(`${providerPath}.command`, 'non-empty string', provider.command);
   }
