@@ -3,12 +3,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
 const gate = path.join(root, 'skills', 'runtime-regression-debugger', 'scripts', 'requirements_delivery_trace_gate.py');
+const criterionFingerprintFields = ['evidence', 'given', 'id', 'requirement_id', 'then', 'when'];
 
 async function exists(target) {
   try { await fs.access(target); return true; } catch { return false; }
@@ -21,6 +23,12 @@ function runPython(script, args) {
     return result;
   }
   return null;
+}
+
+function criterionFingerprint(criterion) {
+  const canonical = {};
+  for (const key of criterionFingerprintFields) canonical[key] = criterion[key];
+  return createHash('sha256').update(JSON.stringify(canonical), 'utf8').digest('hex');
 }
 
 function requirementsManifest() {
@@ -43,13 +51,15 @@ function deliveryManifest() {
   };
 }
 
-function traceManifest() {
+function traceManifest(requirements = requirementsManifest()) {
+  const criteria = new Map(requirements.acceptance_criteria.map((criterion) => [criterion.id, criterion]));
   return {
-    schema: 'veteran-requirements-delivery-trace-v1',
+    schema: 'veteran-requirements-delivery-trace-v2',
     change_id: 'PR-42',
     criteria: [
       {
         criterion_id: 'AC-1',
+        criterion_fingerprint: criterionFingerprint(criteria.get('AC-1')),
         status: 'done',
         implementation_owners: ['OrderService'],
         implementation_paths: ['src/orders.ts'],
@@ -61,6 +71,7 @@ function traceManifest() {
       },
       {
         criterion_id: 'AC-2',
+        criterion_fingerprint: criterionFingerprint(criteria.get('AC-2')),
         status: 'done',
         implementation_owners: ['OrderService'],
         implementation_paths: ['tests/checkout.test.ts'],
@@ -97,22 +108,25 @@ async function runTrace(t, requirements, delivery, trace) {
 }
 
 test('requirements-to-delivery trace gate proves every acceptance criterion reaches implementation and delivery evidence', async (t) => {
-  const out = await runTrace(t, requirementsManifest(), deliveryManifest(), traceManifest());
+  const requirements = requirementsManifest();
+  const out = await runTrace(t, requirements, deliveryManifest(), traceManifest(requirements));
   if (!out) return;
   assert.equal(out.result.status, 0, out.result.stderr || out.result.stdout);
   assert.equal(out.payload.gate_passed, true);
   assert.deepEqual(out.payload.blockers, []);
   assert.equal(out.payload.counts.acceptance_criteria, 2);
+  assert.equal(out.payload.counts.fingerprinted_criteria, 2);
   assert.equal(out.payload.counts.traced_criteria, 2);
   assert.equal(out.payload.counts.actual_write_set, 3);
   assert.equal(out.payload.counts.delivery_elements, 3);
 });
 
 test('requirements-to-delivery trace gate exposes dropped acceptance, orphan writes, and unowned delivery responsibilities', async (t) => {
-  const trace = traceManifest();
+  const requirements = requirementsManifest();
+  const trace = traceManifest(requirements);
   trace.criteria.pop();
   trace.shared_paths = [];
-  const out = await runTrace(t, requirementsManifest(), deliveryManifest(), trace);
+  const out = await runTrace(t, requirements, deliveryManifest(), trace);
   if (!out) return;
   assert.notEqual(out.result.status, 0);
   assert.equal(out.payload.gate_passed, false);
@@ -120,4 +134,22 @@ test('requirements-to-delivery trace gate exposes dropped acceptance, orphan wri
   assert.ok(codes.has('ACCEPTANCE_CRITERION_UNTRACED'));
   assert.ok(codes.has('DELIVERY_PATH_UNTRACED'));
   assert.ok(codes.has('DELIVERY_ELEMENT_UNTRACED'));
+});
+
+test('requirements-to-delivery trace gate invalidates old evidence when acceptance semantics change under the same id', async (t) => {
+  const requirements = requirementsManifest();
+  const trace = traceManifest(requirements);
+  requirements.acceptance_criteria[1].then = 'a newly created order is returned';
+
+  const staleOut = await runTrace(t, requirements, deliveryManifest(), trace);
+  if (!staleOut) return;
+  assert.notEqual(staleOut.result.status, 0);
+  assert.ok(staleOut.payload.blockers.some((item) => item.code === 'TRACE_CRITERION_STALE' && item.path === 'trace.criteria[1].criterion_fingerprint'));
+
+  const legacyRequirements = requirementsManifest();
+  const legacyTrace = traceManifest(legacyRequirements);
+  legacyTrace.schema = 'veteran-requirements-delivery-trace-v1';
+  const legacyOut = await runTrace(t, legacyRequirements, deliveryManifest(), legacyTrace);
+  assert.notEqual(legacyOut.result.status, 0);
+  assert.ok(legacyOut.payload.blockers.some((item) => item.code === 'TRACE_SCHEMA_INVALID'));
 });

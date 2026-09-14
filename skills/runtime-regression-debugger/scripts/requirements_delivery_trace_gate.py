@@ -4,19 +4,28 @@
 Usage:
   requirements_delivery_trace_gate.py requirements.json delivery.json trace.json [--json]
 
-This gate checks structural traceability. It does not prove that requirements,
-implementation paths, or evidence are substantively correct.
+This gate checks structural and semantic traceability. It does not prove that
+requirements, implementation paths, or evidence are substantively correct.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
 
-TRACE_SCHEMA = "veteran-requirements-delivery-trace-v1"
+TRACE_SCHEMA = "veteran-requirements-delivery-trace-v2"
 DELIVERY_SCHEMA = "veteran-delivery-slice-v2"
+ACCEPTANCE_FINGERPRINT_FIELDS = (
+    "id",
+    "requirement_id",
+    "given",
+    "when",
+    "then",
+    "evidence",
+)
 DELIVERY_KINDS = {
     "transition": "transitions",
     "companion": "companions",
@@ -34,6 +43,20 @@ def string_list(value, *, nonempty_list=False) -> bool:
         and (not nonempty_list or bool(value))
         and all(nonempty(item) for item in value)
     )
+
+
+def acceptance_fingerprint(criterion: dict) -> str:
+    canonical = {
+        key: criterion.get(key)
+        for key in ACCEPTANCE_FINGERPRINT_FIELDS
+    }
+    encoded = json.dumps(
+        canonical,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def load_json(path: str) -> dict:
@@ -80,6 +103,7 @@ def main() -> int:
         criteria = []
 
     criterion_set = set()
+    criterion_fingerprints = {}
     for index, criterion in enumerate(criteria):
         path = f"requirements.acceptance_criteria[{index}]"
         if not isinstance(criterion, dict) or not nonempty(criterion.get("id")):
@@ -93,6 +117,20 @@ def main() -> int:
                 f"{path}.id",
             )
         criterion_set.add(criterion_id)
+
+        missing_semantics = [
+            key
+            for key in ACCEPTANCE_FINGERPRINT_FIELDS
+            if not nonempty(criterion.get(key))
+        ]
+        if missing_semantics:
+            add(
+                "ACCEPTANCE_SEMANTICS_REQUIRED",
+                f"acceptance criterion {criterion_id} cannot be fingerprinted; missing non-empty fields: {', '.join(missing_semantics)}",
+                path,
+            )
+            continue
+        criterion_fingerprints[criterion_id] = acceptance_fingerprint(criterion)
 
     if delivery.get("schema") != DELIVERY_SCHEMA:
         add(
@@ -182,6 +220,21 @@ def main() -> int:
                 f"{path}.criterion_id",
             )
         seen_criteria.add(criterion_id)
+
+        expected_fingerprint = criterion_fingerprints.get(criterion_id)
+        supplied_fingerprint = row.get("criterion_fingerprint")
+        if not nonempty(supplied_fingerprint):
+            add(
+                "TRACE_CRITERION_FINGERPRINT_REQUIRED",
+                f"{criterion_id} requires a semantic criterion fingerprint",
+                f"{path}.criterion_fingerprint",
+            )
+        elif expected_fingerprint is not None and supplied_fingerprint != expected_fingerprint:
+            add(
+                "TRACE_CRITERION_STALE",
+                f"{criterion_id} trace fingerprint does not match the current acceptance semantics",
+                f"{path}.criterion_fingerprint",
+            )
 
         if row.get("status") != "done":
             add(
@@ -332,13 +385,14 @@ def main() -> int:
         "blockers": blockers,
         "counts": {
             "acceptance_criteria": len(criterion_set),
+            "fingerprinted_criteria": len(criterion_fingerprints),
             "traced_criteria": len(seen_criteria),
             "actual_write_set": len(actual_set),
             "traced_paths": len(traced_paths),
             "delivery_elements": len(material_elements),
             "linked_delivery_elements": len(linked_delivery_elements),
         },
-        "note": "Traceability aid only; referenced implementation and evidence still require repository/runtime proof.",
+        "note": "Traceability aid only; semantic fingerprints prevent stale acceptance traces but referenced implementation and evidence still require repository/runtime proof.",
     }
     print(json.dumps(result, indent=2, sort_keys=True) if args.json else json.dumps(result))
     return 0 if result["gate_passed"] else 1
