@@ -87,11 +87,19 @@ export function runtimeResourcesConflict(left = [], right = [], leftContext = {}
   return runtimeResourceConflicts(left, right, leftContext, rightContext).length > 0;
 }
 
+function validationCapabilityNames(catalog = []) {
+  if (!Array.isArray(catalog)) return [];
+  return catalog
+    .map((entry) => typeof entry === 'string' ? entry : entry?.name)
+    .filter((name) => typeof name === 'string' && name.trim())
+    .map((name) => name.trim());
+}
+
 export function availableProjectCapabilities(project) {
   return {
     sensing: [...new Set([
       ...BUILTIN_SENSING_CAPABILITIES,
-      ...(project.validationCapabilities || []),
+      ...validationCapabilityNames(project.validationCapabilities),
       ...(project.runtimeFeedbackCapabilities || [])
     ])].sort(),
     execution: [...new Set(project.workerPolicy?.capabilities || [])].sort()
