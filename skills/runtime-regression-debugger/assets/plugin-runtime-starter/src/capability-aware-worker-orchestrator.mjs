@@ -67,6 +67,10 @@ export class CapabilityAwareWorkerOrchestrator {
     return buildCapabilitySnapshot({ project, mission, tasks, liveSourceIdentity: live, state });
   }
 
+  snapshot({ missionId }) {
+    return this.#snapshot(missionId);
+  }
+
   async #reserve({ missionId, runWorkers }) {
     const reservationId = randomId('capability');
     return this.store.transaction('capability_execution_reserved', (state) => {
