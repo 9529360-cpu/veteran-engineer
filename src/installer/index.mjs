@@ -199,9 +199,9 @@ export class VeteranInstaller {
     let modern = null;
     let autoFallback = null;
     if (sdkAvailable && runtimePrerequisitesOk) {
-      const pinned = await this.exec(process.execPath, [handshake, '--server', server, '--mode', 'modern-pinned', '--require-sdk', '--require-server-sdk', '--stateful', '--expect-tools', '34', '--state-root', this.runtimeStateRoot], { env: this.env, allowFailure: true, timeoutMs: 45_000 });
+      const pinned = await this.exec(process.execPath, [handshake, '--server', server, '--mode', 'modern-pinned', '--require-sdk', '--require-server-sdk', '--expect-tools', '34', '--state-root', this.runtimeStateRoot], { env: this.env, allowFailure: true, timeoutMs: 45_000 });
       if (pinned.code === 0) try { modern = JSON.parse(pinned.stdout.trim()); } catch { /* reported below */ }
-      checks.push({ name: 'mcp-modern-2026-pinned', ok: pinned.code === 0 && modern?.era === 'modern' && modern?.toolCount === 34 && modern?.stateful?.tool === 'project_open', exitCode: pinned.code, report: modern, stderr: pinned.stderr.slice(0, 3000) });
+      checks.push({ name: 'mcp-modern-2026-pinned', ok: pinned.code === 0 && modern?.era === 'modern' && modern?.toolCount === 34 && modern?.runtime?.mcp?.implementation === 'official-sdk', exitCode: pinned.code, report: modern, stderr: pinned.stderr.slice(0, 3000) });
 
       const auto = await this.exec(process.execPath, [handshake, '--server', server, '--mode', 'auto', '--require-sdk', '--force-fallback', '--expect-tools', '34', '--state-root', this.runtimeStateRoot], { env: this.env, allowFailure: true, timeoutMs: 45_000 });
       if (auto.code === 0) try { autoFallback = JSON.parse(auto.stdout.trim()); } catch { /* reported below */ }
