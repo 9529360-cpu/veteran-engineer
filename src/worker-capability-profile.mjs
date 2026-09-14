@@ -1,4 +1,4 @@
-import { resolveWorkerConfig } from './worker-adapter.mjs';
+import { enforceWorkerPolicy, resolveWorkerConfig } from './worker-adapter.mjs';
 
 const STRUCTURAL_CAPABILITIES = new Set([
   'worker-execution',
@@ -29,12 +29,14 @@ export function workerCapabilityProfile(project, task) {
   let configError = null;
   try {
     config = resolveWorkerConfig(project, task?.worker || 'default');
+    if (enabled && config) enforceWorkerPolicy(project, task || { risk: 'low', writeSet: [] }, config);
   } catch (error) {
     configError = { code: error?.code || 'WORKER_CONFIG_INVALID', message: String(error?.message || error).slice(0, 500) };
   }
   const type = config?.type || null;
+  const policyValid = enabled && Boolean(config) && !configError;
   const derived = [];
-  if (enabled && config) {
+  if (policyValid) {
     derived.push('worker-execution', `worker-type:${type || 'custom'}`);
     if (type === 'container') {
       const engine = String(config.engine || 'docker');
@@ -50,6 +52,7 @@ export function workerCapabilityProfile(project, task) {
   return {
     enabled,
     configured: Boolean(config),
+    policyValid,
     requestedWorker: task?.worker || 'default',
     workerType: type,
     declaredCapabilities: declared,
@@ -64,6 +67,7 @@ export function runtimeManagedExecutionReadiness(task, project) {
   const blockers = [];
   if (!profile.enabled) blockers.push('worker-execution-disabled');
   if (profile.enabled && !profile.configured) blockers.push(profile.configError?.code || 'worker-not-configured');
+  if (profile.enabled && profile.configured && !profile.policyValid) blockers.push(profile.configError?.code || 'worker-policy-invalid');
   const available = new Set(profile.availableCapabilities);
   const derived = new Set(profile.derivedCapabilities);
   const missingExecution = (task.executionCapabilities || []).filter((name) =>
