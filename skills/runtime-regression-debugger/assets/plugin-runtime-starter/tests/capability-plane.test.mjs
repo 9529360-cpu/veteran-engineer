@@ -40,6 +40,19 @@ test('capability contract normalizes coordination keys into project-exclusive re
   ]);
 });
 
+test('capability contract rejects coercible identities and explicit malformed resource metadata', () => {
+  for (const value of [42, true, {}, ['nested']]) {
+    assert.throws(() => normalizeTaskCapabilityContract({ sensingCapabilities: [value] }, 'T1'), /must be a string/);
+    assert.throws(() => normalizeTaskCapabilityContract({ executionCapabilities: [value] }, 'T1'), /must be a string/);
+    assert.throws(() => normalizeTaskCapabilityContract({ coordinationKeys: [value] }, 'T1'), /must be a string/);
+  }
+  assert.throws(() => normalizeTaskCapabilityContract({ runtimeResources: [{ key: 42 }] }, 'T1'), /must be a string/);
+  assert.throws(() => normalizeTaskCapabilityContract({ runtimeResources: [{ key: 'db', scope: 42 }] }, 'T1'), /must be a string/);
+  assert.throws(() => normalizeTaskCapabilityContract({ runtimeResources: [{ key: 'db', mode: false }] }, 'T1'), /must be a string/);
+  assert.throws(() => normalizeTaskCapabilityContract({ runtimeResources: [{ key: 'db', scope: '' }] }, 'T1'), /non-empty string/);
+  assert.throws(() => normalizeTaskCapabilityContract({ runtimeResources: [{ key: 'db', mode: '' }] }, 'T1'), /non-empty string/);
+});
+
 test('resource identities isolate task-scoped resources but serialize project-exclusive resources', () => {
   const taskPort = [{ key: 'port:3000', scope: 'task', mode: 'exclusive' }];
   assert.equal(runtimeResourcesConflict(taskPort, taskPort, { projectId: 'p', missionId: 'm', taskId: 'a' }, { projectId: 'p', missionId: 'm', taskId: 'b' }), false);
