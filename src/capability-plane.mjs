@@ -135,6 +135,37 @@ export function taskRuntimeContext(task, mission, project) {
   return { taskId: task.id, missionId: mission.id, projectId: project.id };
 }
 
+function authoritativeLeaseContext(state, task) {
+  const missionId = task?.missionId;
+  const taskId = task?.id;
+  if (typeof missionId !== 'string' || !missionId.trim()) {
+    throw Object.assign(new Error('Active capability lease task is missing an authoritative mission identity'), { code: 'CAPABILITY_LEASE_CONTEXT_INVALID' });
+  }
+  if (typeof taskId !== 'string' || !taskId.trim()) {
+    throw Object.assign(new Error('Active capability lease task is missing an authoritative task identity'), { code: 'CAPABILITY_LEASE_CONTEXT_INVALID' });
+  }
+  const ownerMission = state.missions?.[missionId];
+  if (!ownerMission || typeof ownerMission.projectId !== 'string' || !ownerMission.projectId.trim()) {
+    throw Object.assign(new Error(`Active capability lease references unknown or invalid mission context: ${missionId}`), { code: 'CAPABILITY_LEASE_CONTEXT_INVALID' });
+  }
+  return { projectId: ownerMission.projectId, missionId, taskId };
+}
+
+function canonicalLeaseResources(state, task) {
+  const rawResources = task.capabilityLease?.resources ?? [];
+  if (!Array.isArray(rawResources)) {
+    throw Object.assign(new Error(`Capability lease resources for ${task.missionId}:${task.id} must be an array`), { code: 'CAPABILITY_LEASE_RESOURCE_INVALID' });
+  }
+  if (rawResources.length > MAX_ITEMS) {
+    throw Object.assign(new Error(`Capability lease resources for ${task.missionId}:${task.id} exceed the ${MAX_ITEMS}-item safety bound`), { code: 'CAPABILITY_LEASE_RESOURCE_INVALID' });
+  }
+  const context = authoritativeLeaseContext(state, task);
+  return rawResources.map((resource, index) => {
+    const normalized = normalizeResource(resource, index, `${task.missionId}:${task.id}.capabilityLease.resources`);
+    return { ...normalized, identity: resourceIdentity(normalized, context) };
+  });
+}
+
 export function activeRuntimeResourceConflicts({ state, task, mission, project }) {
   const conflicts = [];
   for (const other of Object.values(state.tasks || {})) {
@@ -142,7 +173,7 @@ export function activeRuntimeResourceConflicts({ state, task, mission, project }
     if (other.missionId === mission.id && other.id === task.id) continue;
     const resourceConflicts = runtimeResourceConflicts(
       task.runtimeResources || [],
-      other.capabilityLease.resources || [],
+      canonicalLeaseResources(state, other),
       taskRuntimeContext(task, mission, project),
       {}
     );
@@ -152,14 +183,11 @@ export function activeRuntimeResourceConflicts({ state, task, mission, project }
   return conflicts;
 }
 
-function visibleLeaseResources(task, project, mission) {
-  const resources = task.capabilityLease?.resources || [];
+function visibleLeaseResources(state, task, project, mission) {
+  const resources = canonicalLeaseResources(state, task);
   if (task.missionId === mission.id) return resources;
   const projectPrefix = `project:${project.id}:`;
-  return resources.filter((resource) => {
-    const identity = typeof resource.identity === 'string' ? resource.identity : '';
-    return identity.startsWith('global:') || identity.startsWith(projectPrefix);
-  });
+  return resources.filter((resource) => resource.identity.startsWith('global:') || resource.identity.startsWith(projectPrefix));
 }
 
 export function buildCapabilitySnapshot({ project, mission, tasks, liveSourceIdentity, state }) {
@@ -171,7 +199,7 @@ export function buildCapabilitySnapshot({ project, mission, tasks, liveSourceIde
     : false;
   const activeLeases = Object.values(state.tasks || {})
     .filter((task) => task.capabilityLease && !TERMINAL_TASK_STATUSES.has(task.status))
-    .map((task) => ({ task, resources: visibleLeaseResources(task, project, mission) }))
+    .map((task) => ({ task, resources: visibleLeaseResources(state, task, project, mission) }))
     .filter(({ task, resources }) => task.missionId === mission.id || resources.length > 0)
     .map(({ task, resources }) => ({
       missionId: task.missionId,
