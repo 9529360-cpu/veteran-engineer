@@ -1,5 +1,6 @@
 import { sourceIdentity } from './git.mjs';
 import { nowIso, randomId } from './util.mjs';
+import { activeProjectWriteConflicts } from './adaptive-mission-strategy.mjs';
 import {
   activeRuntimeResourceConflicts,
   bindRuntimeResources,
@@ -111,19 +112,22 @@ export class CapabilityAwareWorkerOrchestrator {
           }
         : { expectedScope: 'project-checkout', available: true };
     snapshot.projectSourceIdentity = projectSourceIdentity;
+    snapshot.executionStrategy = mission.executionStrategy || null;
     const byId = new Map(tasks.map((task) => [task.id, task]));
     snapshot.wave = snapshot.wave.map((item) => {
       const task = byId.get(item.taskId);
       const dispatchOnlyReadiness = taskCapabilityReadiness(task, project);
       const runtimeManagedReadiness = runtimeManagedExecutionReadiness(task, project);
+      const projectWriteConflicts = task ? activeProjectWriteConflicts({ state, mission, task }) : [];
       return {
         ...item,
-        dispatchOnlyCapabilityReady: dispatchOnlyReadiness.ready,
-        runtimeManagedCapabilityReady: dispatchOnlyReadiness.missingSensing.length === 0 && runtimeManagedReadiness.ready,
+        dispatchOnlyCapabilityReady: dispatchOnlyReadiness.ready && projectWriteConflicts.length === 0,
+        runtimeManagedCapabilityReady: dispatchOnlyReadiness.missingSensing.length === 0 && runtimeManagedReadiness.ready && projectWriteConflicts.length === 0,
         runtimeManagedMissingSensing: dispatchOnlyReadiness.missingSensing,
         runtimeManagedMissingExecution: runtimeManagedReadiness.missingExecution,
         runtimeManagedExecutionBlockers: runtimeManagedReadiness.blockers,
-        runtimeManagedExecution: runtimeManagedReadiness.profile
+        runtimeManagedExecution: runtimeManagedReadiness.profile,
+        projectWriteConflicts
       };
     });
     return snapshot;
@@ -176,6 +180,11 @@ export class CapabilityAwareWorkerOrchestrator {
 
       const blocked = [];
       for (const task of admission.selected) {
+        const projectWriteConflicts = activeProjectWriteConflicts({ state, mission, task });
+        if (projectWriteConflicts.length) {
+          blocked.push({ taskId: task.id, reason: 'project-write-conflict', conflicts: projectWriteConflicts });
+          continue;
+        }
         const policyReadiness = taskCapabilityReadiness(task, project);
         const managedReadiness = runWorkers ? runtimeManagedExecutionReadiness(task, project) : null;
         const missingExecution = runWorkers ? managedReadiness.missingExecution : policyReadiness.missingExecution;
