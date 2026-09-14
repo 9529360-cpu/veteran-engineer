@@ -49,6 +49,30 @@ function proofBundle() {
   };
 }
 
+function refutationProofBundle() {
+  return {
+    change_identity: 'acme/shop@abc123',
+    claims: [
+      {
+        id: 'second-writer-observed',
+        claim: 'A second authoritative order writer is active',
+        required_level: 'integration',
+        evidence_ids: ['second-writer-integration']
+      }
+    ],
+    evidence: [
+      {
+        id: 'second-writer-integration',
+        level: 'integration',
+        applies_to: ['acme/shop@abc123'],
+        result: 'supports',
+        observed_at: '2026-09-14T03:30:00Z',
+        max_age_hours: 2
+      }
+    ]
+  };
+}
+
 function assumptionLedger() {
   return {
     change_identity: 'acme/shop@abc123',
@@ -64,6 +88,21 @@ function assumptionLedger() {
         status: 'proven',
         decision_sensitive: false,
         evidence: ['current UI fixture']
+      }
+    ]
+  };
+}
+
+function refutedAssumptionLedger() {
+  return {
+    change_identity: 'acme/shop@abc123',
+    assumptions: [
+      {
+        assumption: 'OrderService is the only authoritative order writer',
+        status: 'refuted',
+        decision_sensitive: true,
+        falsifier: 'Observe a second authoritative writer committing orders',
+        proof_claim_id: 'second-writer-observed'
       }
     ]
   };
@@ -138,6 +177,42 @@ test('decision-sensitive proven assumptions fail closed on missing, stale, forei
   const unknown = assumptionLedger();
   unknown.assumptions[0].proof_claim_id = 'missing-claim';
   const unknownOut = await runCase(t, unknown, proofBundle());
+  assert.notEqual(unknownOut.result.status, 0);
+  assert.ok(unknownOut.payload.assumptions[0].problems.includes('unknown_proof_claim'));
+});
+
+test('decision-sensitive refuted assumptions require an actual current counterevidence claim', async (t) => {
+  const missingClaim = refutedAssumptionLedger();
+  delete missingClaim.assumptions[0].proof_claim_id;
+  missingClaim.assumptions[0].evidence = ['plain contradictory note is not authoritative proof'];
+  const missingClaimOut = await runCase(t, missingClaim, refutationProofBundle());
+  if (!missingClaimOut) return;
+  assert.notEqual(missingClaimOut.result.status, 0);
+  assert.ok(missingClaimOut.payload.assumptions[0].problems.includes('missing_proof_claim'));
+
+  const missingBundleOut = await runCase(t, refutedAssumptionLedger());
+  assert.notEqual(missingBundleOut.result.status, 0);
+  assert.ok(missingBundleOut.payload.assumptions[0].problems.includes('missing_proof_bundle'));
+
+  const missingFalsifier = refutedAssumptionLedger();
+  delete missingFalsifier.assumptions[0].falsifier;
+  const missingFalsifierOut = await runCase(t, missingFalsifier, refutationProofBundle());
+  assert.notEqual(missingFalsifierOut.result.status, 0);
+  assert.ok(missingFalsifierOut.payload.assumptions[0].problems.includes('missing_falsifier'));
+
+  const validOut = await runCase(t, refutedAssumptionLedger(), refutationProofBundle());
+  assert.equal(validOut.result.status, 0, validOut.result.stderr || validOut.result.stdout);
+  assert.equal(validOut.payload.gate_passed, true);
+  assert.deepEqual(validOut.payload.assumptions[0].problems, []);
+
+  const staleOut = await runCase(t, refutedAssumptionLedger(), refutationProofBundle(), '2026-09-14T10:00:00Z');
+  assert.notEqual(staleOut.result.status, 0);
+  assert.equal(staleOut.payload.proof_bundle_gate_passed, false);
+  assert.ok(staleOut.payload.assumptions[0].problems.includes('unusable_proof_claim'));
+
+  const unknown = refutedAssumptionLedger();
+  unknown.assumptions[0].proof_claim_id = 'missing-counterclaim';
+  const unknownOut = await runCase(t, unknown, refutationProofBundle());
   assert.notEqual(unknownOut.result.status, 0);
   assert.ok(unknownOut.payload.assumptions[0].problems.includes('unknown_proof_claim'));
 });
