@@ -5,7 +5,8 @@ const BUILTIN_SENSING_CAPABILITIES = Object.freeze(['source-identity', 'mission-
 const MAX_ITEMS = 32;
 
 function boundedName(value, label, limit = 160) {
-  const normalized = String(value || '').trim();
+  if (typeof value !== 'string') throw new Error(`${label} must be a string`);
+  const normalized = value.trim();
   if (!normalized) throw new Error(`${label} must be a non-empty string`);
   if (normalized.length > limit) throw new Error(`${label} exceeds ${limit} characters`);
   return normalized;
@@ -24,8 +25,8 @@ function normalizeResource(raw, index, label) {
   }
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error(`${label}[${index}] must be a string or object`);
   const key = boundedName(raw.key, `${label}[${index}].key`);
-  const scope = raw.scope || 'project';
-  const mode = raw.mode || 'exclusive';
+  const scope = raw.scope === undefined || raw.scope === null ? 'project' : boundedName(raw.scope, `${label}[${index}].scope`);
+  const mode = raw.mode === undefined || raw.mode === null ? 'exclusive' : boundedName(raw.mode, `${label}[${index}].mode`);
   if (!RESOURCE_SCOPES.has(scope)) throw new Error(`${label}[${index}].scope must be one of ${[...RESOURCE_SCOPES].join(', ')}`);
   if (!RESOURCE_MODES.has(mode)) throw new Error(`${label}[${index}].mode must be one of ${[...RESOURCE_MODES].join(', ')}`);
   return { key, scope, mode };
