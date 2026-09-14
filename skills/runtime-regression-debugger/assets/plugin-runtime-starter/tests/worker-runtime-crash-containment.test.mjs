@@ -22,6 +22,20 @@ async function waitForFile(file, timeoutMs = 4_000) {
   throw new Error(`Timed out waiting for ${file}`);
 }
 
+async function waitForMissing(file, timeoutMs = 4_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      await fs.access(file);
+    } catch (error) {
+      if (error?.code === 'ENOENT') return;
+      throw error;
+    }
+    await sleep(25);
+  }
+  throw new Error(`Timed out waiting for ${file} to be removed`);
+}
+
 function processAlive(pid) {
   try {
     process.kill(pid, 0);
@@ -55,13 +69,14 @@ async function killIfAlive(pid) {
   } catch {}
 }
 
-test('SIGKILL of the runtime parent cannot leave supervised worker descendants running', { skip: process.platform === 'win32' }, async () => {
+test('SIGKILL of the runtime parent cannot leave supervised worker descendants or disposable profile state running', { skip: process.platform === 'win32' }, async () => {
   const root = await tempDir('veteran-worker-runtime-crash-');
   const worktreePath = path.join(root, 'worktree');
   const artifactsPath = path.join(root, 'artifacts');
   const heartbeat = path.join(root, 'heartbeat.txt');
   const workerPidFile = path.join(root, 'worker.pid');
   const grandchildPidFile = path.join(root, 'grandchild.pid');
+  const runtimeProfileRootFile = path.join(root, 'runtime-profile-root.txt');
   const workerReady = path.join(root, 'worker-ready.txt');
   const harnessReady = path.join(root, 'harness-ready.txt');
   const workerPath = path.join(root, 'worker-parent.cjs');
@@ -69,14 +84,17 @@ test('SIGKILL of the runtime parent cannot leave supervised worker descendants r
   let harness = null;
   let workerPid = null;
   let grandchildPid = null;
+  let runtimeProfileRoot = null;
   try {
     await fs.mkdir(worktreePath, { recursive: true });
     await fs.mkdir(artifactsPath, { recursive: true });
     const grandchildSource = `const fs=require('node:fs');const file=${JSON.stringify(heartbeat)};fs.appendFileSync(file,'x');setInterval(()=>fs.appendFileSync(file,'x'),25);`;
     await fs.writeFile(workerPath, [
       "const fs=require('node:fs');",
+      "const path=require('node:path');",
       "const {spawn}=require('node:child_process');",
       `fs.writeFileSync(${JSON.stringify(workerPidFile)}, String(process.pid));`,
+      `fs.writeFileSync(${JSON.stringify(runtimeProfileRootFile)}, path.dirname(process.env.TMPDIR));`,
       `const child=spawn(process.execPath,['-e',${JSON.stringify(grandchildSource)}],{stdio:'ignore'});`,
       `fs.writeFileSync(${JSON.stringify(grandchildPidFile)}, String(child.pid));`,
       `fs.writeFileSync(${JSON.stringify(workerReady)}, 'ready\\n');`,
@@ -100,20 +118,25 @@ test('SIGKILL of the runtime parent cannot leave supervised worker descendants r
     harness = spawn(process.execPath, [harnessPath], { stdio: 'ignore', windowsHide: true });
     await waitForFile(harnessReady);
     await waitForFile(heartbeat);
+    await waitForFile(runtimeProfileRootFile);
     workerPid = Number(await fs.readFile(workerPidFile, 'utf8'));
     grandchildPid = Number(await fs.readFile(grandchildPidFile, 'utf8'));
+    runtimeProfileRoot = await fs.readFile(runtimeProfileRootFile, 'utf8');
     assert.equal(processAlive(workerPid), true);
     assert.equal(processAlive(grandchildPid), true);
+    await fs.access(runtimeProfileRoot);
 
     harness.kill('SIGKILL');
     await new Promise((resolve) => harness.once('close', resolve));
     await waitForProcessExit(workerPid);
     await waitForProcessExit(grandchildPid);
+    await waitForMissing(runtimeProfileRoot);
     await assertHeartbeatStopped(heartbeat);
   } finally {
     await killIfAlive(workerPid);
     await killIfAlive(grandchildPid);
     try { harness?.kill('SIGKILL'); } catch {}
+    if (runtimeProfileRoot) await fs.rm(runtimeProfileRoot, { recursive: true, force: true }).catch(() => {});
     await cleanup(root);
   }
 });
