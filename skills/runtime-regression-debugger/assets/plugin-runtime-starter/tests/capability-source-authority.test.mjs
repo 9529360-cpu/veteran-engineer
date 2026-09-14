@@ -51,6 +51,13 @@ test('capability snapshot follows mission worktree source and invalidates feedba
     const integratedHead = status.tasks[0].integrationSha;
     assert.ok(integratedHead);
 
+    assert.equal(execution.capabilitySnapshot.observation.stage, 'post-execution');
+    assert.equal(execution.capabilitySnapshot.observation.currentAtReturn, true);
+    assert.equal(execution.capabilitySnapshot.sourceScope, 'mission-worktree');
+    assert.equal(execution.capabilitySnapshot.sourceIdentity.head, integratedHead);
+    assert.equal(execution.capabilitySnapshot.projectSourceIdentity.head, fixture.head);
+    assert.equal(execution.capabilitySnapshot.activeLeases.length, 0);
+
     const projectIdentity = await sourceIdentity(fixture.repo);
     assert.equal(projectIdentity.head, fixture.head);
     assert.notEqual(projectIdentity.head, integratedHead);
