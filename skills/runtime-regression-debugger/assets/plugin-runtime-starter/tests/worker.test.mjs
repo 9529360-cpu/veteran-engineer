@@ -24,6 +24,12 @@ async function buildRuntime(repo, stateRoot) {
   return { store, projectService, missionService, evidenceService, worktreeManager, workerAdapter, orchestrator, project };
 }
 
+const localProject = { workerPolicy: { enabled: true, allowUnconfinedCustomWorkers: false } };
+
+function localTask(id = 'T1') {
+  return { id, key: `M1:${id}`, risk: 'low', writeSet: ['src'] };
+}
+
 test('dispatch-only worker packet lives outside task worktree, cannot be re-dispatched, and external result advances wave', async () => {
   const { root, repo, head, stateRoot } = await createGitRepo({ files: { 'src/a.txt': 'before\n' } });
   try {
@@ -63,6 +69,58 @@ test('dispatch-only worker packet lives outside task worktree, cannot be re-disp
   }
 });
 
+test('WorkerAdapter refuses packet paths inside the writable task worktree before spawn', async () => {
+  const root = await tempDir('veteran-worker-packet-scope-');
+  try {
+    const worktreePath = path.join(root, 'worktree');
+    const packetPath = path.join(worktreePath, 'packet.json');
+    const marker = path.join(root, 'spawned.txt');
+    await fs.mkdir(worktreePath, { recursive: true });
+    const adapter = new WorkerAdapter();
+    await assert.rejects(
+      adapter.run({
+        project: localProject,
+        mission: { id: 'M1' },
+        task: localTask(),
+        worktreePath,
+        packet: { protocol: 'veteran-worker-v1' },
+        packetPath,
+        config: { type: 'custom', command: process.execPath, args: ['-e', `require('node:fs').writeFileSync(${JSON.stringify(marker)},'spawned')`] }
+      }),
+      (error) => error.code === 'WORKER_PACKET_PATH_INVALID'
+    );
+    await assert.rejects(fs.access(packetPath), (error) => error.code === 'ENOENT');
+    await assert.rejects(fs.access(marker), (error) => error.code === 'ENOENT');
+    assert.deepEqual(adapter.snapshot(), []);
+  } finally {
+    await cleanup(root);
+  }
+});
+
+test('WorkerAdapter sanitizes default packet filenames derived from task identity', async () => {
+  const root = await tempDir('veteran-worker-packet-name-');
+  try {
+    const worktreePath = path.join(root, 'worktree');
+    await fs.mkdir(worktreePath, { recursive: true });
+    const task = localTask('../escape/../../task');
+    const adapter = new WorkerAdapter();
+    const result = await adapter.run({
+      project: localProject,
+      mission: { id: 'M1' },
+      task,
+      worktreePath,
+      packet: { protocol: 'veteran-worker-v1' },
+      config: { type: 'custom', command: process.execPath, args: ['-e', 'process.exit(0)'] }
+    });
+    assert.equal(result.code, 0);
+    assert.equal(path.dirname(path.resolve(result.packetPath)), path.resolve(root));
+    assert.equal(path.basename(result.packetPath).includes(path.sep), false);
+    assert.match(path.basename(result.packetPath), /^\.veteran-task-[a-z0-9._-]+-\d+\.json$/);
+  } finally {
+    await cleanup(root);
+  }
+});
+
 test('local worker receives a dispatch runtime namespace and randomized disposable temp directory', async () => {
   const root = await tempDir('veteran-worker-runtime-');
   try {
@@ -78,9 +136,9 @@ test('local worker receives a dispatch runtime namespace and randomized disposab
     ].join('\n'));
     const adapter = new WorkerAdapter();
     const result = await adapter.run({
-      project: { workerPolicy: { enabled: true, allowUnconfinedCustomWorkers: false } },
+      project: localProject,
       mission: { id: 'M1' },
-      task: { id: 'T1', key: 'M1:T1', risk: 'low', writeSet: ['src'] },
+      task: localTask(),
       worktreePath,
       packet: { protocol: 'veteran-worker-v1' },
       packetPath: path.join(root, 'dispatch-123.json'),

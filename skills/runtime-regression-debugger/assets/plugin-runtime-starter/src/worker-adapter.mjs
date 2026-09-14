@@ -32,6 +32,46 @@ async function createLocalRuntimeTempDir(runtimeNamespace) {
   return runtimeTempDir;
 }
 
+function pathInside(parentPath, candidatePath) {
+  const relative = path.relative(path.resolve(parentPath), path.resolve(candidatePath));
+  return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+}
+
+async function resolveWorkerPacketPath(worktreePath, packetPath, taskId) {
+  const worktreeResolved = path.resolve(worktreePath);
+  const requested = packetPath
+    ? path.resolve(packetPath)
+    : path.join(path.dirname(worktreeResolved), `.veteran-task-${safeRuntimeNamespace(taskId)}-${Date.now()}.json`);
+  if (pathInside(worktreeResolved, requested)) {
+    const error = new Error('Worker task packets must live outside the writable task worktree');
+    error.code = 'WORKER_PACKET_PATH_INVALID';
+    throw error;
+  }
+
+  await fs.mkdir(path.dirname(requested), { recursive: true });
+  const [worktreeReal, parentReal] = await Promise.all([
+    fs.realpath(worktreeResolved),
+    fs.realpath(path.dirname(requested))
+  ]);
+  const realCandidate = path.join(parentReal, path.basename(requested));
+  if (pathInside(worktreeReal, realCandidate)) {
+    const error = new Error('Worker task packet parent resolves inside the writable task worktree');
+    error.code = 'WORKER_PACKET_PATH_INVALID';
+    throw error;
+  }
+  try {
+    const existing = await fs.lstat(requested);
+    if (existing.isSymbolicLink()) {
+      const error = new Error('Worker task packet path may not be a symbolic link');
+      error.code = 'WORKER_PACKET_PATH_INVALID';
+      throw error;
+    }
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  return requested;
+}
+
 function terminateTree(child, signal = 'SIGTERM') {
   if (!child?.pid) return false;
   if (process.platform === 'win32') {
@@ -165,7 +205,7 @@ export class WorkerAdapter {
 
   async run({ project, mission, task, worktreePath, packet, packetPath = null, config, timeoutMs = null }) {
     enforceWorkerPolicy(project, task, config);
-    const resolvedPacketPath = packetPath || path.join(path.dirname(worktreePath), `.veteran-task-${task.id}-${Date.now()}.json`);
+    const resolvedPacketPath = await resolveWorkerPacketPath(worktreePath, packetPath, task.id);
     const dispatchIdentity = path.basename(resolvedPacketPath, path.extname(resolvedPacketPath));
     const runtimeNamespace = packet?.runtimeIsolation?.namespace || `${mission.id}:${task.id}:${dispatchIdentity}`;
     const runtimeTempDir = config.type === 'container' ? null : await createLocalRuntimeTempDir(runtimeNamespace);
@@ -174,7 +214,6 @@ export class WorkerAdapter {
     let running = null;
     let completed = false;
     try {
-      await fs.mkdir(path.dirname(resolvedPacketPath), { recursive: true });
       await fs.writeFile(resolvedPacketPath, `${JSON.stringify(packet, null, 2)}\n`, { mode: 0o600 });
       const invocation = buildWorkerInvocation({ config, worktreePath, packetPath: resolvedPacketPath, task, mission, runtimeNamespace });
       const env = {};

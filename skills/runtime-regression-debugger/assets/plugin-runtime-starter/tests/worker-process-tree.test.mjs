@@ -59,19 +59,28 @@ async function cleanupGrandchild(pidFile) {
   } catch {}
 }
 
+async function runtimePaths(root, packetName) {
+  const worktreePath = path.join(root, 'worktree');
+  const artifactsPath = path.join(root, 'artifacts');
+  await fs.mkdir(worktreePath, { recursive: true });
+  await fs.mkdir(artifactsPath, { recursive: true });
+  return { worktreePath, packetPath: path.join(artifactsPath, packetName) };
+}
+
 test('worker timeout terminates descendant processes and reports timeout ownership', { skip: process.platform === 'win32' }, async () => {
   const root = await tempDir('veteran-worker-tree-timeout-');
   const task = { id: 'T1', key: 'M1:T1', risk: 'low', writeSet: ['src'] };
   const fixture = await createProcessTreeFixture(root, 'timeout');
   try {
     const adapter = new WorkerAdapter();
+    const runtime = await runtimePaths(root, 'timeout-packet.json');
     const result = await adapter.run({
       project,
       mission,
       task,
-      worktreePath: root,
+      worktreePath: runtime.worktreePath,
       packet: { task: task.id },
-      packetPath: path.join(root, 'timeout-packet.json'),
+      packetPath: runtime.packetPath,
       config: { type: 'custom', command: process.execPath, args: [fixture.parent], timeoutMs: 300 }
     });
     assert.equal(result.termination?.reason, 'timeout');
@@ -96,13 +105,14 @@ test('worker cancel terminates descendant processes and exposes live/cancel life
   const fixture = await createProcessTreeFixture(root, 'cancel');
   try {
     const adapter = new WorkerAdapter();
+    const runtime = await runtimePaths(root, 'cancel-packet.json');
     const run = adapter.run({
       project,
       mission,
       task,
-      worktreePath: root,
+      worktreePath: runtime.worktreePath,
       packet: { task: task.id },
-      packetPath: path.join(root, 'cancel-packet.json'),
+      packetPath: runtime.packetPath,
       config: { type: 'custom', command: process.execPath, args: [fixture.parent], timeoutMs: 10_000 }
     });
     await waitForFile(fixture.pidFile);
