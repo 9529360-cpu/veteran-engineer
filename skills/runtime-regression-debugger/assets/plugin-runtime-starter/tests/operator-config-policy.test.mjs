@@ -46,8 +46,8 @@ test('operator policy rejects ambiguous safety-sensitive scalar types', () => {
     'defaults.requireValidation'
   );
   rejectsConfig(
-    { projects: { '/repo': { validationCapabilities: ['browser', ''] } } },
-    'projects./repo.validationCapabilities'
+    { projects: { '/repo': { validationCapabilities: [{ name: '' }] } } },
+    'projects./repo.validationCapabilities[0].name'
   );
   rejectsConfig(
     { projects: { '/repo': { workerPolicy: { allowUnconfinedCustomWorkers: 'false' } } } },
@@ -71,10 +71,11 @@ test('operator config file fails closed before malformed policy reaches project 
 });
 
 test('valid operator safety controls preserve extensible worker configuration', () => {
+  const validationCapability = { name: 'lint', command: ['node', '--version'] };
   const policy = projectPolicy({
     defaults: {
       requireValidation: true,
-      validationCapabilities: ['lint'],
+      validationCapabilities: [validationCapability],
       requiredValidationCapabilities: ['lint'],
       workerPolicy: {
         enabled: true,
@@ -99,7 +100,7 @@ test('valid operator safety controls preserve extensible worker configuration', 
 
   assert.equal(policy.requireValidation, true);
   assert.equal(policy.requireSemanticReview, true);
-  assert.deepEqual(policy.validationCapabilities, ['lint']);
+  assert.deepEqual(policy.validationCapabilities, [validationCapability]);
   assert.deepEqual(policy.requiredValidationCapabilities, ['lint']);
   assert.equal(policy.workerPolicy.enabled, true);
   assert.equal(policy.workerPolicy.maxWorkers, 1);
