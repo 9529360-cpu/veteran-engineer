@@ -68,6 +68,28 @@ function packetFor(project, mission, task, waveBase, experience = { items: [], p
   };
 }
 
+function reconcileInterruptedMission(state, mission) {
+  const interrupted = Object.values(state.tasks)
+    .filter((task) => task.missionId === mission.id && task.status === 'interrupted')
+    .sort((left, right) => left.id.localeCompare(right.id));
+  if (interrupted.length) {
+    mission.status = 'blocked';
+    mission.interruption = {
+      requiresReconciliation: true,
+      taskIds: interrupted.map((task) => task.id),
+      detectedAt: mission.interruption?.detectedAt || nowIso()
+    };
+    mission.updatedAt = nowIso();
+    return interrupted;
+  }
+  if (mission.interruption?.requiresReconciliation) {
+    mission.interruption = null;
+    if (mission.status === 'blocked') mission.status = 'ready';
+    mission.updatedAt = nowIso();
+  }
+  return interrupted;
+}
+
 export class WorkerOrchestrator {
   constructor({ store, projectService, missionService, worktreeManager, workerAdapter, evidenceService, experienceService = null, bootstrapExecutor = null }) {
     this.store = store;
@@ -555,6 +577,7 @@ export class WorkerOrchestrator {
       target.updatedAt = nowIso();
       const d = target.dispatches.at(-1);
       if (d) Object.assign(d, { status: 'integrated', endedAt: nowIso(), commitSha, integrationSha });
+      reconcileInterruptedMission(state, liveMission);
       state.runtime.timeline.push({ type: 'external_task_result_integrated', missionId, taskId, integrationSha, at: nowIso() });
       return true;
     }, { missionId, taskId, integrationSha });
@@ -593,7 +616,7 @@ export class WorkerOrchestrator {
       task.admission = null;
       task.updatedAt = nowIso();
       mission.status = 'ready';
-      mission.interruption = null;
+      reconcileInterruptedMission(state, mission);
       mission.updatedAt = nowIso();
       state.runtime.timeline.push({ type: 'worker_retry_scheduled', missionId, taskId, at: nowIso() });
       return task;

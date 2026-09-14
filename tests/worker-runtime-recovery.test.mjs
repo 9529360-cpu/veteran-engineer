@@ -108,6 +108,8 @@ test('interrupted external-ready results retain the existing explicit commit pat
     const status = await rt.missionService.status({ missionId });
     assert.equal(status.tasks[0].status, 'done');
     assert.equal(status.mission.nextWaveIndex, 1);
+    assert.equal(status.mission.status, 'ready');
+    assert.equal(status.mission.interruption, null);
     assert.equal(await fs.readFile(path.join(fixture.repo, 'src/a.txt'), 'utf8'), 'before\n', 'external recovery still integrates only into the mission worktree');
   } finally {
     await cleanup(fixture.root);
