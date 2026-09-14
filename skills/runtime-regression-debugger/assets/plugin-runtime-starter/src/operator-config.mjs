@@ -30,6 +30,23 @@ function assertStringArrayField(scope, key, pathValue) {
   }
 }
 
+function assertValidationCapabilitiesField(scope, key, pathValue) {
+  if (scope[key] === undefined) return;
+  const capabilities = scope[key];
+  if (!Array.isArray(capabilities)) {
+    throw invalidOperatorConfig(`${pathValue}.${key}`, 'array of validation capability objects', capabilities);
+  }
+  for (let index = 0; index < capabilities.length; index += 1) {
+    const capability = capabilities[index];
+    if (!isRecord(capability)) {
+      throw invalidOperatorConfig(`${pathValue}.${key}[${index}]`, 'validation capability object', capability);
+    }
+    if (typeof capability.name !== 'string' || !capability.name.trim()) {
+      throw invalidOperatorConfig(`${pathValue}.${key}[${index}].name`, 'non-empty string', capability.name);
+    }
+  }
+}
+
 function validateRuntimeFeedbackPolicy(raw, pathValue) {
   if (raw === undefined || raw === null) return null;
   if (!isRecord(raw)) throw invalidOperatorConfig(pathValue, 'object', raw);
@@ -50,7 +67,7 @@ function validatePolicyScope(value, pathValue) {
 
   assertBooleanField(value, 'requireSemanticReview', pathValue);
   assertBooleanField(value, 'requireValidation', pathValue);
-  assertStringArrayField(value, 'validationCapabilities', pathValue);
+  assertValidationCapabilitiesField(value, 'validationCapabilities', pathValue);
   assertStringArrayField(value, 'requiredValidationCapabilities', pathValue);
   assertStringArrayField(value, 'runtimeFeedbackCapabilities', pathValue);
   validateRuntimeFeedbackPolicy(value.runtimeFeedbackPolicy, `${pathValue}.runtimeFeedbackPolicy`);
