@@ -150,10 +150,15 @@ async function resolveWorkerPacketPath(worktreePath, packetPath, taskId, packetR
 
 async function createWorkerPacketFile(packetPath, packet) {
   let handle = null;
+  let created = false;
+  let committed = false;
   try {
     handle = await fs.open(packetPath, 'wx', 0o600);
-    await handle.writeFile(`${JSON.stringify(packet, null, 2)}\n`);
+    created = true;
+    const serialized = `${JSON.stringify(packet, null, 2)}\n`;
+    await handle.writeFile(serialized);
     await handle.sync();
+    committed = true;
   } catch (error) {
     if (['EEXIST', 'ELOOP'].includes(error?.code)) {
       throw packetPathError('Worker task packet path became occupied before exclusive creation');
@@ -161,6 +166,7 @@ async function createWorkerPacketFile(packetPath, packet) {
     throw error;
   } finally {
     await handle?.close().catch(() => {});
+    if (created && !committed) await fs.rm(packetPath, { force: true }).catch(() => {});
   }
   await fs.chmod(packetPath, 0o600).catch(() => {});
 }
