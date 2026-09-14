@@ -4,6 +4,10 @@ export const RUNTIME_FEEDBACK_CONTRACT = 'veteran-runtime-feedback-v1';
 
 const MAX_OBSERVATION_ITEMS = 12;
 const MAX_MISSION_TASKS = 64;
+const NON_REPAIRABLE_FEEDBACK_FAILURES = new Set([
+  'BROWSER_SOURCE_IDENTITY_MISMATCH',
+  'OBSERVABILITY_SOURCE_IDENTITY_MISMATCH'
+]);
 
 function boundedText(value, limit = 1000) {
   if (value === undefined || value === null) return null;
@@ -34,6 +38,8 @@ function compactBrowserObservation(browser) {
     summary: boundedText(browser.summary, 1200),
     currentUrl: boundedText(browser.currentUrl, 500),
     failureCode: browser.failureCode || null,
+    observedSourceHead: boundedText(browser.observedSourceHead, 240),
+    sourceMatch: browser.sourceMatch ?? null,
     failedAssertions
   };
 }
@@ -199,6 +205,16 @@ function repairPolicy(project) {
   };
 }
 
+function capabilityFailureCode(item) {
+  return item?.observation?.failureCode || item?.errorCode || null;
+}
+
+function isRepairableCapabilityFailure(item) {
+  if (item?.passed !== false) return false;
+  const code = capabilityFailureCode(item);
+  return !code || !NON_REPAIRABLE_FEEDBACK_FAILURES.has(code);
+}
+
 export class RuntimeFeedbackService {
   constructor({ store, projectService, missionService, validationService, evidenceService }) {
     Object.assign(this, { store, projectService, missionService, validationService, evidenceService });
@@ -332,10 +348,21 @@ export class RuntimeFeedbackService {
     if (!sourceWave.ready) {
       return { configured: true, scheduled: false, reason: sourceWave.reason, maxRepairAttempts: policy.maxRepairAttempts };
     }
-    const failedCapabilities = new Set((feedbackRound.capabilities || []).filter((item) => item?.passed === false).map((item) => item.capability));
+    const failed = (feedbackRound.capabilities || []).filter((item) => item?.passed === false);
+    const repairableFailures = failed.filter(isRepairableCapabilityFailure);
+    const suppressedFailures = failed
+      .filter((item) => !isRepairableCapabilityFailure(item))
+      .map((item) => ({ capability: item.capability, failureCode: capabilityFailureCode(item) }));
+    const failedCapabilities = new Set(repairableFailures.map((item) => item.capability));
     const owned = sourceWave.tasks.filter((task) => task.validationCapability && failedCapabilities.has(task.validationCapability));
     if (!owned.length) {
-      return { configured: true, scheduled: false, reason: 'no-owned-failed-capability', maxRepairAttempts: policy.maxRepairAttempts };
+      return {
+        configured: true,
+        scheduled: false,
+        reason: repairableFailures.length ? 'no-owned-failed-capability' : (suppressedFailures.length ? 'failed-capabilities-not-code-repairable' : 'no-owned-failed-capability'),
+        maxRepairAttempts: policy.maxRepairAttempts,
+        suppressedFailures
+      };
     }
 
     const createdAt = nowIso();
