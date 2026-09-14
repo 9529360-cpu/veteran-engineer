@@ -1,6 +1,10 @@
 import { spawn, spawnSync } from 'node:child_process';
+import { rmSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 const FORCE_KILL_AFTER_MS = 3_000;
+const RUNTIME_PROFILE_PREFIX = 'veteran-engineer-';
 
 let worker = null;
 let container = null;
@@ -48,6 +52,29 @@ function cleanupContainer() {
   }
 }
 
+function disposableRuntimeProfileRoot() {
+  const tmp = workerEnv?.TMPDIR;
+  if (typeof tmp !== 'string' || !tmp.length) return null;
+  const resolvedTmp = path.resolve(tmp);
+  if (path.basename(resolvedTmp) !== 'tmp') return null;
+  const root = path.dirname(resolvedTmp);
+  const tempRoot = path.resolve(os.tmpdir());
+  const relative = path.relative(tempRoot, root);
+  if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return null;
+  if (!path.basename(root).startsWith(RUNTIME_PROFILE_PREFIX)) return null;
+  return root;
+}
+
+function cleanupRuntimeProfile() {
+  const root = disposableRuntimeProfileRoot();
+  if (!root) return;
+  try {
+    rmSync(root, { recursive: true, force: true });
+  } catch {
+    // Best effort. Runtime cleanup can sweep any remaining orphan later.
+  }
+}
+
 function scheduleForceKill() {
   if (forceTimer || !worker?.pid) return;
   forceTimer = setTimeout(() => {
@@ -85,6 +112,7 @@ function finish(outcome, exitCode) {
   if (forceTimer) clearTimeout(forceTimer);
   forceTimer = null;
   cleanupContainer();
+  cleanupRuntimeProfile();
   send({ type: 'outcome', ...outcome }, () => process.exit(exitCode));
 }
 
@@ -151,6 +179,7 @@ process.on('message', (message) => {
 
 process.on('disconnect', () => {
   if (!started) {
+    cleanupRuntimeProfile();
     process.exit(1);
     return;
   }
@@ -160,6 +189,7 @@ process.on('disconnect', () => {
 for (const signal of ['SIGTERM', 'SIGINT']) {
   process.on(signal, () => {
     if (!started) {
+      cleanupRuntimeProfile();
       process.exit(1);
       return;
     }
