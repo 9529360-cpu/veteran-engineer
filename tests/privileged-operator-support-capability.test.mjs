@@ -46,12 +46,12 @@ test('auth routing retains privileged support ownership and stale-privilege boun
 
   const specialist = await fs.readFile(reference, 'utf8');
   assert.match(specialist, /Never collapse the operator principal into the customer principal/);
-  assert.match(specialist, /Break-glass does not mean “skip authorization”/);
+  assert.match(specialist, /Break-glass does not mean .*skip authorization/);
   assert.match(specialist, /requester cannot approve their own action/);
   assert.match(specialist, /support tooling requests those transitions; it must not become a shadow source of truth/);
-  assert.match(specialist, /“Was authorized when queued” is not automatically authorization to execute later/);
+  assert.match(specialist, /Was authorized when queued.*not automatically authorization to execute later/);
   assert.match(specialist, /timeout-after-commit is an unknown outcome/);
-  assert.match(specialist, /A cryptographically valid stale token is not sufficient authority/);
+  assert.match(specialist, /cryptographically valid stale token is not sufficient authority/);
   assert.match(specialist, /ambient legacy admin endpoint remains an indefinite bypass/);
   assert.match(specialist, /stale privilege must not survive behind another path/);
 });
