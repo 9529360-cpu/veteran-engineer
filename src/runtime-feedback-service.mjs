@@ -2,6 +2,105 @@ import { nowIso } from './util.mjs';
 
 export const RUNTIME_FEEDBACK_CONTRACT = 'veteran-runtime-feedback-v1';
 
+const MAX_OBSERVATION_ITEMS = 12;
+
+function boundedText(value, limit = 1000) {
+  if (value === undefined || value === null) return null;
+  return String(value).slice(0, limit);
+}
+
+function compactServiceObservation(service) {
+  if (!service?.configured) return null;
+  return {
+    ready: service.ready === true,
+    reason: service.readiness?.reason || null,
+    lastStatus: service.readiness?.lastStatus ?? null,
+    lastError: boundedText(service.readiness?.lastError, 500)
+  };
+}
+
+function compactBrowserObservation(browser) {
+  if (!browser) return null;
+  const failedAssertions = (browser.assertions || [])
+    .filter((item) => item?.passed === false)
+    .slice(0, MAX_OBSERVATION_ITEMS)
+    .map((item) => ({
+      name: boundedText(item.name, 240),
+      detail: boundedText(item.detail, 800)
+    }));
+  return {
+    kind: 'browser',
+    summary: boundedText(browser.summary, 1200),
+    currentUrl: boundedText(browser.currentUrl, 500),
+    failureCode: browser.failureCode || null,
+    failedAssertions
+  };
+}
+
+function compactObservabilityObservation(observability) {
+  if (!observability) return null;
+  const failedChecks = (observability.checks || [])
+    .filter((item) => item?.passed === false)
+    .slice(0, MAX_OBSERVATION_ITEMS)
+    .map((item) => ({
+      name: boundedText(item.name, 240),
+      signal: boundedText(item.signal, 120),
+      observed: item.observed ?? null,
+      threshold: item.threshold ?? null,
+      detail: boundedText(item.detail, 800)
+    }));
+  return {
+    kind: 'observability',
+    summary: boundedText(observability.summary, 1200),
+    failureCode: observability.failureCode || null,
+    observedSourceHead: boundedText(observability.observedSourceHead, 240),
+    failedChecks
+  };
+}
+
+function compactArtifactObservation(artifacts) {
+  if (!artifacts?.configured) return null;
+  return {
+    complete: artifacts.complete === true,
+    requiredMissing: artifacts.requiredMissing === true,
+    files: artifacts.files ?? null,
+    errorCode: artifacts.error?.code || null
+  };
+}
+
+function compactObservation(result) {
+  const browser = compactBrowserObservation(result?.browser);
+  const observability = compactObservabilityObservation(result?.observability);
+  const service = compactServiceObservation(result?.service);
+  const artifacts = compactArtifactObservation(result?.artifacts);
+  if (browser) return { ...browser, service, artifacts };
+  if (observability) return { ...observability, service, artifacts };
+  if (service && service.ready === false) {
+    return {
+      kind: 'service-readiness',
+      summary: 'Product service did not become ready for runtime feedback.',
+      service,
+      artifacts
+    };
+  }
+  if (artifacts && artifacts.complete === false) {
+    return {
+      kind: 'artifact-collection',
+      summary: 'Required runtime feedback artifacts were incomplete.',
+      service,
+      artifacts
+    };
+  }
+  return {
+    kind: 'command',
+    summary: result?.passed === true
+      ? 'Runtime feedback command passed.'
+      : `Runtime feedback command failed${result?.exitCode === null || result?.exitCode === undefined ? '' : ` with exit code ${result.exitCode}`}.`,
+    service,
+    artifacts
+  };
+}
+
 function compactCapabilityResult(capability, result) {
   return {
     capability,
@@ -9,7 +108,8 @@ function compactCapabilityResult(capability, result) {
     evidenceId: result?.evidenceId || null,
     exitCode: result?.exitCode ?? null,
     failureStage: result?.failureStage || null,
-    errorCode: null
+    errorCode: null,
+    observation: compactObservation(result)
   };
 }
 
@@ -20,7 +120,11 @@ function compactCapabilityError(capability, error) {
     evidenceId: null,
     exitCode: null,
     failureStage: 'runtime-feedback',
-    errorCode: error?.code || 'RUNTIME_FEEDBACK_CAPABILITY_FAILED'
+    errorCode: error?.code || 'RUNTIME_FEEDBACK_CAPABILITY_FAILED',
+    observation: {
+      kind: 'provider-error',
+      summary: boundedText(error?.message || error, 1000)
+    }
   };
 }
 
