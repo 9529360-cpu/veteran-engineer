@@ -1,6 +1,6 @@
 import { sourceIdentity } from './git.mjs';
 import { nowIso, randomId } from './util.mjs';
-import { activeProjectWriteConflicts } from './adaptive-mission-strategy.mjs';
+import { activeProjectWriteConflicts, missionExecutionCapacity } from './adaptive-mission-strategy.mjs';
 import {
   activeRuntimeResourceConflicts,
   bindRuntimeResources,
@@ -11,7 +11,6 @@ import {
 } from './capability-plane.mjs';
 import { runtimeManagedExecutionReadiness, workerCapabilityProfile } from './worker-capability-profile.mjs';
 
-const ACTIVE_EXECUTION_STATUSES = new Set(['admitted', 'executing', 'cancelling', 'interrupted']);
 const OUTSTANDING_LEASE_STATUSES = new Set(['admitted', 'dispatched', 'executing', 'cancelling', 'interrupted']);
 const TERMINAL_TASK_STATUSES = new Set(['done', 'failed', 'cancelled', 'blocked', 'superseded']);
 
@@ -27,12 +26,8 @@ function readyWaveTasks(state, mission) {
 
 function predictedAdmission(state, mission, project, runWorkers) {
   const ready = readyWaveTasks(state, mission);
-  const maxWorkers = Math.max(1, Number(project.workerPolicy?.maxWorkers || 2));
-  const globalActive = runWorkers
-    ? Object.values(state.tasks).filter((task) => ACTIVE_EXECUTION_STATUSES.has(task.status)).length
-    : 0;
-  const capacity = runWorkers ? Math.max(0, maxWorkers - globalActive) : maxWorkers;
-  return { ready, capacity, selected: ready.slice(0, capacity) };
+  const budget = missionExecutionCapacity({ state, mission, project, runWorkers });
+  return { ready, capacity: budget.capacity, selected: ready.slice(0, budget.capacity), budget };
 }
 
 function sameReservationConflicts(tasks, mission, project) {
@@ -78,8 +73,8 @@ export class CapabilityAwareWorkerOrchestrator {
 
   async #snapshot(missionId) {
     const { mission, tasks } = await this.missionService.status({ missionId });
-    const project = await this.projectService.get(mission.projectId);
-    const projectSourceIdentity = await sourceIdentity(project.repoPath);
+    const project = await this.projectService.snapshot({ projectId: mission.projectId });
+    const projectSourceIdentity = project.sourceIdentity || await sourceIdentity(project.repoPath);
     const missionSourceExpected = Boolean(this.worktreeManager) && missionSourceAuthorityEstablished(tasks);
     let missionSourceIdentity = null;
     let missionSourceErrorCode = null;
@@ -174,7 +169,7 @@ export class CapabilityAwareWorkerOrchestrator {
           missionId,
           taskIds: [],
           blocked: [],
-          reason: admission.capacity === 0 ? 'global-worker-admission-full' : 'no-ready-planned-tasks'
+          reason: admission.capacity === 0 ? (admission.budget.reason || 'global-worker-admission-full') : 'no-ready-planned-tasks'
         };
       }
 
