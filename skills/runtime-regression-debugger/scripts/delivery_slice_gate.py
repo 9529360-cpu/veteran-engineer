@@ -48,16 +48,30 @@ def require_text(gaps: list[str], obj: dict, key: str, prefix: str) -> None:
         gap(gaps, f"{prefix}.{key} must be a non-empty string")
 
 
-def validate_closed_rows(gaps: list[str], rows: object, label: str, *, require_postconditions: bool) -> int:
+def validate_closed_rows(
+    gaps: list[str],
+    rows: object,
+    label: str,
+    *,
+    require_postconditions: bool,
+    require_unique_names: bool = False,
+) -> int:
     if not isinstance(rows, list):
         gap(gaps, f"{label} must be an array")
         return 0
+    seen_names: set[str] = set()
     for idx, row in enumerate(rows, start=1):
         prefix = f"{label}[{idx}]"
         if not isinstance(row, dict):
             gap(gaps, f"{prefix} must be an object")
             continue
+        name = row.get("name")
         require_text(gaps, row, "name", prefix)
+        if require_unique_names and nonempty(name):
+            if name in seen_names:
+                gap(gaps, f"{prefix}.name duplicates {name!r}; names must be unique within {label}")
+            else:
+                seen_names.add(name)
         applicable = row.get("applicable", True)
         if not isinstance(applicable, bool):
             gap(gaps, f"{prefix}.applicable must be boolean")
@@ -178,11 +192,29 @@ def main() -> int:
         if item not in exception_paths:
             gap(gaps, f"write_set drift for {item!r} requires an explicit exception reason")
 
-    transition_count = validate_closed_rows(gaps, payload.get("transitions"), "transitions", require_postconditions=True)
+    transition_count = validate_closed_rows(
+        gaps,
+        payload.get("transitions"),
+        "transitions",
+        require_postconditions=True,
+        require_unique_names=True,
+    )
     if transition_count == 0:
         gap(gaps, "transitions must contain at least one material transition")
-    companion_count = validate_closed_rows(gaps, payload.get("companions", []), "companions", require_postconditions=False)
-    consumer_count = validate_closed_rows(gaps, payload.get("consumers", []), "consumers", require_postconditions=False)
+    companion_count = validate_closed_rows(
+        gaps,
+        payload.get("companions", []),
+        "companions",
+        require_postconditions=False,
+        require_unique_names=True,
+    )
+    consumer_count = validate_closed_rows(
+        gaps,
+        payload.get("consumers", []),
+        "consumers",
+        require_postconditions=False,
+        require_unique_names=True,
+    )
 
     effects = payload.get("durable_or_external_effects")
     if not isinstance(effects, dict):
