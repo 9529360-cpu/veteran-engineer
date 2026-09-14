@@ -1,7 +1,24 @@
 import { resolveWorkerConfig } from './worker-adapter.mjs';
 
+const STRUCTURAL_CAPABILITIES = new Set([
+  'worker-execution',
+  'container-worker',
+  'network-isolated',
+  'read-only-rootfs',
+  'codex-worker',
+  'workspace-write-sandbox',
+  'unconfined-worker',
+  'local-worker'
+]);
+
 function unique(values) {
   return [...new Set(values.filter(Boolean).map(String))].sort();
+}
+
+function requiresDerivedProof(name) {
+  return STRUCTURAL_CAPABILITIES.has(name)
+    || name.startsWith('worker-type:')
+    || name.startsWith('container-engine:');
 }
 
 export function workerCapabilityProfile(project, task) {
@@ -48,7 +65,10 @@ export function runtimeManagedExecutionReadiness(task, project) {
   if (!profile.enabled) blockers.push('worker-execution-disabled');
   if (profile.enabled && !profile.configured) blockers.push(profile.configError?.code || 'worker-not-configured');
   const available = new Set(profile.availableCapabilities);
-  const missingExecution = (task.executionCapabilities || []).filter((name) => !available.has(name));
+  const derived = new Set(profile.derivedCapabilities);
+  const missingExecution = (task.executionCapabilities || []).filter((name) =>
+    requiresDerivedProof(name) ? !derived.has(name) : !available.has(name)
+  );
   return {
     ready: blockers.length === 0 && missingExecution.length === 0,
     blockers,
