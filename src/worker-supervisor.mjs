@@ -1,7 +1,8 @@
-import { spawn, spawnSync } from 'node:child_process';
+import { fork, spawnSync } from 'node:child_process';
 import { rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const FORCE_KILL_AFTER_MS = 3_000;
 const RUNTIME_PROFILE_PREFIX = 'veteran-engineer-';
@@ -9,6 +10,7 @@ const SUPERVISOR_ENV_KEYS = new Set([
   'PATH', 'PATHEXT', 'SYSTEMROOT', 'COMSPEC', 'WINDIR',
   'TMP', 'TEMP', 'TMPDIR', 'LANG', 'LC_ALL'
 ]);
+const SENTINEL_PATH = fileURLToPath(new URL('./worker-sentinel.mjs', import.meta.url));
 
 function scrubInheritedEnvironment() {
   for (const key of Object.keys(process.env)) {
@@ -18,9 +20,12 @@ function scrubInheritedEnvironment() {
 
 scrubInheritedEnvironment();
 
-let worker = null;
+let sentinel = null;
+let workerPid = null;
 let container = null;
 let workerEnv = null;
+let runtimeProfileRoot = null;
+let sentinelOutcome = null;
 let forceTimer = null;
 let pendingSignal = null;
 let started = false;
@@ -29,25 +34,23 @@ let settled = false;
 process.stdout.on('error', () => {});
 process.stderr.on('error', () => {});
 
-function killProcessTree(pid, signal = 'SIGTERM') {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  if (process.platform === 'win32') {
-    const args = ['/PID', String(pid), '/T'];
-    if (signal === 'SIGKILL') args.push('/F');
-    const result = spawnSync('taskkill', args, { stdio: 'ignore', windowsHide: true });
-    return result.status === 0;
-  }
-  try {
-    process.kill(-pid, signal);
-    return true;
-  } catch {
-    try {
-      process.kill(pid, signal);
-      return true;
-    } catch {
-      return false;
-    }
-  }
+function validRuntimeProfileRoot(candidate) {
+  if (typeof candidate !== 'string' || !candidate.length) return null;
+  const root = path.resolve(candidate);
+  const tempRoot = path.resolve(os.tmpdir());
+  const relative = path.relative(tempRoot, root);
+  if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return null;
+  if (!path.basename(root).startsWith(RUNTIME_PROFILE_PREFIX)) return null;
+  return root;
+}
+
+function disposableRuntimeProfileRoot() {
+  if (container) return null;
+  const tmp = workerEnv?.TMPDIR;
+  if (typeof tmp !== 'string' || !tmp.length) return null;
+  const resolvedTmp = path.resolve(tmp);
+  if (path.basename(resolvedTmp) !== 'tmp') return null;
+  return validRuntimeProfileRoot(path.dirname(resolvedTmp));
 }
 
 function cleanupContainer() {
@@ -64,22 +67,8 @@ function cleanupContainer() {
   }
 }
 
-function disposableRuntimeProfileRoot() {
-  if (container) return null;
-  const tmp = workerEnv?.TMPDIR;
-  if (typeof tmp !== 'string' || !tmp.length) return null;
-  const resolvedTmp = path.resolve(tmp);
-  if (path.basename(resolvedTmp) !== 'tmp') return null;
-  const root = path.dirname(resolvedTmp);
-  const tempRoot = path.resolve(os.tmpdir());
-  const relative = path.relative(tempRoot, root);
-  if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return null;
-  if (!path.basename(root).startsWith(RUNTIME_PROFILE_PREFIX)) return null;
-  return root;
-}
-
 function cleanupRuntimeProfile() {
-  const root = disposableRuntimeProfileRoot();
+  const root = validRuntimeProfileRoot(runtimeProfileRoot);
   if (!root) return;
   try {
     rmSync(root, { recursive: true, force: true });
@@ -88,22 +77,57 @@ function cleanupRuntimeProfile() {
   }
 }
 
-function scheduleForceKill() {
-  if (forceTimer || !worker?.pid) return;
-  forceTimer = setTimeout(() => {
-    killProcessTree(worker.pid, 'SIGKILL');
-    cleanupContainer();
-  }, FORCE_KILL_AFTER_MS);
+function cleanupOwnedState() {
+  cleanupContainer();
+  cleanupRuntimeProfile();
 }
 
-function terminateWorker(signal = 'SIGTERM') {
+function killSentinelTree(signal = 'SIGTERM') {
+  if (!sentinel?.pid) return false;
+  if (process.platform === 'win32') {
+    const target = Number.isInteger(workerPid) && workerPid > 0 ? workerPid : sentinel.pid;
+    const args = ['/PID', String(target), '/T'];
+    if (signal === 'SIGKILL') args.push('/F');
+    const result = spawnSync('taskkill', args, { stdio: 'ignore', windowsHide: true });
+    return result.status === 0;
+  }
+  try {
+    process.kill(-sentinel.pid, signal);
+    return true;
+  } catch {
+    if (Number.isInteger(workerPid) && workerPid > 0) {
+      try {
+        process.kill(workerPid, signal);
+        return true;
+      } catch {}
+    }
+    return false;
+  }
+}
+
+function scheduleForceKill() {
+  if (forceTimer || !sentinel?.pid) return;
+  forceTimer = setTimeout(() => {
+    cleanupOwnedState();
+    killSentinelTree('SIGKILL');
+  }, FORCE_KILL_AFTER_MS);
+  forceTimer.unref();
+}
+
+function terminateSentinel(signal = 'SIGTERM') {
   if (signal === 'SIGKILL') pendingSignal = 'SIGKILL';
   else if (!pendingSignal) pendingSignal = 'SIGTERM';
-  if (!worker?.pid) return false;
-  const effectiveSignal = pendingSignal === 'SIGKILL' ? 'SIGKILL' : signal;
-  const signalled = killProcessTree(worker.pid, effectiveSignal);
   cleanupContainer();
-  if (effectiveSignal !== 'SIGKILL' && signalled) scheduleForceKill();
+  if (!sentinel) return false;
+  if (sentinel.connected) {
+    try {
+      sentinel.send({ type: 'terminate', signal: pendingSignal === 'SIGKILL' ? 'SIGKILL' : 'SIGTERM' });
+      if (pendingSignal !== 'SIGKILL') scheduleForceKill();
+      return true;
+    } catch {}
+  }
+  const signalled = killSentinelTree(pendingSignal === 'SIGKILL' ? 'SIGKILL' : signal);
+  if (pendingSignal !== 'SIGKILL' && signalled) scheduleForceKill();
   return signalled;
 }
 
@@ -124,17 +148,35 @@ function finish(outcome, exitCode) {
   settled = true;
   if (forceTimer) clearTimeout(forceTimer);
   forceTimer = null;
-  cleanupContainer();
-  cleanupRuntimeProfile();
+  cleanupOwnedState();
   send({ type: 'outcome', ...outcome }, () => process.exit(exitCode));
 }
 
-function failStart(error) {
-  const spawnError = {
-    code: error?.code || 'WORKER_SPAWN_FAILED',
-    message: String(error?.message || error).slice(0, 1_000)
+function internalFailure(code, message) {
+  return {
+    code: null,
+    signal: null,
+    spawnError: { code, message: String(message).slice(0, 1_000) }
   };
-  finish({ code: null, signal: null, spawnError }, 127);
+}
+
+function handleSentinelClose(code, signal) {
+  if (forceTimer) clearTimeout(forceTimer);
+  forceTimer = null;
+  cleanupOwnedState();
+  killSentinelTree('SIGKILL');
+  if (sentinelOutcome) {
+    const exitCode = Number.isInteger(sentinelOutcome.code) && sentinelOutcome.code >= 0
+      ? Math.min(sentinelOutcome.code, 255)
+      : (sentinelOutcome.spawnError ? 127 : 1);
+    finish(sentinelOutcome, exitCode);
+    return;
+  }
+  if (pendingSignal) {
+    finish({ code: null, signal: signal || pendingSignal, spawnError: null }, 1);
+    return;
+  }
+  finish(internalFailure('WORKER_SENTINEL_LOST', `Worker sentinel exited before reporting an outcome (code=${code}, signal=${signal || 'none'})`), 1);
 }
 
 function startWorker(message) {
@@ -145,39 +187,72 @@ function startWorker(message) {
   const cwd = typeof message?.cwd === 'string' ? message.cwd : process.cwd();
   workerEnv = message?.env && typeof message.env === 'object' ? message.env : {};
   container = message?.container && typeof message.container === 'object' ? message.container : null;
+  runtimeProfileRoot = disposableRuntimeProfileRoot();
   if (!command) {
-    failStart(Object.assign(new Error('Worker supervisor requires a command'), { code: 'WORKER_CONFIG_INVALID' }));
+    finish(internalFailure('WORKER_CONFIG_INVALID', 'Worker supervisor requires a command'), 127);
     return;
   }
 
   try {
-    worker = spawn(command, args, {
+    sentinel = fork(SENTINEL_PATH, [], {
       cwd,
-      env: workerEnv,
-      shell: false,
+      env: process.env,
+      silent: true,
       detached: process.platform !== 'win32',
-      windowsHide: true,
-      stdio: ['pipe', 'pipe', 'pipe']
+      windowsHide: true
     });
   } catch (error) {
-    failStart(error);
+    finish(internalFailure(error?.code || 'WORKER_SENTINEL_START_FAILED', error?.message || error), 127);
     return;
   }
 
-  worker.stdout?.pipe(process.stdout, { end: false });
-  worker.stderr?.pipe(process.stderr, { end: false });
-  worker.on('error', failStart);
-  worker.on('close', (code, signal) => {
-    const exitCode = Number.isInteger(code) && code >= 0 ? Math.min(code, 255) : 1;
-    finish({ code, signal, spawnError: null }, exitCode);
+  sentinel.stdout?.pipe(process.stdout, { end: false });
+  sentinel.stderr?.pipe(process.stderr, { end: false });
+  sentinel.on('message', (sentinelMessage) => {
+    if (sentinelMessage?.type === 'started' && Number.isInteger(sentinelMessage.pid) && sentinelMessage.pid > 0) {
+      workerPid = sentinelMessage.pid;
+      send({ type: 'started', pid: workerPid });
+      return;
+    }
+    if (sentinelMessage?.type === 'outcome') {
+      sentinelOutcome = {
+        code: sentinelMessage.code ?? null,
+        signal: sentinelMessage.signal ?? null,
+        spawnError: sentinelMessage.spawnError || null
+      };
+      cleanupOwnedState();
+      killSentinelTree('SIGKILL');
+    }
   });
+  sentinel.on('error', (error) => {
+    if (!sentinelOutcome) sentinelOutcome = internalFailure(error?.code || 'WORKER_SENTINEL_FAILED', error?.message || error);
+    cleanupOwnedState();
+    killSentinelTree('SIGKILL');
+  });
+  sentinel.on('close', handleSentinelClose);
 
-  const stdin = message?.stdin;
-  if (stdin !== undefined && stdin !== null) worker.stdin.end(String(stdin));
-  else worker.stdin.end();
-
-  send({ type: 'started', pid: worker.pid });
-  if (pendingSignal) terminateWorker(pendingSignal);
+  try {
+    sentinel.send({
+      type: 'start',
+      command,
+      args,
+      cwd,
+      env: workerEnv,
+      stdin: message?.stdin ?? null,
+      container,
+      runtimeProfileRoot
+    }, (error) => {
+      if (!error) return;
+      if (!sentinelOutcome) sentinelOutcome = internalFailure(error?.code || 'WORKER_SENTINEL_IPC_FAILED', error?.message || error);
+      cleanupOwnedState();
+      killSentinelTree('SIGKILL');
+    });
+  } catch (error) {
+    sentinelOutcome = internalFailure(error?.code || 'WORKER_SENTINEL_IPC_FAILED', error?.message || error);
+    cleanupOwnedState();
+    killSentinelTree('SIGKILL');
+  }
+  if (pendingSignal) terminateSentinel(pendingSignal);
 }
 
 process.on('message', (message) => {
@@ -186,26 +261,41 @@ process.on('message', (message) => {
     return;
   }
   if (message?.type === 'terminate') {
-    terminateWorker(message.signal === 'SIGKILL' ? 'SIGKILL' : 'SIGTERM');
+    terminateSentinel(message.signal === 'SIGKILL' ? 'SIGKILL' : 'SIGTERM');
   }
 });
 
 process.on('disconnect', () => {
   if (!started) {
-    cleanupRuntimeProfile();
+    cleanupOwnedState();
     process.exit(1);
     return;
   }
-  terminateWorker('SIGTERM');
+  terminateSentinel('SIGTERM');
 });
 
-for (const signal of ['SIGTERM', 'SIGINT']) {
+for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP']) {
   process.on(signal, () => {
     if (!started) {
-      cleanupRuntimeProfile();
+      cleanupOwnedState();
       process.exit(1);
       return;
     }
-    terminateWorker('SIGTERM');
+    terminateSentinel('SIGTERM');
   });
 }
+
+process.on('uncaughtException', (error) => {
+  if (!sentinelOutcome) sentinelOutcome = internalFailure('WORKER_SUPERVISOR_FAILED', error?.message || error);
+  cleanupOwnedState();
+  killSentinelTree('SIGKILL');
+  finish(sentinelOutcome, 1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  const message = reason instanceof Error ? reason.message : String(reason);
+  if (!sentinelOutcome) sentinelOutcome = internalFailure('WORKER_SUPERVISOR_FAILED', message);
+  cleanupOwnedState();
+  killSentinelTree('SIGKILL');
+  finish(sentinelOutcome, 1);
+});
