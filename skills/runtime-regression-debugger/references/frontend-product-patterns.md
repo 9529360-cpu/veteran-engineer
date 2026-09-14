@@ -153,7 +153,9 @@ For a new reusable component define, when material:
 
 Avoid creating a generic component abstraction from a single accidental use case. Avoid encoding product policy into purely visual primitives.
 
-When the issue is product-wide drift across semantic tokens, shared primitives, variants, states, themes/density, duplicate components, or legacy UI islands, read `design-system-consistency-product-engineering.md`. Fix the canonical shared owner when evidence shows a shared cause; keep genuinely product-specific exceptions in owned wrappers instead of forcing uniformity.
+For product-wide drift, first classify the problem as a shared-owner defect, consumer misuse, intentional exception, or legacy path. Treat tokens and variant names as semantic contracts rather than aliases for raw values; do not add a shared abstraction merely because two surfaces look similar. Fix the canonical shared owner only when evidence shows a genuinely shared cause, and keep product-specific behavior in owned wrappers.
+
+When consumers cannot move atomically, migrate shared token/prop/variant contracts compatibly and give temporary aliases a removal condition; when one application ships atomically, do not invent a distributed migration problem. Validate shared primitive or token changes across representative real consumers, content pressure, responsive states, interaction states, and accessibility before deleting the legacy owner.
 
 ## Design-to-code execution
 
