@@ -51,6 +51,13 @@ async function readDescriptorForOwnership(file) {
   }
 }
 
+function descriptorDriftError(file, reason) {
+  const error = new Error(`Generic MCP descriptor drift must be resolved before repair: ${file}`);
+  error.code = 'HOST_BINDING_DRIFT';
+  error.details = { descriptorPath: file, reason };
+  return error;
+}
+
 export default {
   apiVersion: HOST_ADAPTER_API_VERSION,
   id: 'generic',
@@ -66,6 +73,14 @@ export default {
         error.code = 'HOST_BINDING_CONFLICT';
         throw error;
       }
+      const current = await readDescriptorForOwnership(file);
+      if (!current) throw descriptorDriftError(file, 'descriptor-unreadable');
+      const currentDigest = stableObjectHash(current);
+      const recordedDigest = recordedBinding(context)?.descriptorDigest || null;
+      const owned = recordedDigest
+        ? currentDigest === recordedDigest
+        : currentDigest === stableObjectHash(descriptor);
+      if (!owned) throw descriptorDriftError(file, 'descriptor-drift');
     }
     await writeJsonAtomic(file, descriptor);
     return {
