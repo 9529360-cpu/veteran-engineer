@@ -100,6 +100,19 @@ export async function createVeteranApp({
   const runtimeService = new RuntimeService({ store, experienceService, protocolMode, surfaceProfile: resolvedSurfaceProfile });
   const handoffService = new HandoffService({ store, missionService });
   const missionAdvanceService = new MissionAdvanceService({ store, projectService, missionService, worktreeManager, workerOrchestrator, validationService, reviewService, candidateService, evidenceService });
+  const activeMissionExecutions = new Map();
+
+  async function executeMission(args) {
+    const missionId = args?.missionId;
+    activeMissionExecutions.set(missionId, (activeMissionExecutions.get(missionId) || 0) + 1);
+    try {
+      return await workerOrchestrator.execute(args);
+    } finally {
+      const remaining = (activeMissionExecutions.get(missionId) || 1) - 1;
+      if (remaining > 0) activeMissionExecutions.set(missionId, remaining);
+      else activeMissionExecutions.delete(missionId);
+    }
+  }
 
   async function cancelMission(args) {
     const result = await missionService.cancel(args);
@@ -118,6 +131,22 @@ export async function createVeteranApp({
   }
 
   async function resumeMission(args) {
+    const current = await missionService.status({ missionId: args.missionId });
+    if (current.mission.status === 'cancelled') {
+      throw Object.assign(new Error('Cancelled missions cannot be resumed'), { code: 'MISSION_CANCELLED' });
+    }
+    const activeExecutionCalls = activeMissionExecutions.get(args.missionId) || 0;
+    const activeWorkers = workerAdapter.snapshot().filter((item) => item.missionId === args.missionId);
+    if (activeExecutionCalls || activeWorkers.length) {
+      const error = new Error('Cannot resume a mission while this runtime still owns active execution; cancel it or wait for it to finish before restart reconciliation.');
+      error.code = 'MISSION_EXECUTION_ACTIVE';
+      error.details = {
+        missionId: args.missionId,
+        activeExecutionCalls,
+        workers: activeWorkers.map((item) => ({ taskId: item.taskId, phase: item.phase, runtimeNamespace: item.runtimeNamespace || null }))
+      };
+      throw error;
+    }
     const result = await missionService.resume(args);
     const capabilityLeaseReconciliation = await workerOrchestrator.reconcileMission({
       missionId: args.missionId,
@@ -162,7 +191,7 @@ export async function createVeteranApp({
     project_open: (a) => projectService.open(a),
     project_snapshot: (a) => projectService.snapshot(a),
     mission_plan: (a) => missionService.plan(a),
-    mission_execute: (a) => workerOrchestrator.execute(a),
+    mission_execute: (a) => executeMission(a),
     mission_status: (a) => missionService.status(a),
     mission_advance: (a) => missionAdvanceService.advance(a),
     mission_readiness: (a) => missionReadiness(a),

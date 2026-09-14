@@ -367,7 +367,16 @@ export class MissionService {
       if (!mission) throw Object.assign(new Error(`Unknown mission: ${missionId}`), { code: 'MISSION_NOT_FOUND' });
       if (mission.status === 'cancelled') throw Object.assign(new Error('Cancelled missions cannot be resumed'), { code: 'MISSION_CANCELLED' });
       const tasks = Object.values(state.tasks).filter((task) => task.missionId === missionId);
-      const uncertain = tasks.filter((task) => ['admitted', 'executing', 'cancelling', 'interrupted'].includes(task.status));
+      const recoverableAdmissions = tasks.filter((task) => task.status === 'admitted' && task.admission);
+      for (const task of recoverableAdmissions) {
+        task.status = 'planned';
+        task.admission = null;
+        task.updatedAt = nowIso();
+      }
+      const uncertain = tasks.filter((task) =>
+        ['executing', 'cancelling', 'interrupted'].includes(task.status)
+        || (task.status === 'admitted' && !task.admission)
+      );
       for (const task of uncertain) {
         task.status = 'interrupted';
         task.updatedAt = nowIso();
@@ -379,7 +388,13 @@ export class MissionService {
       } : null;
       mission.status = uncertain.length ? 'blocked' : 'ready';
       mission.updatedAt = nowIso();
-      state.runtime.timeline.push({ type: 'mission_resume_checked', missionId, uncertainTaskIds: uncertain.map((task) => task.id), at: nowIso() });
+      state.runtime.timeline.push({
+        type: 'mission_resume_checked',
+        missionId,
+        recoveredAdmissionTaskIds: recoverableAdmissions.map((task) => task.id),
+        uncertainTaskIds: uncertain.map((task) => task.id),
+        at: nowIso()
+      });
       return mission;
     }, { missionId });
   }
