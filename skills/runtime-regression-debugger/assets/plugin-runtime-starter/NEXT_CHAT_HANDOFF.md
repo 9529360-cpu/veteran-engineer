@@ -6,7 +6,7 @@ The active implementation authority is the GitHub repository:
 
 `9529360-cpu/veteran-engineer`
 
-Judge the product by current repository/runtime evidence, executable gates, and the bundled `runtime-regression-debugger` Skill. Historical exported ZIPs and remembered checkpoints are not implementation authority.
+Judge the product by current repository/runtime evidence, executable gates, and the bundled `runtime-regression-debugger` Skill. Historical ZIPs, remembered checkpoints, and this handoff are not implementation authority when they disagree with current `main`.
 
 Product invariant:
 
@@ -21,217 +21,151 @@ Do not fork Mission, MCP, worker, state, evidence, or experience logic per host.
 - Public MCP tool surface: exactly **34 tools**
 - Official modern protocol: `2026-07-28`
 - Legacy protocol: `2025-11-25`
-- Standalone fallback is legacy-only
-- Modern pin never falls back
-- Pinned base SDK graph:
-  - `@modelcontextprotocol/client@2.0.0`
-  - `@modelcontextprotocol/server@2.0.0`
-  - `@modelcontextprotocol/core@2.0.0`
-  - `zod@4.2.0`
+- Standalone fallback is legacy-only; modern pin never falls back
+- Local JSON remains the default state authority
+- PostgreSQL remains an explicit hosted capability and requires exact `pg@8.23.0` when selected
+- Root runtime is the handwritten owner; `skills/runtime-regression-debugger/assets/plugin-runtime-starter/` must remain byte-identical for mirrored runtime paths
 
-The base lockfile remains the verified MCP SDK graph. PostgreSQL is an explicit hosted capability and currently requires exact `pg@8.23.0` installed in the shared runtime when selected.
+Pinned MCP SDK graph remains:
+
+- `@modelcontextprotocol/client@2.0.0`
+- `@modelcontextprotocol/server@2.0.0`
+- `@modelcontextprotocol/core@2.0.0`
+- `zod@4.2.0`
 
 ## Current executable evidence
 
-Mainline CI has three real gates:
+The current base validation gate proves:
+
+- **221 syntax files**
+- exact **34-tool** MCP surface
+- official SDK graph + lockfile integrity
+- protocol constants and fallback boundaries
+- runtime/starter mirror parity across **227 mirrored files**
+- **412 total / 412 PASS / 0 SKIP / 0 FAIL** Node tests
+
+Mainline CI also runs real engine-backed gates for:
 
 1. Node 20 `npm ci --include=optional && npm run check`
-2. real Docker engine-backed confined WorkerAdapter smoke
-3. real PostgreSQL engine-backed state-backend integration plus modern MCP handshake with PostgreSQL selected
+2. Docker confined WorkerAdapter smoke
+3. PostgreSQL state-backend contract/durability integration plus modern MCP selection path
+4. profile-aware Desktop/Codex/Web plugin artifact export with reproducibility and packaging-boundary checks
 
-Current base gate proves:
+The latest correctness PR before this handoff refresh was **#326**, whose PR gates passed all of the above before merge.
 
-- **73 syntax files**
-- exact **34-tool** MCP surface
-- protocol constants correct
-- official SDK graph + lockfile integrity verified
-- runtime/starter mirror parity enforced by `scripts/check.mjs`
-- **82 total / 82 PASS / 0 SKIP / 0 FAIL** Node tests in CI (local environments without the official SDK may show 80 PASS / 2 SKIP)
+## Recent convergence line
 
-PostgreSQL integration separately proves the shared base/transaction semantics, durability behavior, commit acknowledgement reconciliation, tamper rejection, audit repair, and concurrent writes from independent backend instances/connection pools sharing one durable `instanceKey`.
+The recent mainline sequence materially changed the current runtime and supersedes older handoff assumptions:
 
-## Completed milestones
+- **#322** — adaptive Mission controller v1: project-aware planning continuity, inferred task risk, execution strategy, and same-project write-conflict coordination without growing the 34-tool surface.
+- **#323** — live validation session lifecycle hardening: release drains sessions that are still starting and fences new starts during cleanup.
+- **#324** — worker lifecycle hardening: successful worker completion also reaps background descendants instead of leaving runtime-owned processes behind.
+- **#325** — adaptive Mission controller v2: effective-risk strategy, risk-shaped Mission concurrency, shared execution-capacity authority, and execution-time project snapshot refresh.
+- **#326** — explicit Mission risk-envelope authority: an explicitly supplied `riskEnvelope: "medium"` is no longer collapsed into the ordinary default baseline.
 
-The active implementation now contains:
+At the time this handoff was refreshed, `main` includes #326 at merge commit:
 
-1. Mission finalize and durable merge proposal
-2. confined Docker/Podman WorkerAdapter
-3. real Docker engine worker proof and host UID:GID correction
-4. `veteran-state-backend-v1`
-5. `veteran-state-transaction-v1`
-6. opaque revisions + compare-and-commit / stale conflict semantics
-7. state-commit / audit partial-failure reconciliation
-8. request admission attempt identity and conservative unknown outcomes
-9. `veteran-state-durability-v1`
-10. Local JSON conformance for all three contracts
-11. explicit PostgreSQL hosted backend with real engine proof
-12. root/runtime-starter parity as an executable CI invariant
-13. convergence audit across the previous milestones
-14. runtime-managed remote repository onboarding through the existing `project_open` intent
-15. hashed idempotency payload fingerprints with legacy replay compatibility
+`da58f7ab9bc50a76d8bc56531b8a6c05614629a5`
 
-Important recent mainline milestone:
+Always refresh `main` before relying on this SHA or the counts above.
 
-- hosted PostgreSQL merge: `d874544261676535a0a0aadec06b9089d3cbed27` (`#12`)
+## Adaptive Mission authority
 
-When this handoff is read after later commits, refresh `main` before trusting any SHA/count here.
+The adaptive controller is internal runtime policy, not a new public MCP surface.
 
-## Cross-surface runtime milestone
+Planning now:
 
-The runtime now treats Web/Desktop/Codex differences as capability/topology edges instead of engineering-core forks. `veteran-surface-capabilities-v1` defines `local-stdio`, `remote-mcp`, and `secure-tunnel`; `runtime_health` reports the effective profile, remote MCP refuses caller-local repository paths, and generic descriptors can carry an explicit surface profile.
+- refreshes project/source/environment truth before deriving a Mission;
+- preserves explicit task risk as authority and infers risk only when task risk is omitted;
+- distinguishes an omitted default `medium` Mission envelope from an explicitly supplied `medium` envelope;
+- records bounded same-project continuity for planner/runtime decisions;
+- compiles `veteran-adaptive-mission-v1` execution strategy with task class, effective risk, validation posture, runtime-feedback posture, and bounded concurrency;
+- exposes strategy and continuity through Mission readiness/capability snapshots.
 
-Plugin export is profile-aware: Desktop/Codex artifacts retain the local runtime and `.mcp.json`, while the Web artifact excludes local MCP/runtime surfaces and can optionally reference a caller-supplied `.app.json`. Tunnel/app provisioning remains external platform configuration until a stable machine-consumable OpenAI contract exists.
+Execution now uses the same strategy authority rather than treating it as descriptive metadata:
 
-## Remote repository onboarding
+- consequential work is serialized to one Mission worker;
+- heavy work is bounded to at most two Mission workers;
+- lighter work may use safe structural parallelism up to project worker policy;
+- global active-worker capacity and Mission-local strategy capacity are combined by one capacity calculation;
+- same-project active write overlap fails closed before dispatch;
+- current project snapshot/readiness is refreshed again at execution preflight.
 
-`project_open` accepts exactly one of `repoPath` or `repoUrl`. With `repoUrl`, the runtime owns a deterministic managed checkout beneath the execution-local state root and returns the same project identity when that remote is opened again.
+Explicit `riskEnvelope: "medium"` remains operator intent. For a single otherwise-low task it raises effective Mission risk to `medium`, producing a `moderate` / cross-boundary validation posture instead of the ordinary default `light` / focused posture.
 
-Safety contract:
+## Mission lifecycle and finalize
 
-- no embedded HTTPS credentials, query strings, or fragments; use the operator's Git credential helper or SSH agent for private access;
-- no recursive submodule acquisition on clone;
-- concurrent opens of the same remote are serialized;
-- reused checkouts fetch origin and only fast-forward their tracked branch;
-- dirty, detached, or locally diverged managed source checkouts fail closed;
-- credential-bearing origin URLs from local repositories are sanitized before durable state storage;
-- workers still mutate only isolated Mission/task worktrees, never the managed source checkout.
-
-`refreshRemote=false` exists only as an explicit offline/stale reuse opt-out. Default behavior refreshes remote truth before the project is opened.
-
-## Mission authority and finalize
-
-Mission lifecycle:
+Mission lifecycle remains:
 
 `execution -> validation -> deterministic review -> semantic review -> immutable candidate -> finalize`
 
-Finalize never merges or pushes. A proof-fresh candidate produces a durable merge proposal with:
+Finalize never merges, pushes, releases, or deploys. A proof-fresh candidate produces a durable merge proposal with:
 
 - `automaticMerge:false`
 - `automaticPush:false`
 - `requiresOperatorAction:true`
 
-Proposal identity binds candidate SHA/ref, expected source HEAD/branch, mission HEAD, and proof identities. Source or mission drift invalidates the proposal and forces candidate refresh plus revalidation/re-review. Stable retries reuse an unchanged proposal. Partial-failure evidence is repaired rather than silently replaced.
+Source or Mission drift invalidates stale proof/proposals and requires refresh plus the appropriate proof gates again.
 
-## Worker boundary
+## Worker and runtime boundary
 
-The runtime owns task worktrees, HEAD authority, actual-write verification, task commits, and deterministic serial integration.
+The runtime owns task worktrees, HEAD authority, actual-write verification, task commits, deterministic integration, process lifecycle, capability leases, and cleanup.
 
-Codex preset:
+Codex preset remains:
 
 `codex exec --sandbox workspace-write --ephemeral`
 
-Dangerous sandbox/approval bypass flags are rejected.
+Confined container execution remains Docker/Podman only with digest-pinned images, network disabled, read-only rootfs, dropped capabilities, `no-new-privileges`, bounded resources, isolated writable task worktree, allowlist-only environment forwarding, and cleanup on cancel/timeout/runtime exit.
 
-Confined container worker:
+`custom-unconfined` remains explicitly gated and blocked for high/critical/broad-write work.
 
-- Docker or Podman only
-- digest-pinned images only
-- network disabled
-- read-only rootfs
-- all capabilities dropped
-- `no-new-privileges`
-- bounded resources
-- bounded `noexec,nosuid` `/tmp`
-- only isolated task worktree writable
-- task `.git` control file and packet read-only
-- allowlist-only environment forwarding
-- host numeric UID:GID by default when available
-- cleanup on cancel/timeout/client exit
+Recent process-lifecycle regressions are covered: cancellation/timeout drain descendants, normal success also reaps background descendants, and persistent live-session release handles start/release races conservatively.
 
-Container isolation never replaces post-execution HEAD, symlink-containment, write-scope, commit, and integration gates.
+## Capability and feedback plane
 
-`custom-unconfined` remains blocked for high/critical/broad-write tasks and requires explicit operator opt-in otherwise.
+Capability sensing and execution authority stay separate. Operator declarations cannot spoof structural worker-isolation proof. Runtime-resource leases and coordination keys participate in wave safety and cross-Mission conflict detection.
+
+Persistent live/browser feedback is bounded and source-aware. Runtime feedback may inform later waves or bounded repair, but cannot silently widen task ownership or invent project-level write scope.
 
 ## Durable state architecture
 
-### Base contract
+Three state contracts remain authoritative:
 
-`veteran-state-backend-v1` requires:
+- `veteran-state-backend-v1`
+- `veteran-state-transaction-v1`
+- `veteran-state-durability-v1`
 
-- `init()`
-- `read()`
-- `transaction()`
-- `recordTimeline()`
-- `verifyAudit()`
-- execution-local `artifactsDir`
-- execution-local `worktreesDir`
+Local JSON keeps cross-process locking, atomic replacement, backup recovery, audit hash chain, request idempotency, commit/audit repair, and conservative orphaned-request reconciliation.
 
-### Transaction contract
+PostgreSQL is opt-in and preserves the same semantic contracts using SQL transactions, per-instance locking, compare-and-commit revisions, ordered audit sequence, `stateCommitId` reconciliation, and fail-closed tamper/mismatch handling. Independent backend instances targeting one durable identity are tested for serialization without lost updates.
 
-`veteran-state-transaction-v1` requires:
+Unknown durable outcomes are never blindly replayed.
 
-- `readSnapshot()` -> `{ state, revision }`
-- `compareAndCommit(expectedRevision, eventType, mutator, auditSummary)`
+## Remote repository and source authority
 
-Revisions are opaque. Stale expected revisions fail before state/audit mutation.
+`project_open` accepts exactly one of `repoPath` or `repoUrl`.
 
-### Durability contract
+Remote onboarding uses a runtime-managed checkout and is conservative about source identity:
 
-`veteran-state-durability-v1` requires explicit commit-outcome reconciliation through `reconcilePendingAudit()`.
+- no embedded HTTPS credentials/query/fragment;
+- no recursive submodule acquisition;
+- same-remote acquisition is serialized;
+- refresh is fetch + fast-forward only;
+- dirty, detached, or locally diverged managed checkouts fail closed;
+- credential-bearing local origins are sanitized before durable storage;
+- workers still mutate only isolated Mission/task worktrees.
 
-Durable mutations bind state and audit with `stateCommitId`. Unknown outcomes are conservative; blind replay is forbidden. Tamper/mismatch fails closed.
+## Cross-surface and packaging authority
 
-### Local JSON
+`veteran-surface-capabilities-v1` keeps Web/Desktop/Codex differences at the topology/capability edge instead of forking engineering core logic.
 
-Local JSON remains the default authority and keeps:
+Plugin export is profile-aware:
 
-- cross-process locking
-- atomic state replacement
-- backup recovery
-- audit hash chain
-- requestId idempotency
-- commit/audit repair
-- orphaned `started -> unknown` startup reconciliation
+- Desktop/Codex retain local runtime and `.mcp.json` surfaces;
+- Web excludes local MCP/runtime surfaces and can reference caller-supplied app configuration;
+- exporter reproducibility and symlink/package-boundary refusal are CI-proven.
 
-### PostgreSQL
-
-PostgreSQL is opt-in and can be selected programmatically or via:
-
-```bash
-VETERAN_ENGINEER_STATE_BACKEND=postgres
-VETERAN_ENGINEER_POSTGRES_URL='postgresql://...'
-VETERAN_ENGINEER_STATE_INSTANCE='stable-instance-key'
-VETERAN_ENGINEER_POSTGRES_POOL_MAX=4
-```
-
-It requires exact `pg@8.23.0` in the shared runtime.
-
-PostgreSQL semantics:
-
-- state row and audit append commit in one SQL transaction
-- per-instance database transaction lock before mutations/reconciliation
-- state row `FOR UPDATE`
-- explicit CAS revision check
-- post-COMMIT acknowledgement ambiguity reconciled by `stateCommitId`
-- uncertain connection removed from the pool
-- audit chain ordered by the numeric DB sequence column
-- latest missing audit can be repaired exactly once
-- tampered/mismatched audit fails closed
-- independent backend instances targeting one `instanceKey` serialize without lost updates
-
-## Request idempotency
-
-Every mutating MCP request requires `requestId`. New runtime records keep only a `sha256:<digest>` payload fingerprint; they do not persist raw request JSON. Legacy raw fingerprints are still accepted for replay compatibility.
-
-- same id + different operation/payload -> conflict
-- completed -> replay stored result
-- failed -> replay failure
-- unknown -> never blindly replay
-- started -> equivalent request reported in progress unless the current invocation owns the durable ambiguous admission reservation
-
-If handler state may already have committed, request status becomes `unknown` rather than false `failed`. Completion acknowledgement ambiguity returns known success only after durable state proves `completed`.
-
-## MCP compatibility
-
-Official SDK path supports modern and legacy protocol eras. Standalone fallback is intentionally legacy-only; it does not partially clone the 2026 wire.
-
-Hard modern proof:
-
-```bash
-npm run mcp:handshake:modern
-```
-
-The base gate verifies exact SDK versions, lock entries, npm integrity, and tool count. `VETERAN_MCP_REQUIRE_SDK=1` cannot silently degrade.
+Host/tunnel/app provisioning remains external platform configuration unless a stable machine-consumable contract exists.
 
 ## Cross-host installation
 
@@ -239,37 +173,28 @@ The base gate verifies exact SDK versions, lock entries, npm integrity, and tool
 - durable state: `~/.veteran-engineer/state`
 - installer metadata: `~/.veteran-engineer/installer.json`
 
-Install/repair/upgrade synchronizes one shared distribution. Host adapters remain thin. Uninstall cannot purge the runtime while another host still references it.
+Install/repair/upgrade synchronizes one shared distribution. Host adapters stay thin. Purge is refused while another host still references the runtime. Distribution refresh preserves installed runtime dependencies/capabilities.
 
-Distribution refresh preserves an existing `node_modules` tree. This matters for installed runtime capabilities such as official MCP SDK packages and the opt-in PostgreSQL driver.
+## Convergence rules for the next pass
 
-## Packaging resilience
+1. Refresh `main`, open PR/issue state, and CI truth before editing.
+2. Prefer owner fixes over new abstractions or duplicate control planes.
+3. Treat root runtime as source owner and keep the bundled starter mirror synchronized.
+4. Preserve the exact 34-tool public MCP surface unless a real product requirement proves a new tool is necessary.
+5. Keep Local JSON as default and PostgreSQL explicit unless a separate migration decision changes that contract.
+6. Keep merge/push/release/deploy authority outside Mission finalize.
+7. Use real engine/product validation at the strongest practical boundary before claiming closure.
+8. Update this handoff when executable counts, core lifecycle authority, or the active convergence line materially changes.
 
-The bundled Skill must keep `assets/plugin-runtime-starter/` as a recovery seed. Root runtime and starter are now checked byte-for-byte for the mirrored runtime surface by the normal validation gate. Do not merge a runtime/source/test/script/doc change that updates only one side.
+## Next product work
 
-`scripts/export_plugin_bundle.py` remains the supported Skill bundle export path; do not manually maintain a second Skill fork.
+There is no evidence-backed reason to add another subsystem merely to continue development. Continue convergence from concrete defects, drift, or product requirements.
 
-## Convergence findings already closed
+High-value next audits are:
 
-The convergence pass found concrete defects and closed them:
+- verify adaptive strategy intent reaches every relevant planner/execution/validation boundary without duplicated policy;
+- continue adversarial lifecycle checks around interruption, restart reconciliation, capacity/lease release, and multi-Mission contention;
+- harden real remote-provider/credential onboarding only from observed provider behavior;
+- prepare a versioned release candidate only when release scope and delivery authorization are explicit.
 
-1. An experimental PostgreSQL dependency lock corrupted the existing optional MCP dependency graph. The old SDK integrity gate correctly failed closed; that lockfile was not accepted into main.
-2. The first PostgreSQL audit query cast sequence to text and then accidentally ordered by the text alias, producing `1, 10, 2...`. Real concurrency tests exposed the issue. Ordering now uses the numeric database column.
-3. Root/runtime-starter synchronization used to be a convention only. It is now enforced by the main validation gate.
-4. Hosted state originally had same-process/pool concurrency proof. The convergence gate now also proves two independent backend instances/pools against the same durable identity.
-5. README and handoff were one milestone behind implementation. They are now current.
-6. Remote repository takeover used to require an already-cloned local path. `project_open(repoUrl=...)` now acquires and safely refreshes a runtime-managed checkout without expanding the MCP tool count.
-
-The audit did not find evidence that finalize auto-merges/pushes, that workers own Git commits, that unknown outcomes replay blindly, that standalone fallback pretends to be modern MCP, or that Local JSON stopped being the default.
-
-## Next product decisions
-
-There is no mandatory correctness feature queued behind this checkpoint. Continue only from concrete product requirements or evidence. Candidate next moves include:
-
-- keep developing on `0.3.0` and harden repository onboarding against additional real providers/credential setups;
-- prepare a versioned release candidate and package hosted PostgreSQL capability more formally; or
-- add another bounded host/repository connector without exposing raw shell/Git primitives.
-
-If packaging PostgreSQL into the base dependency graph is chosen, regenerate and verify the lockfile with real npm tooling; do not hand-edit it. Preserve the official MCP dependency integrity proof.
-
-Do not add MCP tools merely for storage. Do not move merge/push/deploy authority into the runtime. Do not replace Local JSON as default without a separate migration/compatibility decision.
+Do not add MCP tools merely for storage or convenience. Do not move irreversible delivery authority into the runtime. Do not hand-edit dependency locks when a dependency/package decision is made.
