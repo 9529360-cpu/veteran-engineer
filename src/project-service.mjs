@@ -84,6 +84,7 @@ export class ProjectService {
           environmentReadiness,
           bootstrapPlan,
           validationCapabilities: policy.validationCapabilities,
+          runtimeFeedbackCapabilities: policy.runtimeFeedbackCapabilities,
           workerPolicy: policy.workerPolicy,
           plannerProvider: policy.plannerProvider,
           reviewerProvider: policy.reviewerProvider,
@@ -102,6 +103,7 @@ export class ProjectService {
         project.sourceKind = sourceKind;
         project.managedCheckout = sourceKind === 'managed-remote';
         project.validationCapabilities = policy.validationCapabilities;
+        project.runtimeFeedbackCapabilities = policy.runtimeFeedbackCapabilities;
         project.workerPolicy = policy.workerPolicy;
         project.plannerProvider = policy.plannerProvider;
         project.reviewerProvider = policy.reviewerProvider;
