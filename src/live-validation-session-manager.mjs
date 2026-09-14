@@ -11,6 +11,7 @@ import {
 const DEFAULT_IDLE_MS = 5 * 60_000;
 const MAX_IDLE_MS = 30 * 60_000;
 const MAX_LIVE_SESSIONS = 16;
+const SESSION_ADMISSION_KEY = 'live-session-admission';
 
 function boundedIdleMs(value) {
   if (!Number.isInteger(value)) return DEFAULT_IDLE_MS;
@@ -84,7 +85,9 @@ export class LiveValidationSessionManager {
     this.store = store;
     this.maxSessions = Math.max(1, Math.min(MAX_LIVE_SESSIONS, Number(maxSessions) || MAX_LIVE_SESSIONS));
     this.sessions = new Map();
+    this.startingSessionKeys = new Set();
     this.locks = new Map();
+    this.sessionAdmissionLocks = new Map();
     this.endpointLeases = new Map();
     this.endpointLocks = new Map();
   }
@@ -144,12 +147,6 @@ export class LiveValidationSessionManager {
           reused = false;
           restarted = true;
         }
-      }
-
-      if (!session && this.sessions.size >= this.maxSessions) {
-        throw Object.assign(new Error(`Persistent live validation session limit reached (${this.maxSessions})`), {
-          code: 'LIVE_VALIDATION_SESSION_LIMIT_REACHED'
-        });
       }
 
       if (!session) {
@@ -255,79 +252,120 @@ export class LiveValidationSessionManager {
     return released;
   }
 
+  async #reserveSessionSlot(key) {
+    return this.#withLock(this.sessionAdmissionLocks, SESSION_ADMISSION_KEY, async () => {
+      const activeSessions = this.sessions.size;
+      const startingSessions = this.startingSessionKeys.size;
+      if (activeSessions + startingSessions >= this.maxSessions) {
+        throw Object.assign(new Error(`Persistent live validation session limit reached (${this.maxSessions})`), {
+          code: 'LIVE_VALIDATION_SESSION_LIMIT_REACHED',
+          details: { maxSessions: this.maxSessions, activeSessions, startingSessions }
+        });
+      }
+      this.startingSessionKeys.add(key);
+    });
+  }
+
+  async #promoteSessionSlot(key, session) {
+    return this.#withLock(this.sessionAdmissionLocks, SESSION_ADMISSION_KEY, async () => {
+      if (!this.startingSessionKeys.has(key)) {
+        throw Object.assign(new Error('Persistent live validation session admission reservation was lost'), {
+          code: 'LIVE_VALIDATION_SESSION_ADMISSION_LOST'
+        });
+      }
+      this.startingSessionKeys.delete(key);
+      this.sessions.set(key, session);
+    });
+  }
+
+  async #releaseSessionSlot(key, sessionId = null) {
+    return this.#withLock(this.sessionAdmissionLocks, SESSION_ADMISSION_KEY, async () => {
+      this.startingSessionKeys.delete(key);
+      const active = this.sessions.get(key) || null;
+      if (active && (!sessionId || active.id === sessionId)) this.sessions.delete(key);
+    });
+  }
+
   async #startSession({ project, mission, capability, commitSha, service, idleMs }) {
     const key = sessionKey(project.id, mission.id, capability);
     const endpoint = readinessEndpoint(service);
-    return this.#withLock(this.endpointLocks, endpoint.leaseKey, async () => {
-      const existingLease = this.endpointLeases.get(endpoint.leaseKey) || null;
-      if (existingLease && existingLease.key !== key) {
-        throw Object.assign(new Error(`Persistent live validation endpoint ${endpoint.origin} is already owned by another session`), {
-          code: 'LIVE_VALIDATION_ENDPOINT_IN_USE',
-          details: {
-            readinessOrigin: endpoint.origin,
-            port: endpoint.port,
-            ownerMissionId: existingLease.missionId,
-            ownerCapability: existingLease.capability,
-            ownerSessionId: existingLease.sessionId || null
-          }
-        });
-      }
+    await this.#reserveSessionSlot(key);
+    let promoted = false;
+    try {
+      const session = await this.#withLock(this.endpointLocks, endpoint.leaseKey, async () => {
+        const existingLease = this.endpointLeases.get(endpoint.leaseKey) || null;
+        if (existingLease && existingLease.key !== key) {
+          throw Object.assign(new Error(`Persistent live validation endpoint ${endpoint.origin} is already owned by another session`), {
+            code: 'LIVE_VALIDATION_ENDPOINT_IN_USE',
+            details: {
+              readinessOrigin: endpoint.origin,
+              port: endpoint.port,
+              ownerMissionId: existingLease.missionId,
+              ownerCapability: existingLease.capability,
+              ownerSessionId: existingLease.sessionId || null
+            }
+          });
+        }
 
-      const sessionId = randomId('livesession');
-      const reservation = {
-        key,
-        missionId: mission.id,
-        capability,
-        sessionId,
-        readinessOrigin: endpoint.origin
-      };
-      this.endpointLeases.set(endpoint.leaseKey, reservation);
+        const sessionId = randomId('livesession');
+        const reservation = {
+          key,
+          missionId: mission.id,
+          capability,
+          sessionId,
+          readinessOrigin: endpoint.origin
+        };
+        this.endpointLeases.set(endpoint.leaseKey, reservation);
 
-      const worktreeName = worktreeNameFor(key);
-      const worktreePath = path.join(this.store.worktreesDir, worktreeName);
-      let serviceRun = null;
-      try {
-        await git(project.repoPath, ['worktree', 'remove', '--force', worktreePath], { allowFailure: true });
-        await fs.rm(worktreePath, { recursive: true, force: true });
-        await git(project.repoPath, ['worktree', 'prune', '--expire', 'now'], { allowFailure: true });
-        await git(project.repoPath, ['worktree', 'add', '--detach', worktreePath, commitSha]);
-        const serviceCwd = await resolveContainedCwd(worktreePath, service.cwd);
-        serviceRun = startValidationService(service, { cwd: serviceCwd });
-      } catch (error) {
-        if (serviceRun) await stopValidationService(serviceRun, service.shutdownGraceMs).catch(() => {});
-        await git(project.repoPath, ['worktree', 'remove', '--force', worktreePath], { allowFailure: true });
-        await fs.rm(worktreePath, { recursive: true, force: true });
-        await git(project.repoPath, ['worktree', 'prune', '--expire', 'now'], { allowFailure: true });
-        const lease = this.endpointLeases.get(endpoint.leaseKey);
-        if (lease?.sessionId === sessionId) this.endpointLeases.delete(endpoint.leaseKey);
-        throw error;
-      }
-
-      const session = {
-        id: sessionId,
-        key,
-        projectId: project.id,
-        missionId: mission.id,
-        capability,
-        projectRepoPath: project.repoPath,
-        worktreeName,
-        worktreePath,
-        commitSha,
-        generation: 1,
-        reuseCount: 0,
-        serviceFingerprint: serviceFingerprint(service),
-        service,
-        serviceRun,
-        endpointLeaseKey: endpoint.leaseKey,
-        endpointOrigin: endpoint.origin,
-        idleMs,
-        idleTimer: null,
-        startedAt: nowIso(),
-        lastUsedAt: nowIso()
-      };
-      this.sessions.set(key, session);
+        const worktreeName = worktreeNameFor(key);
+        const worktreePath = path.join(this.store.worktreesDir, worktreeName);
+        let serviceRun = null;
+        try {
+          await git(project.repoPath, ['worktree', 'remove', '--force', worktreePath], { allowFailure: true });
+          await fs.rm(worktreePath, { recursive: true, force: true });
+          await git(project.repoPath, ['worktree', 'prune', '--expire', 'now'], { allowFailure: true });
+          await git(project.repoPath, ['worktree', 'add', '--detach', worktreePath, commitSha]);
+          const serviceCwd = await resolveContainedCwd(worktreePath, service.cwd);
+          serviceRun = startValidationService(service, { cwd: serviceCwd });
+          const session = {
+            id: sessionId,
+            key,
+            projectId: project.id,
+            missionId: mission.id,
+            capability,
+            projectRepoPath: project.repoPath,
+            worktreeName,
+            worktreePath,
+            commitSha,
+            generation: 1,
+            reuseCount: 0,
+            serviceFingerprint: serviceFingerprint(service),
+            service,
+            serviceRun,
+            endpointLeaseKey: endpoint.leaseKey,
+            endpointOrigin: endpoint.origin,
+            idleMs,
+            idleTimer: null,
+            startedAt: nowIso(),
+            lastUsedAt: nowIso()
+          };
+          await this.#promoteSessionSlot(key, session);
+          promoted = true;
+          return session;
+        } catch (error) {
+          if (serviceRun) await stopValidationService(serviceRun, service.shutdownGraceMs).catch(() => {});
+          await git(project.repoPath, ['worktree', 'remove', '--force', worktreePath], { allowFailure: true });
+          await fs.rm(worktreePath, { recursive: true, force: true });
+          await git(project.repoPath, ['worktree', 'prune', '--expire', 'now'], { allowFailure: true });
+          const lease = this.endpointLeases.get(endpoint.leaseKey);
+          if (lease?.sessionId === sessionId) this.endpointLeases.delete(endpoint.leaseKey);
+          throw error;
+        }
+      });
       return session;
-    });
+    } finally {
+      if (!promoted) await this.#releaseSessionSlot(key);
+    }
   }
 
   async #moveSessionSource(session, commitSha) {
@@ -364,7 +402,7 @@ export class LiveValidationSessionManager {
     await git(session.projectRepoPath, ['worktree', 'remove', '--force', session.worktreePath], { allowFailure: true });
     await fs.rm(session.worktreePath, { recursive: true, force: true });
     await git(session.projectRepoPath, ['worktree', 'prune', '--expire', 'now'], { allowFailure: true });
-    this.sessions.delete(session.key);
+    await this.#releaseSessionSlot(session.key, session.id);
     await this.#withLock(this.endpointLocks, session.endpointLeaseKey, async () => {
       const lease = this.endpointLeases.get(session.endpointLeaseKey);
       if (lease?.sessionId === session.id) this.endpointLeases.delete(session.endpointLeaseKey);
