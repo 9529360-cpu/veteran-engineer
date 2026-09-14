@@ -37,35 +37,52 @@ function pathInside(parentPath, candidatePath) {
   return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
 }
 
+async function resolveThroughExistingAncestor(targetPath) {
+  let cursor = path.resolve(targetPath);
+  const missing = [];
+  while (true) {
+    try {
+      const real = await fs.realpath(cursor);
+      return path.join(real, ...missing.reverse());
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+      const parent = path.dirname(cursor);
+      if (parent === cursor) throw error;
+      missing.push(path.basename(cursor));
+      cursor = parent;
+    }
+  }
+}
+
+function packetPathError(message) {
+  const error = new Error(message);
+  error.code = 'WORKER_PACKET_PATH_INVALID';
+  return error;
+}
+
 async function resolveWorkerPacketPath(worktreePath, packetPath, taskId) {
   const worktreeResolved = path.resolve(worktreePath);
   const requested = packetPath
     ? path.resolve(packetPath)
     : path.join(path.dirname(worktreeResolved), `.veteran-task-${safeRuntimeNamespace(taskId)}-${Date.now()}.json`);
   if (pathInside(worktreeResolved, requested)) {
-    const error = new Error('Worker task packets must live outside the writable task worktree');
-    error.code = 'WORKER_PACKET_PATH_INVALID';
-    throw error;
+    throw packetPathError('Worker task packets must live outside the writable task worktree');
+  }
+
+  const worktreeReal = await fs.realpath(worktreeResolved);
+  const previewParent = await resolveThroughExistingAncestor(path.dirname(requested));
+  if (pathInside(worktreeReal, path.join(previewParent, path.basename(requested)))) {
+    throw packetPathError('Worker task packet parent resolves inside the writable task worktree');
   }
 
   await fs.mkdir(path.dirname(requested), { recursive: true });
-  const [worktreeReal, parentReal] = await Promise.all([
-    fs.realpath(worktreeResolved),
-    fs.realpath(path.dirname(requested))
-  ]);
-  const realCandidate = path.join(parentReal, path.basename(requested));
-  if (pathInside(worktreeReal, realCandidate)) {
-    const error = new Error('Worker task packet parent resolves inside the writable task worktree');
-    error.code = 'WORKER_PACKET_PATH_INVALID';
-    throw error;
+  const parentReal = await fs.realpath(path.dirname(requested));
+  if (pathInside(worktreeReal, path.join(parentReal, path.basename(requested)))) {
+    throw packetPathError('Worker task packet parent changed to resolve inside the writable task worktree');
   }
   try {
     const existing = await fs.lstat(requested);
-    if (existing.isSymbolicLink()) {
-      const error = new Error('Worker task packet path may not be a symbolic link');
-      error.code = 'WORKER_PACKET_PATH_INVALID';
-      throw error;
-    }
+    if (existing.isSymbolicLink()) throw packetPathError('Worker task packet path may not be a symbolic link');
   } catch (error) {
     if (error?.code !== 'ENOENT') throw error;
   }

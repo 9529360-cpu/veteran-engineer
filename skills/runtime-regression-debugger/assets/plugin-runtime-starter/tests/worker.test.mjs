@@ -97,6 +97,41 @@ test('WorkerAdapter refuses packet paths inside the writable task worktree befor
   }
 });
 
+test('WorkerAdapter rejects symlink-routed packet parents before creating directories in the worktree', async (t) => {
+  const root = await tempDir('veteran-worker-packet-symlink-');
+  try {
+    const worktreePath = path.join(root, 'worktree');
+    const redirect = path.join(root, 'redirect');
+    const nestedInWorktree = path.join(worktreePath, 'nested');
+    await fs.mkdir(worktreePath, { recursive: true });
+    try {
+      await fs.symlink(worktreePath, redirect, process.platform === 'win32' ? 'junction' : 'dir');
+    } catch (error) {
+      if (process.platform === 'win32' && ['EPERM', 'EACCES'].includes(error?.code)) {
+        t.skip('symlink/junction creation is unavailable in this Windows environment');
+        return;
+      }
+      throw error;
+    }
+    const adapter = new WorkerAdapter();
+    await assert.rejects(
+      adapter.run({
+        project: localProject,
+        mission: { id: 'M1' },
+        task: localTask('T2'),
+        worktreePath,
+        packet: { protocol: 'veteran-worker-v1' },
+        packetPath: path.join(redirect, 'nested', 'packet.json'),
+        config: { type: 'custom', command: process.execPath, args: ['-e', 'process.exit(0)'] }
+      }),
+      (error) => error.code === 'WORKER_PACKET_PATH_INVALID'
+    );
+    await assert.rejects(fs.access(nestedInWorktree), (error) => error.code === 'ENOENT', 'packet validation must not create directories through a symlink into the worktree');
+  } finally {
+    await cleanup(root);
+  }
+});
+
 test('WorkerAdapter sanitizes default packet filenames derived from task identity', async () => {
   const root = await tempDir('veteran-worker-packet-name-');
   try {
