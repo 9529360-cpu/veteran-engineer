@@ -273,7 +273,10 @@ export class MissionService {
     const blockers = [];
     if (live.dirty && ['execution', 'candidate', 'finalize'].includes(mission.phase)) blockers.push({ code: 'DIRTY_SOURCE_BLOCKED', details: live.dirtyPaths });
     if (mission.status === 'cancelled') blockers.push({ code: 'MISSION_CANCELLED' });
-    if (mission.interruption?.requiresReconciliation) blockers.push({ code: 'RECONCILIATION_REQUIRED' });
+    const interruptedTaskIds = tasks.filter((task) => task.status === 'interrupted').map((task) => task.id);
+    if (mission.interruption?.requiresReconciliation || interruptedTaskIds.length) {
+      blockers.push({ code: 'RECONCILIATION_REQUIRED', taskIds: interruptedTaskIds.length ? interruptedTaskIds : (mission.interruption?.taskIds || []) });
+    }
     if (mission.phase === 'execution') {
       const failed = tasks.filter((task) => task.status === 'failed');
       if (failed.length) blockers.push({ code: 'FAILED_TASKS', taskIds: failed.map((task) => task.id) });
@@ -352,7 +355,7 @@ export class MissionService {
       if (!mission) throw Object.assign(new Error(`Unknown mission: ${missionId}`), { code: 'MISSION_NOT_FOUND' });
       if (mission.status === 'cancelled') throw Object.assign(new Error('Cancelled missions cannot be resumed'), { code: 'MISSION_CANCELLED' });
       const tasks = Object.values(state.tasks).filter((task) => task.missionId === missionId);
-      const uncertain = tasks.filter((task) => ['admitted', 'executing', 'cancelling'].includes(task.status));
+      const uncertain = tasks.filter((task) => ['admitted', 'executing', 'cancelling', 'interrupted'].includes(task.status));
       for (const task of uncertain) {
         task.status = 'interrupted';
         task.updatedAt = nowIso();
@@ -360,7 +363,7 @@ export class MissionService {
       mission.interruption = uncertain.length ? {
         requiresReconciliation: true,
         taskIds: uncertain.map((task) => task.id),
-        detectedAt: nowIso()
+        detectedAt: mission.interruption?.detectedAt || nowIso()
       } : null;
       mission.status = uncertain.length ? 'blocked' : 'ready';
       mission.updatedAt = nowIso();
