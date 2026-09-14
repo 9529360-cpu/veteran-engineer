@@ -111,7 +111,12 @@ export class MissionService {
     this.evidenceService = evidenceService;
   }
 
-  async plan({ projectId, goal, doneDefinition, nonGoals = [], tasks = null, riskEnvelope = 'medium' }) {
+  async plan(args = {}) {
+    const { projectId, goal, doneDefinition, nonGoals = [], tasks = null } = args;
+    const riskEnvelopeSource = Object.prototype.hasOwnProperty.call(args, 'riskEnvelope') && args.riskEnvelope !== undefined
+      ? 'explicit'
+      : 'default';
+    const riskEnvelope = args.riskEnvelope === undefined ? 'medium' : args.riskEnvelope;
     if (!RISK_LEVELS.includes(riskEnvelope)) throw new Error(`Invalid mission risk envelope: ${riskEnvelope}`);
     if (!String(goal || '').trim() || !String(doneDefinition || '').trim()) throw new Error('goal and doneDefinition are required');
 
@@ -180,7 +185,7 @@ export class MissionService {
     const normalized = proposedTasks.map(validateTask);
     topo(normalized);
     const waves = computeWaves(normalized);
-    const executionStrategy = compileMissionExecutionStrategy({ tasks: normalized, waves, project, riskEnvelope, continuity });
+    const executionStrategy = compileMissionExecutionStrategy({ tasks: normalized, waves, project, riskEnvelope, riskEnvelopeSource, continuity });
     const missionId = randomId('mission');
     const createdAt = nowIso();
     const mission = {
