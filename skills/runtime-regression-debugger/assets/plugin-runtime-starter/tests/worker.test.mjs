@@ -132,7 +132,67 @@ test('WorkerAdapter rejects symlink-routed packet parents before creating direct
   }
 });
 
-test('WorkerAdapter sanitizes default packet filenames derived from task identity', async () => {
+test('WorkerAdapter atomically claims a task and cancellation fences execution before spawn', async () => {
+  const root = await tempDir('veteran-worker-claim-');
+  try {
+    const worktreePath = path.join(root, 'worktree');
+    const artifactsPath = path.join(root, 'artifacts');
+    const marker = path.join(root, 'spawned.txt');
+    await fs.mkdir(worktreePath, { recursive: true });
+    await fs.mkdir(artifactsPath, { recursive: true });
+    const adapter = new WorkerAdapter();
+    const task = localTask('CLAIM');
+    const config = {
+      type: 'custom',
+      command: process.execPath,
+      args: ['-e', `require('node:fs').writeFileSync(${JSON.stringify(marker)},'spawned')`]
+    };
+
+    const first = adapter.run({
+      project: localProject,
+      mission: { id: 'M1' },
+      task,
+      worktreePath,
+      packet: { protocol: 'veteran-worker-v1' },
+      packetPath: path.join(artifactsPath, 'first.json'),
+      config
+    });
+
+    const preparing = adapter.snapshot();
+    assert.equal(preparing.length, 1);
+    assert.equal(preparing[0].taskKey, task.key);
+    assert.equal(preparing[0].phase, 'preparing');
+    assert.equal(preparing[0].pid, null);
+
+    await assert.rejects(
+      adapter.run({
+        project: localProject,
+        mission: { id: 'M1' },
+        task,
+        worktreePath,
+        packet: { protocol: 'veteran-worker-v1' },
+        packetPath: path.join(artifactsPath, 'second.json'),
+        config
+      }),
+      (error) => error.code === 'WORKER_ALREADY_RUNNING'
+    );
+
+    assert.equal(adapter.cancel(task.key), true);
+    const cancelling = adapter.snapshot();
+    assert.equal(cancelling[0].phase, 'cancelling');
+    assert.equal(cancelling[0].termination?.reason, 'operator-cancel');
+
+    const result = await first;
+    assert.equal(result.pid, null, 'pre-spawn cancellation must not create a worker process');
+    assert.equal(result.termination?.reason, 'operator-cancel');
+    await assert.rejects(fs.access(marker), (error) => error.code === 'ENOENT');
+    assert.deepEqual(adapter.snapshot(), []);
+  } finally {
+    await cleanup(root);
+  }
+});
+
+test('WorkerAdapter sanitizes and cleans adapter-owned fallback packet files', async () => {
   const root = await tempDir('veteran-worker-packet-name-');
   try {
     const worktreePath = path.join(root, 'worktree');
@@ -151,6 +211,7 @@ test('WorkerAdapter sanitizes default packet filenames derived from task identit
     assert.equal(path.dirname(path.resolve(result.packetPath)), path.resolve(root));
     assert.equal(path.basename(result.packetPath).includes(path.sep), false);
     assert.match(path.basename(result.packetPath), /^\.veteran-task-[a-z0-9._-]+-\d+\.json$/);
+    await assert.rejects(fs.access(result.packetPath), (error) => error.code === 'ENOENT', 'adapter-owned fallback packet must be removed after execution');
   } finally {
     await cleanup(root);
   }

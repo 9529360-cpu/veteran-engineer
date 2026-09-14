@@ -89,6 +89,38 @@ async function resolveWorkerPacketPath(worktreePath, packetPath, taskId) {
   return requested;
 }
 
+function terminationRecord(reason) {
+  return {
+    reason,
+    requestedAt: nowIso(),
+    signal: 'SIGTERM',
+    forceKilled: false,
+    forceSignal: null
+  };
+}
+
+function alreadyRunningError(taskKey) {
+  const error = new Error(`Worker task already has an active execution claim: ${taskKey}`);
+  error.code = 'WORKER_ALREADY_RUNNING';
+  return error;
+}
+
+function preSpawnCancellationResult({ startedAt, startedAtMs, packetPath, runtimeNamespace, termination }) {
+  return {
+    code: null,
+    signal: null,
+    stdout: '',
+    stderr: '',
+    startedAt,
+    endedAt: nowIso(),
+    durationMs: Math.max(0, Date.now() - startedAtMs),
+    pid: null,
+    packetPath,
+    runtimeNamespace,
+    termination: termination ? { ...termination } : null
+  };
+}
+
 function terminateTree(child, signal = 'SIGTERM') {
   if (!child?.pid) return false;
   if (process.platform === 'win32') {
@@ -206,32 +238,81 @@ export function buildWorkerInvocation({ config, worktreePath, packetPath, task, 
 export class WorkerAdapter {
   constructor() {
     this.running = new Map();
+    this.claims = new Map();
   }
 
   snapshot() {
-    return [...this.running.entries()].map(([taskKey, running]) => ({
-      taskKey,
-      pid: running.child?.pid || null,
-      startedAt: running.startedAt,
-      runtimeNamespace: running.runtimeNamespace,
-      worktreePath: running.worktreePath,
-      packetPath: running.packetPath,
-      termination: running.termination ? { ...running.termination } : null
-    })).sort((a, b) => a.taskKey.localeCompare(b.taskKey));
+    return [...this.claims.entries()].map(([taskKey, claim]) => {
+      const running = this.running.get(taskKey) || null;
+      const termination = running?.termination || claim.termination || null;
+      return {
+        taskKey,
+        phase: running ? (termination ? 'terminating' : 'running') : (termination ? 'cancelling' : 'preparing'),
+        pid: running?.child?.pid || null,
+        claimedAt: claim.claimedAt,
+        startedAt: running?.startedAt || null,
+        runtimeNamespace: running?.runtimeNamespace || claim.runtimeNamespace || null,
+        worktreePath: running?.worktreePath || claim.worktreePath,
+        packetPath: running?.packetPath || claim.packetPath || null,
+        termination: termination ? { ...termination } : null
+      };
+    }).sort((a, b) => a.taskKey.localeCompare(b.taskKey));
   }
 
   async run({ project, mission, task, worktreePath, packet, packetPath = null, config, timeoutMs = null }) {
     enforceWorkerPolicy(project, task, config);
-    const resolvedPacketPath = await resolveWorkerPacketPath(worktreePath, packetPath, task.id);
-    const dispatchIdentity = path.basename(resolvedPacketPath, path.extname(resolvedPacketPath));
-    const runtimeNamespace = packet?.runtimeIsolation?.namespace || `${mission.id}:${task.id}:${dispatchIdentity}`;
-    const runtimeTempDir = config.type === 'container' ? null : await createLocalRuntimeTempDir(runtimeNamespace);
-    const startedAt = nowIso();
+    if (this.claims.has(task.key)) throw alreadyRunningError(task.key);
+
+    const ownsPacketPath = !packetPath;
+    const claimedAt = nowIso();
+    const claim = {
+      claimedAt,
+      worktreePath: path.resolve(worktreePath),
+      packetPath: packetPath ? path.resolve(packetPath) : null,
+      runtimeNamespace: null,
+      termination: null
+    };
+    this.claims.set(task.key, claim);
+
     const startedAtMs = Date.now();
+    let resolvedPacketPath = null;
+    let runtimeNamespace = null;
+    let runtimeTempDir = null;
     let running = null;
     let completed = false;
     try {
+      resolvedPacketPath = await resolveWorkerPacketPath(worktreePath, packetPath, task.id);
+      claim.packetPath = resolvedPacketPath;
+      const dispatchIdentity = path.basename(resolvedPacketPath, path.extname(resolvedPacketPath));
+      runtimeNamespace = packet?.runtimeIsolation?.namespace || `${mission.id}:${task.id}:${dispatchIdentity}`;
+      claim.runtimeNamespace = runtimeNamespace;
+      runtimeTempDir = config.type === 'container' ? null : await createLocalRuntimeTempDir(runtimeNamespace);
+
+      if (claim.termination?.reason === 'operator-cancel') {
+        completed = true;
+        return preSpawnCancellationResult({
+          startedAt: claimedAt,
+          startedAtMs,
+          packetPath: resolvedPacketPath,
+          runtimeNamespace,
+          termination: claim.termination
+        });
+      }
+
       await fs.writeFile(resolvedPacketPath, `${JSON.stringify(packet, null, 2)}\n`, { mode: 0o600 });
+      await fs.chmod(resolvedPacketPath, 0o600).catch(() => {});
+
+      if (claim.termination?.reason === 'operator-cancel') {
+        completed = true;
+        return preSpawnCancellationResult({
+          startedAt: claimedAt,
+          startedAtMs,
+          packetPath: resolvedPacketPath,
+          runtimeNamespace,
+          termination: claim.termination
+        });
+      }
+
       const invocation = buildWorkerInvocation({ config, worktreePath, packetPath: resolvedPacketPath, task, mission, runtimeNamespace });
       const env = {};
       for (const key of SAFE_ENV_KEYS) if (process.env[key] !== undefined) env[key] = process.env[key];
@@ -248,6 +329,7 @@ export class WorkerAdapter {
       env.VETERAN_MISSION_ID = mission.id;
       env.VETERAN_RUNTIME_NAMESPACE = runtimeNamespace;
 
+      const startedAt = nowIso();
       const child = spawn(invocation.command, invocation.args, {
         cwd: worktreePath,
         env,
@@ -261,7 +343,8 @@ export class WorkerAdapter {
         container: invocation.container || null,
         env,
         forceTimer: null,
-        termination: null,
+        termination: claim.termination,
+        claim,
         startedAt,
         runtimeNamespace,
         worktreePath,
@@ -309,21 +392,16 @@ export class WorkerAdapter {
     } finally {
       if (!completed && running) this.#terminateRunning(running, 'adapter-error');
       this.running.delete(task.key);
+      this.claims.delete(task.key);
       if (runtimeTempDir) await fs.rm(runtimeTempDir, { recursive: true, force: true }).catch(() => {});
+      if (ownsPacketPath && resolvedPacketPath) await fs.rm(resolvedPacketPath, { force: true }).catch(() => {});
     }
   }
 
   #terminateRunning(running, reason = 'runtime-stop') {
     if (!running?.child) return false;
-    if (!running.termination) {
-      running.termination = {
-        reason,
-        requestedAt: nowIso(),
-        signal: 'SIGTERM',
-        forceKilled: false,
-        forceSignal: null
-      };
-    }
+    if (!running.termination) running.termination = terminationRecord(reason);
+    if (running.claim) running.claim.termination = running.termination;
     const signalled = terminateTree(running.child, 'SIGTERM');
     this.#cleanupContainer(running.container, running.env);
     if (signalled && !running.forceTimer) {
@@ -358,7 +436,10 @@ export class WorkerAdapter {
 
   cancel(taskKey) {
     const running = this.running.get(taskKey);
-    if (!running) return false;
-    return this.#terminateRunning(running, 'operator-cancel');
+    if (running) return this.#terminateRunning(running, 'operator-cancel');
+    const claim = this.claims.get(taskKey);
+    if (!claim) return false;
+    if (!claim.termination) claim.termination = terminationRecord('operator-cancel');
+    return true;
   }
 }
