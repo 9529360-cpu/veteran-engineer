@@ -9,7 +9,7 @@ Examples:
   engineering_journal.py /tmp/work.json checkpoint --phase reproduce --next-action "run duplicate delivery probe"
   engineering_journal.py /tmp/work.json hypothesis H1 --mechanism "timeout after commit" --falsifier "lookup operation id"
   engineering_journal.py /tmp/work.json evidence --hypothesis H1 --result supports --note "operation exists after timeout"
-  engineering_journal.py /tmp/work.json attempt --name retry-handler --assumption "timeout means no commit" --outcome failed --equivalence-class symptom-retry --forbid "blind mutation retry"
+  engineering_journal.py /tmp/work.json attempt --name retry-handler --assumption "timeout means no commit" --outcome failed --equivalence-class symptom-retry --forbid symptom-retry
   engineering_journal.py /tmp/work.json blocker --kind authorization --note "production deploy not authorized" --requires production
   engineering_journal.py /tmp/work.json decision --action "reconcile by operation id" --basis "provider shows committed charge"
   engineering_journal.py /tmp/work.json assess
@@ -76,6 +76,18 @@ def save(path: pathlib.Path, data: dict) -> None:
 def require_open(data: dict) -> None:
     if data.get("closed"):
         raise RuntimeError("journal is closed")
+
+
+def forbidden_equivalence_classes(data: dict) -> set[str]:
+    """Return explicitly forbidden classes from prior failed attempts only."""
+    forbidden: set[str] = set()
+    for item in data.get("attempts", []):
+        if not isinstance(item, dict) or item.get("outcome") != "failed":
+            continue
+        value = item.get("forbidden_equivalent_class")
+        if isinstance(value, str) and value.strip():
+            forbidden.add(value.strip())
+    return forbidden
 
 
 def main() -> int:
@@ -187,13 +199,21 @@ def main() -> int:
         save(path, data)
     elif args.command == "attempt":
         require_open(data)
+        equivalence_class = args.equivalence_class.strip()
+        forbid = args.forbid.strip()
+        if forbid and args.outcome != "failed":
+            raise RuntimeError("--forbid is valid only for failed attempts")
+        if equivalence_class in forbidden_equivalence_classes(data):
+            raise RuntimeError(
+                f"equivalence class is forbidden by a prior failed attempt: {equivalence_class}"
+            )
         data["attempts"].append({
             "at": now(),
             "name": args.name,
             "assumption": args.assumption,
             "outcome": args.outcome,
-            "equivalence_class": args.equivalence_class or None,
-            "forbidden_equivalent_class": args.forbid or None,
+            "equivalence_class": equivalence_class or None,
+            "forbidden_equivalent_class": forbid or None,
         })
         data["updated_at"] = now()
         save(path, data)
@@ -266,11 +286,7 @@ def main() -> int:
         print("closed:", bool(data.get("closed")))
         if data.get("evidence_level"):
             print("evidence level:", data["evidence_level"])
-        forbidden = sorted({
-            item["forbidden_equivalent_class"]
-            for item in failed
-            if item.get("forbidden_equivalent_class")
-        })
+        forbidden = sorted(forbidden_equivalence_classes(data))
         print("forbidden equivalent patch classes:", ", ".join(forbidden) or "none")
         for blocker in data.get("blockers", []):
             suffix = f" (requires {blocker['requires']})" if blocker.get("requires") else ""
