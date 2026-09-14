@@ -78,7 +78,7 @@ test('mission waves account for runtime-resource conflicts in addition to file w
 
 test('capability readiness derives sensing names from validation catalog objects and separates execution requirements', () => {
   const project = {
-    validationCapabilities: [validationCapability('browser')],
+    validationCapabilities: [validationCapability('browser'), validationCapability('observability')],
     runtimeFeedbackCapabilities: ['observability'],
     workerPolicy: { capabilities: ['docker', 'networkless-worker'] }
   };
@@ -97,6 +97,29 @@ test('capability readiness derives sensing names from validation catalog objects
   const missing = taskCapabilityReadiness(task('B', { executionCapabilities: ['gpu'] }), project);
   assert.equal(missing.ready, false);
   assert.deepEqual(missing.missingExecution, ['gpu']);
+});
+
+test('configured validation references require provider backing before they are advertised as sensing', () => {
+  const project = {
+    id: 'p',
+    validationCapabilities: [validationCapability('browser')],
+    runtimeFeedbackCapabilities: ['browser', 'ghost-feedback'],
+    requiredValidationCapabilities: ['browser', 'ghost-final'],
+    workerPolicy: { capabilities: [] }
+  };
+  const mission = { id: 'm', phase: 'execution', status: 'ready', nextWaveIndex: 0, waves: [['A']] };
+  const tasks = [task('A', { sensingCapabilities: ['ghost-feedback'] })];
+  const readiness = taskCapabilityReadiness(tasks[0], project);
+  assert.equal(readiness.ready, false);
+  assert.deepEqual(readiness.missingSensing, ['ghost-feedback']);
+  assert.deepEqual(readiness.available.sensing, ['browser', 'mission-state', 'source-identity', 'task-state']);
+
+  const snapshot = buildCapabilitySnapshot({ project, mission, tasks, liveSourceIdentity: { head: 'h', dirty: false }, state: { tasks: {} } });
+  assert.deepEqual(snapshot.capabilityDiagnostics, {
+    unbackedRuntimeFeedbackCapabilities: ['ghost-feedback'],
+    unbackedRequiredValidationCapabilities: ['ghost-final']
+  });
+  assert.equal(snapshot.wave[0].capabilityReady, false);
 });
 
 test('active lease conflicts are reported across missions sharing project resources', () => {
