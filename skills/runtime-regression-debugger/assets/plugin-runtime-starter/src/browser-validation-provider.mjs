@@ -2,6 +2,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { git } from './git.mjs';
 
 export const BROWSER_VALIDATION_CONTRACT = 'veteran-browser-validation-v1';
 
@@ -99,6 +100,9 @@ export function normalizeBrowserValidation(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw errorWithCode('Browser validation configuration must be an object', 'BROWSER_VALIDATION_CONFIG_INVALID');
   }
+  if (raw.requireSourceMatch !== undefined && typeof raw.requireSourceMatch !== 'boolean') {
+    throw errorWithCode('Browser requireSourceMatch must be boolean when configured', 'BROWSER_VALIDATION_CONFIG_INVALID');
+  }
   const timeoutValue = Number(raw.timeoutMs ?? 120_000);
   const timeoutMs = Number.isFinite(timeoutValue)
     ? Math.max(1000, Math.min(MAX_TIMEOUT_MS, timeoutValue))
@@ -110,7 +114,8 @@ export function normalizeBrowserValidation(raw) {
     timeoutMs,
     envAllowlist: normalizeEnvAllowlist(raw.envAllowlist),
     scenarioFile: normalizeRelativeFile(raw.scenarioFile),
-    baseUrl: raw.baseUrl ? normalizeLoopbackUrl(raw.baseUrl) : null
+    baseUrl: raw.baseUrl ? normalizeLoopbackUrl(raw.baseUrl) : null,
+    requireSourceMatch: raw.requireSourceMatch === true
   };
 }
 
@@ -138,6 +143,14 @@ async function resolveContainedFile(root, relativePath) {
     throw errorWithCode('Browser scenarioFile resolves outside the browser cwd', 'BROWSER_SCENARIO_PATH_ESCAPE');
   }
   return absolute;
+}
+
+async function resolveExpectedSourceHead(cwd, provided) {
+  if (typeof provided === 'string' && provided.trim()) return provided.trim();
+  const result = await git(cwd, ['rev-parse', 'HEAD'], { allowFailure: true }).catch(() => null);
+  if (!result || result.code !== 0) return null;
+  const head = result.stdout.trim();
+  return head || null;
 }
 
 async function isolatedEnvironment(allowlist, environment) {
@@ -234,9 +247,24 @@ function normalizeAssertion(raw, index) {
   return assertion;
 }
 
-function normalizeProviderResult(raw, baseUrl) {
+function normalizeObservedSourceHead(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string') {
+    throw errorWithCode('Browser provider observedSourceHead must be a string', 'BROWSER_PROVIDER_RESULT_INVALID');
+  }
+  const normalized = value.trim();
+  if (!normalized || normalized.length > 240 || normalized.includes('\u0000')) {
+    throw errorWithCode('Browser provider observedSourceHead is invalid', 'BROWSER_PROVIDER_RESULT_INVALID');
+  }
+  return normalized;
+}
+
+function normalizeProviderResult(raw, baseUrl, { expectedSourceHead = null, requireSourceMatch = false } = {}) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw) || raw.contract !== BROWSER_VALIDATION_CONTRACT || typeof raw.passed !== 'boolean') {
     throw errorWithCode('Browser provider returned an invalid result contract', 'BROWSER_PROVIDER_RESULT_INVALID');
+  }
+  if (requireSourceMatch && (typeof expectedSourceHead !== 'string' || !expectedSourceHead.trim())) {
+    throw errorWithCode('Browser source matching requires an expected source identity', 'BROWSER_EXPECTED_SOURCE_REQUIRED');
   }
   if (raw.assertions !== undefined && !Array.isArray(raw.assertions)) {
     throw errorWithCode('Browser provider assertions must be an array', 'BROWSER_PROVIDER_RESULT_INVALID');
@@ -256,25 +284,44 @@ function normalizeProviderResult(raw, baseUrl) {
       throw errorWithCode('Browser provider currentUrl must remain on the validation base origin', 'BROWSER_PROVIDER_CURRENT_URL_INVALID');
     }
   }
+  const observedSourceHead = normalizeObservedSourceHead(raw.observedSourceHead);
+  const expected = typeof expectedSourceHead === 'string' && expectedSourceHead.trim() ? expectedSourceHead.trim() : null;
+  const sourceMatch = observedSourceHead && expected ? observedSourceHead === expected : (requireSourceMatch ? false : null);
+  if (sourceMatch === false) {
+    return {
+      contract: BROWSER_VALIDATION_CONTRACT,
+      passed: false,
+      summary: 'Browser observed source identity does not match the validation source identity.',
+      assertions,
+      currentUrl,
+      observedSourceHead,
+      sourceMatch
+    };
+  }
   return {
     contract: BROWSER_VALIDATION_CONTRACT,
     passed: raw.passed,
     summary: raw.summary === undefined || raw.summary === null ? '' : String(raw.summary).slice(0, 2000),
     assertions,
-    currentUrl
+    currentUrl,
+    observedSourceHead,
+    sourceMatch
   };
 }
 
-export async function runBrowserValidation(browser, { cwd, serviceReadinessUrl = null, environment = process.env } = {}) {
+export async function runBrowserValidation(browser, { cwd, serviceReadinessUrl = null, environment = process.env, expectedSourceHead = null } = {}) {
   const scenarioFile = await resolveContainedFile(cwd, browser.scenarioFile);
   const baseUrl = browser.baseUrl || (serviceReadinessUrl ? `${new URL(serviceReadinessUrl).origin}/` : null);
   if (!baseUrl) throw errorWithCode('Browser validation requires browser.baseUrl or service readiness URL', 'BROWSER_BASE_URL_REQUIRED');
   const normalizedBaseUrl = normalizeLoopbackUrl(baseUrl);
+  const authoritativeSourceHead = await resolveExpectedSourceHead(cwd, expectedSourceHead);
   const payload = `${JSON.stringify({
     contract: BROWSER_VALIDATION_CONTRACT,
     baseUrl: normalizedBaseUrl,
     scenario: { path: browser.scenarioFile },
-    artifactsManagedByValidation: true
+    artifactsManagedByValidation: true,
+    expectedSourceHead: authoritativeSourceHead,
+    requireSourceMatch: browser.requireSourceMatch === true
   })}\n`;
   const [command, ...args] = browser.command;
   const { env, home } = await isolatedEnvironment(browser.envAllowlist, environment);
@@ -298,28 +345,35 @@ export async function runBrowserValidation(browser, { cwd, serviceReadinessUrl =
     stdoutTruncated: processResult.stdout.truncated,
     stderrTruncated: processResult.stderr.truncated
   };
+  const emptyIdentity = { observedSourceHead: null, sourceMatch: browser.requireSourceMatch === true ? false : null };
   if (processResult.spawnError) {
-    return { passed: false, failureCode: 'BROWSER_PROVIDER_SPAWN_FAILED', summary: 'Browser provider could not be started.', assertions: [], currentUrl: null, diagnostics };
+    return { passed: false, failureCode: 'BROWSER_PROVIDER_SPAWN_FAILED', summary: 'Browser provider could not be started.', assertions: [], currentUrl: null, ...emptyIdentity, diagnostics };
   }
   if (processResult.timedOut) {
-    return { passed: false, failureCode: 'BROWSER_PROVIDER_TIMEOUT', summary: 'Browser provider exceeded its timeout.', assertions: [], currentUrl: null, diagnostics };
+    return { passed: false, failureCode: 'BROWSER_PROVIDER_TIMEOUT', summary: 'Browser provider exceeded its timeout.', assertions: [], currentUrl: null, ...emptyIdentity, diagnostics };
   }
   if (processResult.stdout.truncated) {
-    return { passed: false, failureCode: 'BROWSER_PROVIDER_OUTPUT_LIMIT', summary: 'Browser provider stdout exceeded the bounded protocol limit.', assertions: [], currentUrl: null, diagnostics };
+    return { passed: false, failureCode: 'BROWSER_PROVIDER_OUTPUT_LIMIT', summary: 'Browser provider stdout exceeded the bounded protocol limit.', assertions: [], currentUrl: null, ...emptyIdentity, diagnostics };
   }
   if (processResult.code !== 0) {
-    return { passed: false, failureCode: 'BROWSER_PROVIDER_FAILED', summary: 'Browser provider process exited unsuccessfully.', assertions: [], currentUrl: null, diagnostics };
+    return { passed: false, failureCode: 'BROWSER_PROVIDER_FAILED', summary: 'Browser provider process exited unsuccessfully.', assertions: [], currentUrl: null, ...emptyIdentity, diagnostics };
   }
   let parsed;
   try {
     parsed = JSON.parse(processResult.stdout.text.trim());
   } catch {
-    return { passed: false, failureCode: 'BROWSER_PROVIDER_RESULT_INVALID', summary: 'Browser provider stdout was not one valid JSON result object.', assertions: [], currentUrl: null, diagnostics };
+    return { passed: false, failureCode: 'BROWSER_PROVIDER_RESULT_INVALID', summary: 'Browser provider stdout was not one valid JSON result object.', assertions: [], currentUrl: null, ...emptyIdentity, diagnostics };
   }
   try {
-    const normalized = normalizeProviderResult(parsed, normalizedBaseUrl);
-    return { ...normalized, failureCode: normalized.passed ? null : 'BROWSER_ASSERTION_FAILED', diagnostics };
+    const normalized = normalizeProviderResult(parsed, normalizedBaseUrl, {
+      expectedSourceHead: authoritativeSourceHead,
+      requireSourceMatch: browser.requireSourceMatch === true
+    });
+    const failureCode = normalized.sourceMatch === false
+      ? 'BROWSER_SOURCE_IDENTITY_MISMATCH'
+      : (normalized.passed ? null : 'BROWSER_ASSERTION_FAILED');
+    return { ...normalized, failureCode, diagnostics };
   } catch (error) {
-    return { passed: false, failureCode: error?.code || 'BROWSER_PROVIDER_RESULT_INVALID', summary: String(error?.message || error).slice(0, 1000), assertions: [], currentUrl: null, diagnostics };
+    return { passed: false, failureCode: error?.code || 'BROWSER_PROVIDER_RESULT_INVALID', summary: String(error?.message || error).slice(0, 1000), assertions: [], currentUrl: null, ...emptyIdentity, diagnostics };
   }
 }
