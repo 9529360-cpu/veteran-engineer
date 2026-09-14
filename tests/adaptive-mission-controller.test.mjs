@@ -72,7 +72,8 @@ test('same-project active write overlap is visible at planning and blocked befor
       tasks: [task('T1', ['src/shared.txt'])]
     });
     const firstDispatch = await app.services.workerOrchestrator.execute({ missionId: first.mission.id, runWorkers: false });
-    assert.deepEqual(firstDispatch.admitted, ['T1']);
+    assert.equal(firstDispatch.dispatched.length, 1);
+    assert.equal(firstDispatch.dispatched[0].taskId, 'T1');
 
     const second = await app.services.missionService.plan({
       projectId: project.id,
