@@ -1,9 +1,8 @@
-import fs from 'node:fs/promises';
 import path from 'node:path';
 import { assertPathsWithinScope, changedPaths, git, sourceIdentity } from './git.mjs';
 import { MissionService } from './mission-service.mjs';
 import { nowIso, randomId } from './util.mjs';
-import { resolveWorkerConfig } from './worker-adapter.mjs';
+import { resolveWorkerConfig, writeWorkerPacket } from './worker-adapter.mjs';
 import { ProjectBootstrapExecutor, normalizeBootstrapAuthorization } from './bootstrap-executor.mjs';
 
 function runtimeFeedbackForPacket(mission, waveBase) {
@@ -194,8 +193,15 @@ export class WorkerOrchestrator {
         }
         const packet = packetFor(project, refreshed.mission, task, waveBase, experience);
         const packetPath = path.join(this.store.artifactsDir, 'worker-packets', `${dispatchId}.json`);
-        await fs.mkdir(path.dirname(packetPath), { recursive: true });
-        await fs.writeFile(packetPath, `${JSON.stringify(packet, null, 2)}\n`, { mode: 0o600 });
+        if (!runWorkers) {
+          await writeWorkerPacket({
+            worktreePath: worktree.path,
+            packetPath,
+            taskId: task.id,
+            packet,
+            packetRoot: this.store.artifactsDir
+          });
+        }
         await this.store.transaction('worker_dispatched', (state) => {
           const target = state.tasks[task.key];
           const liveMission = state.missions[missionId];
@@ -228,7 +234,16 @@ export class WorkerOrchestrator {
       try {
         const before = await sourceIdentity(item.worktree.path);
         if (before.head !== waveBase) throw Object.assign(new Error('Task worktree HEAD drifted before worker start'), { code: 'TASK_HEAD_OWNERSHIP_VIOLATION' });
-        const run = await this.workerAdapter.run({ project, mission, task: { ...item.task, key: `${mission.id}:${item.task.id}` }, worktreePath: item.worktree.path, packet: item.packet, packetPath: item.packetPath, config });
+        const run = await this.workerAdapter.run({
+          project,
+          mission,
+          task: { ...item.task, key: `${mission.id}:${item.task.id}` },
+          worktreePath: item.worktree.path,
+          packet: item.packet,
+          packetPath: item.packetPath,
+          packetRoot: this.store.artifactsDir,
+          config
+        });
         const after = await sourceIdentity(item.worktree.path);
         if (after.head !== waveBase) throw Object.assign(new Error('Worker changed task HEAD; runtime owns commits'), { code: 'TASK_HEAD_OWNERSHIP_VIOLATION', details: { before: waveBase, after: after.head } });
         if (run.termination?.reason === 'operator-cancel') {
