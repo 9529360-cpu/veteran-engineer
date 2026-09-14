@@ -35,14 +35,14 @@ Pinned MCP SDK graph remains:
 
 ## Current executable evidence
 
-The validation gate at the #331 checkpoint proves:
+The validation gate at the #333 checkpoint proves:
 
-- **224 syntax files**
+- **225 syntax files**
 - exact **34-tool** MCP surface
 - official SDK graph + lockfile integrity
 - protocol constants and fallback boundaries
-- runtime/starter mirror parity across **230 mirrored files**
-- **418 total / 418 PASS / 0 SKIP / 0 FAIL** Node tests
+- runtime/starter mirror parity across **231 mirrored files**
+- **421 total / 421 PASS / 0 SKIP / 0 FAIL** Node tests
 
 Mainline CI also proves the current code through:
 
@@ -51,7 +51,7 @@ Mainline CI also proves the current code through:
 3. real PostgreSQL state-backend contract/durability integration plus modern MCP selection path
 4. profile-aware Desktop/Codex/Web plugin artifact export with reproducibility and packaging-boundary checks
 
-The #331 head passed all four boundaries before merge.
+The #333 head passed all four boundaries before merge.
 
 ## Recent convergence line
 
@@ -67,10 +67,12 @@ The recent mainline sequence materially changed the current runtime and supersed
 - **#329** — provider evidence secrecy: explicitly allowlisted planner/reviewer environment values are redacted before structured provider output, findings/tasks, errors, or evidence artifacts become durable; malformed semantic-review stdout is not persisted raw.
 - **#330** — interruption reconciliation authority: repeated resume and partial retry can no longer erase unresolved interrupted-task blockers; readiness fails closed on actual interrupted task state and final successful reconciliation clears the blocker.
 - **#331** — provider operator-config validation: executable planner/reviewer provider fields fail fast at the operator-policy boundary while inert provider objects and unknown future fields remain backward compatible.
+- **#332** — checkpoint refresh only; no runtime authority change.
+- **#333** — execution blocker authority: Mission status/readiness can no longer report a stronger next-transition posture than authoritative task state; failed/cancelled/interrupted tasks project blocked status, while admitted/dispatched/executing/cancelling tasks make readiness false without misclassifying dispatch-only lifecycle state.
 
-At the time this handoff was refreshed, `main` includes #331 at merge commit:
+At the time this handoff was refreshed, `main` includes #333 at squash commit:
 
-`5f8beb1fdf881d2e3f7ecba6a52c17794fb1b7ea`
+`501299ab02dfb2735cbecea1dd787b02463847be`
 
 Always refresh `main` before relying on this SHA or the counts above.
 
@@ -110,6 +112,13 @@ Interrupted work is unresolved execution truth until each affected task is recon
 - the final successful reconciliation clears Mission interruption authority; partial runtime-managed writes with an unknown completion boundary still require explicit reconciliation/retry.
 
 Do not clear Mission-level interruption merely because one task was retried or one resume pass found no newly executing task.
+
+Execution readiness is also subordinate to actual task state:
+
+- active `failed`, `cancelled`, or `interrupted` tasks prevent Mission status from projecting a stronger-than-`blocked` execution posture;
+- `mission_readiness` exposes `FAILED_TASKS`, `CANCELLED_TASKS`, and `RECONCILIATION_REQUIRED` from task truth;
+- `admitted`, `dispatched`, `executing`, and `cancelling` tasks expose `OUTSTANDING_TASKS`, so readiness for the next transition remains false while work is outstanding;
+- dispatch-only Mission lifecycle status may remain `ready` while readiness is false: lifecycle state and safe-next-transition state are intentionally distinct.
 
 ## Provider execution and evidence boundary
 
@@ -225,8 +234,8 @@ There is no evidence-backed reason to add another subsystem merely to continue d
 
 High-value next audits are:
 
-- verify Mission status cannot report a stronger readiness posture than authoritative task/blocker state across mixed failed/interrupted/cancelled combinations;
-- continue adversarial lifecycle checks around capacity/lease release, restart reconciliation, and multi-Mission contention without duplicating the existing scheduler authority;
+- continue adversarial restart/recovery checks where persisted Mission/task/lease state can outlive one runtime process, without duplicating existing reconciliation authority;
+- revisit multi-Mission contention or capacity/lease policy only when a concrete execution trace contradicts the currently green reservation/reconciliation tests;
 - harden real remote-provider/credential onboarding only from observed provider behavior, not guessed cloud-provider abstractions;
 - prepare a versioned release candidate only when release scope and delivery authorization are explicit.
 
