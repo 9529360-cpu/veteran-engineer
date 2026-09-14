@@ -258,9 +258,15 @@ export class MissionService {
 
   async status({ missionId }) {
     const state = await this.store.read();
-    const mission = state.missions[missionId];
-    if (!mission) throw Object.assign(new Error(`Unknown mission: ${missionId}`), { code: 'MISSION_NOT_FOUND' });
+    const storedMission = state.missions[missionId];
+    if (!storedMission) throw Object.assign(new Error(`Unknown mission: ${missionId}`), { code: 'MISSION_NOT_FOUND' });
     const tasks = Object.values(state.tasks).filter((task) => task.missionId === missionId).sort((a, b) => a.id.localeCompare(b.id));
+    const hasExecutionTaskBlocker = storedMission.phase === 'execution'
+      && storedMission.status !== 'cancelled'
+      && tasks.some((task) => ['failed', 'cancelled', 'interrupted'].includes(task.status));
+    const mission = hasExecutionTaskBlocker && storedMission.status !== 'blocked'
+      ? { ...storedMission, status: 'blocked' }
+      : storedMission;
     const candidates = (mission.candidateIds || []).map((id) => state.runtime.candidates?.[id]).filter(Boolean);
     const mergeProposals = (mission.mergeProposalIds || []).map((id) => state.runtime.mergeProposals?.[id]).filter(Boolean);
     return { mission, tasks, candidates, mergeProposals };
@@ -278,8 +284,14 @@ export class MissionService {
       blockers.push({ code: 'RECONCILIATION_REQUIRED', taskIds: interruptedTaskIds.length ? interruptedTaskIds : (mission.interruption?.taskIds || []) });
     }
     if (mission.phase === 'execution') {
+      const outstanding = tasks.filter((task) => ['admitted', 'dispatched', 'executing', 'cancelling'].includes(task.status));
+      if (outstanding.length) blockers.push({ code: 'OUTSTANDING_TASKS', taskIds: outstanding.map((task) => task.id) });
       const failed = tasks.filter((task) => task.status === 'failed');
       if (failed.length) blockers.push({ code: 'FAILED_TASKS', taskIds: failed.map((task) => task.id) });
+      if (mission.status !== 'cancelled') {
+        const cancelled = tasks.filter((task) => task.status === 'cancelled');
+        if (cancelled.length) blockers.push({ code: 'CANCELLED_TASKS', taskIds: cancelled.map((task) => task.id) });
+      }
     }
     if (mission.phase === 'finalize' && !mission.activeCandidateId) blockers.push({ code: 'CANDIDATE_REQUIRED' });
 
