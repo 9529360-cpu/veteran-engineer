@@ -65,6 +65,7 @@ function cleanupContainer() {
 }
 
 function disposableRuntimeProfileRoot() {
+  if (container) return null;
   const tmp = workerEnv?.TMPDIR;
   if (typeof tmp !== 'string' || !tmp.length) return null;
   const resolvedTmp = path.resolve(tmp);
