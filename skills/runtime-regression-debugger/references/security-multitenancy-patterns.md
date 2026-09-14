@@ -9,6 +9,7 @@
 - Authorization
 - Multi-tenant isolation
 - Organization and membership lifecycle
+- Privileged operator and support workflows
 - Secrets and credentials
 - Files, object storage, URLs, parsers, and SSRF
 - Audit and sensitive operations
@@ -110,6 +111,14 @@ Test isolation using two tenants over reused process/DB/cache connections so sta
 When the product owns organizations/workspaces, invitations, membership states, roles, guests, owner transfer, SCIM/group provisioning, or member offboarding, read `organization-membership-product-engineering.md`.
 
 Keep identity, tenant membership, role/policy, directory provisioning, and resource ownership under explicit owners. Treat membership/role changes as revocation events that may need to converge across sessions, caches, realtime subscriptions, and asynchronous jobs; updating one membership row is not sufficient proof that stale access is gone.
+
+## Privileged operator and support workflows
+
+When employees, administrators, support engineers, incident responders, or other privileged operators can inspect or act on customer state, read `privileged-operator-support-product-engineering.md`.
+
+Keep operator identity separate from the customer subject. Bind access to an explicit purpose/case, exact tenant/object/action scope, approval policy, bounded grant lifetime, and attributable audit evidence; treat impersonation and break-glass as distinct privileged modes rather than invisible bypasses.
+
+Revocation must converge across support sessions, cached contexts, realtime subscriptions, temporary credentials, and queued work. Reuse normal account, organization, billing, privacy, and security authorities for durable effects instead of making the support console a shadow source of truth.
 
 ## Secrets and credentials
 
