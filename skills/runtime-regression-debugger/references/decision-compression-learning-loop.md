@@ -47,7 +47,7 @@ After every attempted fix or mitigation that fails, record:
 
 Do not repeat a behaviorally equivalent patch under a different name. A failed candidate must change the investigation model, not merely the code diff.
 
-For long investigations, use `scripts/engineering_journal.py` and give failed attempts an `--equivalence-class` when a useful class is evident.
+For long investigations, use `scripts/engineering_journal.py` and give failed attempts an `--equivalence-class` when a useful class is evident. When the evidence justifies forbidding that mechanism, pass the stable class id through `--forbid`. The journal then rejects later attempts that declare that exact forbidden class instead of merely printing the lesson in a summary. It deliberately does not guess semantic similarity: classify the mechanism explicitly, and do not invent a new class name just to evade a prior failed-model boundary.
 
 ## Classify failed attempts by behavioral equivalence
 
