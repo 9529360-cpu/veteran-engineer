@@ -4,6 +4,29 @@ import { normalizePathList, nowIso, randomId } from './util.mjs';
 
 const TERMINAL_TASKS = new Set(['done', 'failed', 'cancelled', 'blocked', 'superseded']);
 const SUCCESS_TASKS = new Set(['done']);
+const MAX_RUNTIME_RESOURCES = 32;
+const RUNTIME_RESOURCE = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/;
+
+function normalizeRuntimeResources(raw = [], taskId = 'task') {
+  if (raw === null || raw === undefined) return [];
+  if (!Array.isArray(raw) || raw.length > MAX_RUNTIME_RESOURCES) {
+    throw Object.assign(new Error(`Task ${taskId} runtimeResources must be an array with at most ${MAX_RUNTIME_RESOURCES} entries`), { code: 'TASK_RUNTIME_RESOURCES_INVALID' });
+  }
+  const normalized = [];
+  for (const value of raw) {
+    const resource = String(value || '').trim();
+    if (!RUNTIME_RESOURCE.test(resource)) {
+      throw Object.assign(new Error(`Task ${taskId} has an invalid runtime resource claim: ${resource || '<empty>'}`), { code: 'TASK_RUNTIME_RESOURCES_INVALID' });
+    }
+    normalized.push(resource);
+  }
+  return [...new Set(normalized)].sort();
+}
+
+export function runtimeResourcesConflict(a = [], b = []) {
+  const left = new Set(normalizeRuntimeResources(a));
+  return normalizeRuntimeResources(b).some((resource) => left.has(resource));
+}
 
 function validateTask(raw, index) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error(`tasks[${index}] must be an object`);
@@ -21,6 +44,7 @@ function validateTask(raw, index) {
     dependencies,
     writeSet,
     protectedPaths: normalizePathList(raw.protectedPaths || []),
+    runtimeResources: normalizeRuntimeResources(raw.runtimeResources || [], id),
     risk,
     validationCapability: raw.validationCapability || null,
     worker: raw.worker || 'default',
@@ -62,7 +86,8 @@ export function computeWaves(tasks) {
     if (!ready.length) throw new Error('Unable to compute mission waves');
     const wave = [];
     for (const task of ready) {
-      if (!wave.some((selected) => writeSetsConflict(selected.writeSet, task.writeSet))) wave.push(task);
+      const conflicts = wave.some((selected) => writeSetsConflict(selected.writeSet, task.writeSet) || runtimeResourcesConflict(selected.runtimeResources, task.runtimeResources));
+      if (!conflicts) wave.push(task);
     }
     if (!wave.length) wave.push(ready[0]);
     waves.push(wave.map((task) => task.id));
