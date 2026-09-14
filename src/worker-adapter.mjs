@@ -1,7 +1,8 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
+import { fork, spawn, spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { nowIso } from './util.mjs';
 import { buildContainerInvocation, validateContainerWorkerConfig } from './container-worker.mjs';
 
@@ -11,6 +12,7 @@ const MAX_ENV_NAMES = 64;
 const MAX_LOCAL_TIMEOUT_MS = 2_147_483_647;
 const MAX_CAPTURED_OUTPUT_CHARS = 2_000_000;
 const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const WORKER_SUPERVISOR_PATH = fileURLToPath(new URL('./worker-supervisor.mjs', import.meta.url));
 const FORBIDDEN_CODEX_FLAGS = new Set([
   '--dangerously-bypass-approvals-and-sandbox', '--yolo', '--dangerously-bypass-hook-trust',
   '--sandbox', '-s', '--approve-for-me', '--not-so-yolo', '--cd', '-C', '--add-dir', '--worktree'
@@ -204,26 +206,37 @@ function preSpawnCancellationResult({ startedAt, startedAtMs, packetPath, runtim
     endedAt: nowIso(),
     durationMs: Math.max(0, Date.now() - startedAtMs),
     pid: null,
+    supervisorPid: null,
     packetPath,
     runtimeNamespace,
     termination: termination ? { ...termination } : null
   };
 }
 
-function terminateTree(child, signal = 'SIGTERM') {
-  if (!child?.pid) return false;
+function terminatePidTree(pid, signal = 'SIGTERM') {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
   if (process.platform === 'win32') {
-    const args = ['/PID', String(child.pid), '/T'];
+    const args = ['/PID', String(pid), '/T'];
     if (signal === 'SIGKILL') args.push('/F');
     const result = spawnSync('taskkill', args, { stdio: 'ignore', windowsHide: true });
     return result.status === 0;
   }
   try {
-    process.kill(-child.pid, signal);
+    process.kill(-pid, signal);
     return true;
   } catch {
-    try { return child.kill(signal); } catch { return false; }
+    try {
+      process.kill(pid, signal);
+      return true;
+    } catch {
+      return false;
+    }
   }
+}
+
+function terminateTree(child, signal = 'SIGTERM') {
+  if (!child?.pid) return false;
+  return terminatePidTree(child.pid, signal);
 }
 
 function codexPreset(project) {
@@ -339,6 +352,18 @@ function codexPrompt(packet) {
   ].join('\n');
 }
 
+function workerStdin(config, packet) {
+  if (config.stdinMode === 'codex-prompt') return codexPrompt(packet);
+  if (config.stdin !== undefined) return String(config.stdin);
+  return null;
+}
+
+function spawnErrorFromSupervisor(spawnError) {
+  const error = new Error(spawnError?.message || 'Worker supervisor reported a spawn failure');
+  error.code = spawnError?.code || 'WORKER_SPAWN_FAILED';
+  return error;
+}
+
 export function buildWorkerInvocation({ config, worktreePath, packetPath, task, mission, runtimeNamespace = null }) {
   if (config.type === 'container') return buildContainerInvocation({ config, worktreePath, packetPath, task, mission, runtimeNamespace });
   const vars = { packet: packetPath, worktree: worktreePath, taskId: task.id, missionId: mission.id, runtimeNamespace: runtimeNamespace || '' };
@@ -361,7 +386,8 @@ export class WorkerAdapter {
         missionId: claim.missionId,
         taskId: claim.taskId,
         phase: running ? (termination ? 'terminating' : 'running') : (termination ? 'cancelling' : 'preparing'),
-        pid: running?.child?.pid || null,
+        pid: running?.workerPid || running?.child?.pid || null,
+        supervisorPid: running?.child?.pid || null,
         claimedAt: claim.claimedAt,
         startedAt: running?.startedAt || null,
         runtimeNamespace: running?.runtimeNamespace || claim.runtimeNamespace || null,
@@ -467,16 +493,14 @@ export class WorkerAdapter {
       env.VETERAN_RUNTIME_NAMESPACE = runtimeNamespace;
 
       const startedAt = nowIso();
-      const child = spawn(invocation.command, invocation.args, {
+      const child = fork(WORKER_SUPERVISOR_PATH, [], {
         cwd: worktreePath,
-        env,
-        shell: false,
-        detached: process.platform !== 'win32',
-        windowsHide: true,
-        stdio: ['pipe', 'pipe', 'pipe']
+        silent: true,
+        windowsHide: true
       });
       running = {
         child,
+        workerPid: null,
         container: invocation.container || null,
         env,
         forceTimer: null,
@@ -488,9 +512,7 @@ export class WorkerAdapter {
         packetPath: resolvedPacketPath
       };
       this.running.set(task.key, running);
-      if (config.stdinMode === 'codex-prompt') child.stdin.end(codexPrompt(packet));
-      else if (config.stdin !== undefined) child.stdin.end(String(config.stdin));
-      else child.stdin.end();
+
       const stdoutCapture = createOutputCapture();
       const stderrCapture = createOutputCapture();
       child.stdout.setEncoding('utf8');
@@ -499,19 +521,66 @@ export class WorkerAdapter {
       child.stderr.on('data', (chunk) => appendOutput(stderrCapture, chunk));
       const effectiveTimeoutMs = timeoutMs || config.timeoutMs || 900_000;
       const outcome = await new Promise((resolve, reject) => {
+        let workerOutcome = null;
+        let supervisorSpawnError = null;
+        let settled = false;
+        const settleReject = (error) => {
+          if (settled) return;
+          settled = true;
+          reject(error);
+        };
+        const settleResolve = (value) => {
+          if (settled) return;
+          settled = true;
+          resolve(value);
+        };
         const timer = setTimeout(() => this.#terminateRunning(running, 'timeout'), effectiveTimeoutMs);
+        child.on('message', (message) => {
+          if (message?.type === 'started' && Number.isInteger(message.pid) && message.pid > 0) {
+            running.workerPid = message.pid;
+            return;
+          }
+          if (message?.type === 'outcome') {
+            workerOutcome = { code: message.code ?? null, signal: message.signal ?? null };
+            supervisorSpawnError = message.spawnError || null;
+          }
+        });
         child.on('error', (error) => {
           clearTimeout(timer);
           this.#clearTerminationTimer(running);
           this.#cleanupContainer(invocation.container, env);
-          reject(error);
+          settleReject(error);
         });
         child.on('close', (code, signal) => {
           clearTimeout(timer);
           this.#clearTerminationTimer(running);
           this.#cleanupContainer(invocation.container, env);
-          resolve({ code, signal });
+          if (supervisorSpawnError) {
+            settleReject(spawnErrorFromSupervisor(supervisorSpawnError));
+            return;
+          }
+          settleResolve(workerOutcome || { code, signal });
         });
+        try {
+          child.send({
+            type: 'start',
+            command: invocation.command,
+            args: invocation.args,
+            cwd: worktreePath,
+            env,
+            stdin: workerStdin(config, packet),
+            container: invocation.container || null
+          }, (error) => {
+            if (!error) return;
+            clearTimeout(timer);
+            this.#clearTerminationTimer(running);
+            settleReject(error);
+          });
+        } catch (error) {
+          clearTimeout(timer);
+          this.#clearTerminationTimer(running);
+          settleReject(error);
+        }
       });
       completed = true;
       return {
@@ -525,7 +594,8 @@ export class WorkerAdapter {
         startedAt,
         endedAt: nowIso(),
         durationMs: Math.max(0, Date.now() - startedAtMs),
-        pid: child.pid,
+        pid: running.workerPid || child.pid,
+        supervisorPid: child.pid,
         packetPath: resolvedPacketPath,
         runtimeNamespace,
         termination: running.termination ? { ...running.termination } : null
@@ -543,11 +613,27 @@ export class WorkerAdapter {
     if (!running?.child) return false;
     if (!running.termination) running.termination = terminationRecord(reason);
     if (running.claim) running.claim.termination = running.termination;
-    const signalled = terminateTree(running.child, 'SIGTERM');
+    let signalled = false;
+    if (running.child.connected) {
+      try {
+        running.child.send({ type: 'terminate', signal: 'SIGTERM' });
+        signalled = true;
+      } catch {}
+    }
+    if (!signalled) {
+      signalled = running.workerPid
+        ? terminatePidTree(running.workerPid, 'SIGTERM')
+        : terminateTree(running.child, 'SIGTERM');
+    }
     this.#cleanupContainer(running.container, running.env);
     if (signalled && !running.forceTimer) {
       running.forceTimer = setTimeout(() => {
-        const forceKilled = terminateTree(running.child, 'SIGKILL');
+        if (running.child?.connected) {
+          try { running.child.send({ type: 'terminate', signal: 'SIGKILL' }); } catch {}
+        }
+        const forceKilled = running.workerPid
+          ? terminatePidTree(running.workerPid, 'SIGKILL')
+          : terminateTree(running.child, 'SIGKILL');
         if (running.termination && forceKilled) {
           running.termination.forceKilled = true;
           running.termination.forceSignal = 'SIGKILL';
