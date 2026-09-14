@@ -1,428 +1,140 @@
 # User onboarding and activation product engineering
 
-Use this when a product must guide a new, returning, invited, migrated, or newly entitled user from entry to a meaningful first successful outcome.
+Use this when a product must guide a new, returning, invited, migrated, or newly entitled user to a meaningful first successful outcome.
 
-Onboarding is not a slideshow, checklist, or one-time modal. It is a product lifecycle that coordinates product state, education, prerequisites, permissions, persistence, recovery, analytics, and eventual removal of temporary guidance.
+Onboarding is not a slideshow or checklist. The product contract is:
 
-The central contract is:
+`eligible user/context -> required prerequisites -> meaningful product action -> authoritative success -> durable progress/completion -> next useful state`
 
-`eligible user/context -> understandable first task -> required prerequisites -> meaningful product action -> authoritative success -> durable progress/completion -> next useful state`
+Activation is the product outcome. UI-step completion is evidence only when it proves that outcome.
 
-Activation is the product outcome. Completing UI steps is only evidence when those steps actually produce that outcome.
+## Start from first value
 
-## Start from first value, not tutorial completion
+Define the smallest real outcome that makes the product useful to the target user. Examples include a successful first project run, a validated integration that produces useful data, or completion of the first real collaborative workflow.
 
-Define what the user should be able to accomplish after onboarding.
+Record only what changes implementation:
 
-Examples of product outcomes include:
-
-- create and successfully use the first project;
-- connect a required data source and see useful data;
-- invite a teammate and complete the first shared workflow;
-- configure the minimum settings required for a successful run;
-- publish or deliver the first real artifact;
-- understand enough of the product to make a confident next decision.
-
-Do not define activation as “clicked through all onboarding screens” unless clicking through is itself the real product outcome.
-
-Record:
-
-- target population and context;
-- first-value outcome;
-- prerequisites that genuinely block that outcome;
-- optional education that should not masquerade as a prerequisite;
-- authoritative completion fact;
+- eligible population and subject scope;
+- first-value outcome and authoritative completion fact;
+- prerequisites that genuinely block it;
+- optional education that does not block it;
 - next useful destination after success.
 
-## Separate setup, education, and activation
+Do not define activation as “finished the tour” unless the tour itself is the product outcome.
 
-These are different concerns:
+## Keep setup, education, activation, and progress separate
 
-- **setup** changes durable product/account/workspace state;
-- **education** explains how or why to use the product;
-- **activation** is the meaningful user/product outcome;
+- **setup** changes real product/account/workspace state;
+- **education** explains the product;
+- **activation** is the meaningful outcome;
 - **progress UI** is a projection of what remains.
 
-Do not persist tutorial UI state as the source of truth for setup or activation.
+Prefer deriving progress from authoritative product facts. Do not create a second checklist truth merely to render a progress bar.
 
-A user can know how to use a feature without having configured it. A user can complete required setup without reading every tip. A user can become activated through an alternate valid path that never touches a checklist item.
+Examples: a connected integration comes from validated integration state, not from clicking Connect; a completed first run comes from the domain result, not from submitting the form. Presentation-only tips may remain local when losing them has no product consequence.
 
-## Model onboarding as a lifecycle
+## Scope identity and re-entry correctly
 
-Use explicit states rather than one `hasSeenOnboarding` boolean when the product can distinguish material conditions.
+Choose the subject from the product invariant: user, tenant/workspace/account, role, module/entitlement, or device only when truly device-specific. Never use one global user flag when setup is workspace-scoped.
 
-A common conceptual lifecycle is:
+Version onboarding only when material semantics change. Define whether old completion remains valid, how existing progress maps forward, and whether a new role/capability or a lost prerequisite causes re-entry.
+
+Eligibility is not synonymous with first login. Invited users, migrated users, newly entitled users, role changes, and already-configured workspaces may enter at different points or need no onboarding at all.
+
+## Model only states that change behavior
+
+Use explicit lifecycle states when one boolean cannot represent real product semantics. A common shape is:
 
 `eligible -> not-started -> in-progress -> blocked/needs-action -> first-value-achieved -> completed`
 
-Additional product-specific states may include:
+Add skipped, dismissed, paused, reset, migrated, or not-applicable only when those states change product behavior.
 
-`skipped`, `dismissed`, `paused`, `expired`, `reset`, `reopened`, `migrated`, `not-applicable`.
+For each material transition know the actor, authoritative owner, durable effect, retry behavior, visible feedback, and re-entry path.
 
-Do not invent these states merely because they are common. Model only states that change user-visible behavior or durable product semantics.
+## Make every step earn its place
 
-For every material transition define:
+A step should either remove uncertainty or enable first value. For each material step determine:
 
-- actor or system trigger;
-- authoritative state owner;
-- durable versus ephemeral state;
-- retry/idempotency semantics;
-- visible feedback;
-- recovery/re-entry path.
-
-## Choose the authority for progress and completion
-
-Progress often spans UI, backend, account/workspace state, integrations, permissions, and asynchronous jobs.
-
-Choose authority from the product invariant:
-
-- server/domain state for prerequisites or accomplishments that must be durable, shared, permission-safe, or cross-device;
-- client-local state for purely local education or transient presentation that can safely disappear;
-- URL/navigation state for resumable step identity when appropriate;
-- derived progress when durable product facts already prove completion and a second stored checklist would drift.
-
-Prefer deriving checklist completion from authoritative product facts when those facts are reliable.
-
-Examples:
-
-- `workspace_created` should come from the workspace/domain owner, not a client checkbox;
-- `integration_connected` should reflect the real validated connection state, not “user clicked Connect”;
-- `first_report_generated` should reflect the completed domain artifact, not the submit event;
-- “tour tooltip 3 dismissed” can remain local if it has no product meaning.
-
-Do not create a second source of truth merely to render a progress bar.
-
-## Stable identity, scope, and version
-
-Define what onboarding belongs to:
-
-- user;
-- tenant/workspace/account;
-- role;
-- product/module;
-- entitlement/plan capability;
-- device only when onboarding truly is device-specific.
-
-A user can belong to several workspaces with different setup states. Never reuse one global user flag when the product invariant is tenant-scoped.
-
-Version onboarding when material semantics change. Define:
-
-- stable onboarding program/version id;
-- progress/completion identity;
-- whether old completion remains valid after a new version;
-- migration rules for existing progress;
-- whether new capabilities cause re-entry;
-- how old clients interpret a newer progress version.
-
-Avoid resetting all users merely because copy or layout changed.
-
-## Eligibility and re-entry
-
-Eligibility should be a product rule, not “first login ever.”
-
-Consider:
-
-- new users in a new workspace;
-- invited users joining an existing configured workspace;
-- existing users who receive a new role or permission;
-- customers gaining a new module/entitlement;
-- migrated users whose old state satisfies some prerequisites;
-- users returning after a long absence;
-- users who previously skipped or dismissed guidance;
-- users whose required integration or setup was later removed/broken.
-
-Define whether onboarding is one-time, contextual, resumable, repeatable, or re-openable.
-
-Do not force an experienced invited user through workspace-creation steps that another member already completed.
-
-## Step design and progressive disclosure
-
-Each step should earn its place by reducing uncertainty or enabling first value.
-
-For every step identify:
-
-- user question or product prerequisite it resolves;
-- whether it is required, optional, skippable, or conditional;
+- required, optional, conditional, or skippable;
 - authoritative completion signal;
 - prerequisite/dependency;
-- expected failure/recovery path;
-- whether the step can be performed elsewhere in the product;
-- whether the user needs explanation before or after the action.
+- alternate valid path elsewhere in the product;
+- failure and recovery behavior.
 
-Prefer progressive disclosure and just-in-time guidance over a long upfront questionnaire when information is not needed yet.
+Skip, dismiss, pause, reset, verification, pricing, and role rules are product policy. Do not invent them as generic UI behavior. Resetting onboarding must never delete real user work.
 
-Do not ask for configuration merely because the backend has a field. Delay choices until the user has enough context to make them.
+Prefer just-in-time guidance and meaningful empty states over long upfront questionnaires or modal tours. Distinguish truly empty, not configured, permission denied, loading, filtered-to-zero, failed load, and data-not-yet-produced when those states lead to different actions.
 
-## Skip, dismiss, pause, and reset semantics
+## Preserve continuity and safe recovery
 
-These controls are product policy inputs, not generic UI decisions.
+Durable onboarding progress must survive the boundaries the product promises: refresh, process restart, another device, tenant switching, or returning later.
 
-If the product allows them, define:
+Use server/domain authority for progress that must be shared, permission-safe, cross-device, or durable. Keep presentation-only state local when appropriate.
 
-- what can be skipped versus what is a hard prerequisite;
-- whether skip changes progress or only hides guidance;
-- whether dismissed guidance can be reopened;
-- whether progress expires;
-- whether a user can reset/restart onboarding;
-- whether admins/support can reset another user's onboarding;
-- how reset interacts with already-created durable product state.
+Exercise the failure modes that can duplicate or hide real work:
 
-Never delete real user work just because onboarding was reset.
+- duplicate submit;
+- timeout after authoritative success;
+- refresh/back/forward during setup;
+- async prerequisite accepted but not completed;
+- stale tab or device;
+- two users completing a shared prerequisite;
+- exit and later resume.
 
-## Empty states as onboarding surfaces
+Reconcile from authoritative product state before asking the user to repeat an action that may already have succeeded. For async prerequisites, accepted/queued is not completed.
 
-The first empty state is often more important than a modal tour.
+Use `async-edge-job-patterns.md`, `security-multitenancy-patterns.md`, and the relevant identity/membership owner when those mechanisms are active.
 
-A strong empty state can explain:
+## Existing users and migration
 
-- what this area is for;
-- what a useful completed state looks like;
-- the next meaningful action;
-- prerequisites or permissions;
-- a safe example/template/sample when appropriate;
-- where to get help.
+A new onboarding flow lands into existing state. Define:
 
-Do not show “No data” when the product knows the user has never configured the thing required to produce data.
-
-Distinguish:
-
-- truly empty;
-- not configured;
-- permission denied;
-- loading;
-- filtered-to-zero;
-- failed to load;
-- data not yet produced.
-
-Each state may require a different onboarding/recovery action.
-
-## Sample data, templates, and demo mode
-
-Examples can reduce time-to-value, but they must not blur into real user state.
-
-When providing samples/templates:
-
-- label sample/demo content clearly;
-- define whether it is copied, referenced, or disposable;
-- prevent sample state from contaminating real analytics/billing/notifications;
-- preserve tenant/privacy boundaries;
-- let users transition from sample to real work without an unexplained dead end;
-- define cleanup when sample data is no longer needed.
-
-Do not fabricate “success” by counting a demo artifact as the user's real activation unless product policy explicitly defines it that way.
-
-## Permissions, identity, and invitations
-
-Onboarding must respect real authorization and collaborative context.
-
-Handle:
-
-- email/identity verification when required by the product;
-- users invited before account creation;
-- expired/revoked invitations;
-- users whose role cannot perform a shown step;
-- admin-only prerequisites;
-- role changes during onboarding;
-- tenant switching;
-- multi-user race conditions such as two admins completing the same workspace setup.
-
-Do not show a primary onboarding action that the current user is not authorized to complete without explaining the dependency and next path.
-
-Use `account-identity-lifecycle-product-engineering.md`, `organization-membership-product-engineering.md`, and `security-multitenancy-patterns.md` when those owners are material.
-
-## Asynchronous prerequisites
-
-Some first-value steps include imports, provisioning, indexing, verification, background jobs, or provider callbacks.
-
-Model meaningful states such as:
-
-`not-started -> requested -> accepted -> processing -> succeeded`
-
-with exceptional states such as:
-
-`needs-user-action`, `retryable-failure`, `terminal-failure`, `partial-success`, `stale`.
-
-Do not mark onboarding complete when an asynchronous prerequisite was merely accepted by a queue/provider.
-
-Keep the user oriented while work continues:
-
-- explain what is happening;
-- allow safe navigation away when possible;
-- provide resume/re-entry;
-- surface retry or corrective action;
-- avoid indefinite spinners;
-- notify the user later only when notification policy supports it.
-
-Use `async-edge-job-patterns.md` and `notification-delivery-product-engineering.md` when relevant.
-
-## Error recovery and idempotency
-
-First-run workflows are especially sensitive to partial completion because users do not yet understand the system.
-
-Test:
-
-- double click / duplicate submit;
-- refresh/back/forward during a step;
-- client timeout after server success;
-- provider timeout after external acceptance;
-- process restart during setup;
-- lost network/offline transition;
-- user closes and reopens the product;
-- stale tab submits an older step;
-- two devices continue the same onboarding;
-- another member completes the shared prerequisite first.
-
-Preserve one logical setup action across retries when the operation is idempotent. Reconcile from authoritative product state rather than making the user repeat a successful hidden action.
-
-## Cross-device and cross-session continuity
-
-Decide what should follow the user.
-
-For durable onboarding progress define:
-
-- storage authority;
-- synchronization delay;
-- generation/version;
-- conflict policy;
-- last completed durable milestone;
-- safe resume destination.
-
-Do not store server-owned setup progress only in localStorage when the product promises cross-device continuity.
-
-Conversely, do not make every dismissed tooltip a durable backend record without a product reason.
-
-## Accessibility and content
-
-Onboarding often concentrates complex explanation, forms, dialogs, step indicators, and focus movement.
-
-Validate:
-
-- semantic step/progress indication;
-- keyboard completion of the entire flow;
-- focus on step transitions and errors;
-- clear labels/instructions;
-- errors associated with fields/actions;
-- reduced-motion behavior for tours/animated guidance;
-- zoom/text scaling and responsive layouts;
-- screen-reader understandable progress and completion;
-- content that explains user outcomes rather than implementation nouns.
-
-Avoid patronizing copy or unnecessary celebration that delays the next useful action.
-
-Use `accessibility-product-engineering.md`, `globalization-product-engineering.md`, and `visual-ui-quality-assurance-product-engineering.md` when material.
-
-## Localization and regional differences
-
-Account for:
-
-- longer translated labels and explanations;
-- locale/timezone/number/date input semantics;
-- RTL layout;
-- region-specific product availability or policy;
-- translated screenshots/help content when included;
-- content versioning when guidance changes independently from product state.
-
-Do not encode region rules into presentation when they belong to product policy or eligibility authority.
-
-## Measurement and activation analytics
-
-Onboarding analytics should measure user outcomes and valid funnel transitions, not manufacture a success metric from UI clicks.
-
-Define:
-
-- eligible population;
-- onboarding version;
-- step/progress events only when useful for decisions;
-- authoritative activation event or derived fact;
-- abandonment/resume semantics;
-- time-to-first-value;
-- guardrails such as errors, support contacts, cancellations, accessibility failures, or setup reversals;
-- treatment/exposure identity when experimenting with onboarding.
-
-Do not let analytics events become the authority for onboarding completion.
-
-Use `product-analytics-experimentation.md` for experiment and metric contracts.
-
-## Existing-user and migration behavior
-
-A new onboarding system often lands in a product with existing users.
-
-Define:
-
-- who is grandfathered as complete;
-- how existing product state maps to new progress;
+- who is already complete from current product facts;
+- how old progress or product state maps to the new model;
+- whether old/new clients can coexist;
 - whether incomplete old setup requires re-entry;
-- whether old clients can coexist with new progress fields;
-- how deprecated steps are retired;
-- whether users are re-onboarded for a materially new capability.
+- when deprecated steps and compatibility paths can be removed.
 
-Avoid resetting everyone because a new checklist was added.
+Do not reset everyone because a checklist, copy, or layout changed.
 
-## Lifecycle and cleanup
+## Measure activation, not clicks
 
-Onboarding creates temporary UI and state that easily becomes permanent debt.
+Analytics should explain the path to value, not become the authority for completion.
 
-Plan cleanup for:
+Useful measures include eligible population, onboarding version, time-to-first-value, abandonment/resume, decision-useful progress events, and guardrails such as setup errors, permission failures, support burden, cancellations, or accessibility failures.
 
-- one-time modals/tours;
-- deprecated step definitions;
-- experiment variants;
-- old progress versions;
-- migration flags;
-- sample/demo data;
-- redundant analytics events;
-- compatibility code after the old client/version window closes.
+The authoritative activation event or derived fact must come from the product outcome. Use `product-analytics-experimentation.md` when experiment assignment or causal analysis is material.
 
-Keep permanent contextual help only when users still need it after activation.
+## Quality and verification
 
-## Verification scenarios
+Validate the real flow with representative identity, permissions, content, and device/session boundaries. Use the dedicated accessibility, globalization, visual-quality, async, auth, or notification references only when those mechanisms are active instead of duplicating their rules here.
 
-Test the states most likely to invalidate the onboarding contract. Useful scenario classes include:
+Choose scenarios that can falsify the active onboarding contract. Common high-value cases are:
 
-- first-time-user;
-- resume-after-exit;
-- duplicate-submit;
-- skip-or-dismiss;
-- cross-device-resume;
-- cross-tenant-isolation;
-- invited-existing-workspace;
-- permission-or-role-change;
-- async-prerequisite-failure;
-- timeout-after-success;
-- existing-user-migration;
-- long-localized-content;
-- empty-vs-not-configured;
-- re-entry-after-prerequisite-loss.
-
-Do not force irrelevant scenarios into every product. Use the deterministic gate for the core scenario classes that protect progress, identity, recovery, migration, and first-value truth.
-
-## Product contract record
-
-For material onboarding work, record:
-
-- experience outcome and first-value definition;
-- eligibility and scope;
-- progress/completion authority;
-- version/generation identity;
-- required/optional step semantics;
-- resume/re-entry/skip policy sources;
-- recovery and async behavior;
-- role/tenant/cross-device behavior;
+- first-time user reaches first value;
+- exit and resume;
+- duplicate submit or timeout-after-success;
+- invited user in an existing workspace;
+- cross-tenant isolation;
+- permission/role change;
+- async prerequisite failure;
 - existing-user migration;
-- activation measurement;
-- accessibility/localization expectations;
-- lifecycle cleanup;
-- falsifying test scenarios.
+- empty versus not-configured;
+- re-entry after prerequisite loss.
 
-Use `scripts/onboarding_activation_gate.py` when this structure improves implementation or review discipline.
+Do not force irrelevant scenarios into every product.
+
+## Lifecycle cleanup
+
+Onboarding often creates temporary tours, progress versions, migration flags, sample data, experiments, compatibility code, and extra analytics. Give temporary mechanisms an owner and removal condition. Keep permanent contextual help only when users still need it after activation.
 
 ## Boundaries
 
 - Do not equate tutorial completion with activation without a real product outcome.
-- Do not store a second checklist truth when authoritative product state can derive progress.
-- Do not invent skip, trial, pricing, verification, role, or eligibility policy.
-- Do not reset or delete real user data merely to restart onboarding.
-- Do not show unauthorized setup actions as if the user can complete them.
+- Do not create a second source of truth for progress when authoritative product state can derive it.
+- Do not invent eligibility, skip, verification, pricing, role, or entitlement policy.
+- Do not delete real user data to reset onboarding.
+- Do not show unauthorized actions as if the user can complete them.
 - Do not mark async setup complete before authoritative completion.
-- Do not force existing experienced users through irrelevant first-run steps.
-- Do not collect onboarding analytics that become a hidden authority for product state.
+- Do not force experienced or already-configured users through irrelevant first-run steps.
+- Do not let analytics events become hidden product-state authority.
