@@ -49,6 +49,9 @@ function referencedWorktreeNames(state, worktreesDir) {
       if (name) referenced.add(name);
     }
   }
+  for (const lease of Object.values(state.runtime?.liveValidationLeases?.sessions || {})) {
+    if (lease?.worktreeName) referenced.add(lease.worktreeName);
+  }
   return referenced;
 }
 
