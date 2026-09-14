@@ -29,10 +29,20 @@ function recordedBinding(context) {
 }
 
 function marketplaceEntryDriftError(file) {
-  const error = new Error(`Codex marketplace entry drift must be resolved before repair: ${file}`);
+  const error = new Error(`Codex marketplace entry drift must be resolved before host mutation: ${file}`);
   error.code = 'HOST_BINDING_DRIFT';
   error.details = { marketplacePath: file, plugin: PLUGIN_NAME };
   return error;
+}
+
+function marketplaceEntryOwnedByBinding(context, entry) {
+  const previous = recordedBinding(context);
+  if (!previous || !entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+  const currentDigest = stableObjectHash(entry);
+  const recordedDigest = typeof previous.marketplaceEntryDigest === 'string' ? previous.marketplaceEntryDigest : null;
+  return recordedDigest
+    ? currentDigest === recordedDigest
+    : currentDigest === stableObjectHash(expectedMarketplaceEntry());
 }
 
 async function requireCodex(context) {
@@ -66,21 +76,13 @@ async function ensureMarketplaceEntry(context) {
   const nextEntry = expectedMarketplaceEntry();
   if (index >= 0) {
     const existing = marketplace.plugins[index];
-    const ownedPath = existing?.source?.source === 'local' && existing?.source?.path === `./plugins/${PLUGIN_NAME}`;
     const previous = recordedBinding(context);
-    if (!ownedPath && !previous) {
-      const error = new Error('Codex marketplace already contains veteran-engineer from another source');
+    if (!previous) {
+      const error = new Error('Codex marketplace already contains veteran-engineer without recorded Veteran ownership');
       error.code = 'HOST_BINDING_CONFLICT';
       throw error;
     }
-    if (previous) {
-      const currentDigest = stableObjectHash(existing);
-      const recordedDigest = typeof previous.marketplaceEntryDigest === 'string' ? previous.marketplaceEntryDigest : null;
-      const owned = recordedDigest
-        ? currentDigest === recordedDigest
-        : currentDigest === stableObjectHash(nextEntry);
-      if (!owned) throw marketplaceEntryDriftError(file);
-    }
+    if (!marketplaceEntryOwnedByBinding(context, existing)) throw marketplaceEntryDriftError(file);
     marketplace.plugins[index] = nextEntry;
   } else marketplace.plugins.push(nextEntry);
   await ensureDir(path.dirname(file));
@@ -193,7 +195,16 @@ export default {
     return { ok: checks.every((check) => check.ok), checks, status };
   },
   async uninstall(context) {
-    const marketplace = await readJson(marketplacePath(context), null);
+    const file = marketplacePath(context);
+    const raw = await readJson(file, null);
+    let marketplace = null;
+    if (raw !== null) {
+      try { marketplace = normalizeMarketplace(raw); }
+      catch { throw marketplaceEntryDriftError(file); }
+      const entry = marketplace.plugins.find((item) => item?.name === PLUGIN_NAME);
+      if (entry && !marketplaceEntryOwnedByBinding(context, entry)) throw marketplaceEntryDriftError(file);
+    }
+
     const marketName = marketplace?.name || recordedMarketplaceName(context) || 'personal';
     const executable = await findExecutable('codex', context.env);
     const actions = [];
