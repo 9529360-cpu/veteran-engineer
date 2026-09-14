@@ -30,8 +30,24 @@ test('operator policy rejects ambiguous safety-sensitive scalar types', () => {
     'defaults.workerPolicy.maxWorkers'
   );
   rejectsConfig(
+    { defaults: { workerPolicy: { capabilities: 'container-worker' } } },
+    'defaults.workerPolicy.capabilities'
+  );
+  rejectsConfig(
+    { defaults: { validationCapabilities: 'browser' } },
+    'defaults.validationCapabilities'
+  );
+  rejectsConfig(
+    { defaults: { requiredValidationCapabilities: ['ok', 42] } },
+    'defaults.requiredValidationCapabilities'
+  );
+  rejectsConfig(
     { defaults: { requireValidation: 'false' } },
     'defaults.requireValidation'
+  );
+  rejectsConfig(
+    { projects: { '/repo': { validationCapabilities: ['browser', ''] } } },
+    'projects./repo.validationCapabilities'
   );
   rejectsConfig(
     { projects: { '/repo': { workerPolicy: { allowUnconfinedCustomWorkers: 'false' } } } },
@@ -58,9 +74,12 @@ test('valid operator safety controls preserve extensible worker configuration', 
   const policy = projectPolicy({
     defaults: {
       requireValidation: true,
+      validationCapabilities: ['lint'],
+      requiredValidationCapabilities: ['lint'],
       workerPolicy: {
         enabled: true,
         maxWorkers: 4,
+        capabilities: ['custom-tooling'],
         allowUnconfinedCustomWorkers: false,
         allowRawValidation: false,
         defaultWorker: 'codex',
@@ -80,8 +99,11 @@ test('valid operator safety controls preserve extensible worker configuration', 
 
   assert.equal(policy.requireValidation, true);
   assert.equal(policy.requireSemanticReview, true);
+  assert.deepEqual(policy.validationCapabilities, ['lint']);
+  assert.deepEqual(policy.requiredValidationCapabilities, ['lint']);
   assert.equal(policy.workerPolicy.enabled, true);
   assert.equal(policy.workerPolicy.maxWorkers, 1);
+  assert.deepEqual(policy.workerPolicy.capabilities, ['custom-tooling']);
   assert.equal(policy.workerPolicy.allowUnconfinedCustomWorkers, false);
   assert.equal(policy.workerPolicy.allowRawValidation, false);
   assert.equal(policy.workerPolicy.defaultWorker, 'codex');
