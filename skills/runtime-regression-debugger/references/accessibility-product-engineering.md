@@ -1,225 +1,67 @@
 # Accessibility product engineering
 
-Use this when a product must remain perceivable, understandable, navigable, operable, and recoverable across keyboard, screen-reader, touch, switch/alternative input, zoom/text scaling, high-contrast, reduced-motion, and comparable accessibility modes. Treat accessibility as interaction correctness and product reachability, not a late visual checklist.
+Use this when a product must remain perceivable, understandable, navigable, operable, and recoverable across keyboard, screen reader, touch, alternative input, zoom/text scaling, contrast modes, reduced motion, and platform accessibility APIs. Accessibility is interaction correctness, not a late visual checklist.
 
-## Compile the accessibility contract
-
-Start from a real user task rather than isolated attributes:
+The contract is:
 
 `user intent -> perceivable structure/control -> operable navigation/input -> understandable state/feedback -> authorized effect -> accessible completion or recovery`
 
-Capture only what can change implementation:
+For web/UI implementation also use `frontend-product-patterns.md`; for native clients use `mobile-product-engineering.md`; for desktop shell surfaces use `host-shell-platform-patterns.md`.
 
-- supported client surfaces and platform accessibility semantics;
-- required input/assistive modes for the workflow;
-- semantic structure, control identity, relationships, and state;
-- keyboard/switch navigation and focus ownership;
-- asynchronous updates, loading, validation, errors, and status announcements;
-- zoom/reflow, text scaling, contrast, non-color cues, and motion behavior;
-- pointer/touch precision, gesture alternatives, and timing constraints;
-- form instructions/errors and media alternatives when applicable;
-- automated and real assistive-technology validation;
-- shared-component ownership, platform differences, rollout, and rollback.
+## Prefer platform semantics over imitation
 
-Do not ask the user to select ARIA attributes, accessibility libraries, or test tools when repository/platform precedent already answers that. Recover the current component and platform semantics first.
+Use native semantic controls when they already own keyboard, focus, accessible name/role/state, disabled behavior, and platform accessibility mappings. A clickable custom element is not equivalent to a button, link, input, disclosure, tab, dialog, menu, or other semantic primitive merely because mouse activation works.
 
-## Prefer native semantics before custom emulation
+When a custom interaction is necessary, own the complete behavior: accessible name/description, role/type, current value/state, relationships, keyboard/focus behavior, announcement/update behavior, and pointer/touch behavior. Do not add redundant or contradictory ARIA/accessibility metadata to native controls.
 
-Use the native semantic control that already owns keyboard, focus, name/role/state, disabled behavior, and platform accessibility mappings whenever it can express the interaction.
+Meaningful headings, landmarks, lists/tables, labels, descriptions, groups, DOM/accessibility order, and relationships must survive responsive layout, portals, overlays, virtualization, and CSS reordering. Hidden/inert/background-modal content must not remain active navigation targets.
 
-A custom visual element with copied click behavior is not equivalent to a button, link, input, disclosure, tab, dialog, menu, or other semantic primitive merely because it can be activated with a mouse.
+## Focus and input are explicit state
 
-When custom interaction is necessary, recover the complete behavioral contract before adding attributes:
+Required workflows need an operable path that does not depend on precision pointer input or an undiscoverable gesture when the platform supports keyboard/alternative input.
 
-- accessible name and description;
-- role/type;
-- current value/state (`selected`, `expanded`, `checked`, `pressed`, invalid, busy, disabled, etc. where applicable);
-- ownership/relationship to labels, descriptions, groups, controls, tables, lists, and regions;
-- keyboard and focus behavior;
-- update/announcement behavior;
-- pointer/touch behavior.
+Define focus order and ownership for open/close, route change, validation failure, deletion, async replacement, and recovery. Repair DOM/task ownership instead of using positive `tabindex` to paper over broken order. A focus trap is only valid while interaction is intentionally scoped and must release/restore focus when its owner closes or disappears.
 
-Do not add redundant or contradictory accessibility metadata to native controls. Semantic duplication can make the assistive representation less correct, not more.
+Do not make hover the only discovery path. Complex drag/path/multi-pointer/device-motion interactions need an equivalent simple action when required by the product contract. Time limits, transient controls, or auto-advancing content need explicit pause/extend/recovery behavior where the user can otherwise lose the task.
 
-## Structure and reading order are product state
+## Async feedback and errors must be perceivable without noise
 
-Visual layout must not be the only source of hierarchy.
+For material asynchronous transitions decide whether the user needs busy/progress state, completion/status announcement, error announcement, focus movement, or no automatic announcement because the result remains directly discoverable. Do not announce every render or intermediate state.
 
-Preserve meaningful:
+Errors should be programmatically connected to the affected field/action where applicable, explain recovery, remain available long enough to perceive, and preserve user-entered data. If validation blocks submission, provide a deterministic route to the first actionable problem without creating a focus loop. Red borders, toast position, animation, or icons alone are not sufficient state.
 
-- headings and section hierarchy;
-- page/region landmarks;
-- lists and tables;
-- labels/descriptions;
-- grouping and relationships;
-- DOM/accessibility order relative to the intended task order.
+## Preserve meaning under visual and motion variation
 
-CSS position, flex/grid reordering, overlays, portals, virtualized content, and responsive breakpoints can make visual and assistive reading order diverge. Treat that divergence as a behavior change, not a styling detail.
+Required meaning must not depend only on color, shape, location, motion, or hover. Validate the relevant combinations of text resizing/font scaling, browser zoom/reflow, compact and wide layouts, orientation, high-contrast/forced-color modes, themes, and reduced-motion preferences.
 
-Do not expose hidden, inert, offscreen, or background-modal content as active navigation targets.
+Avoid fixed-height/overflow layouts that clip scaled content or controls. Keep a visible focus indicator for every keyboard/alternative-input path. If motion conveys required information, provide an equivalent non-motion signal instead of merely suppressing the animation.
 
-## Keyboard, alternative input, and focus ownership
+## Forms, authentication, media, and consequential flows
 
-Every required workflow must have an operable path that does not depend on a precision pointer or an undiscoverable gesture when the supported surface expects keyboard/alternative input.
+Inputs need durable labels/instructions that survive placeholder disappearance, responsive layout, and validation. Keep required/optional state, format guidance, help text, error state, and value distinct.
 
-Define:
+Authentication, payments, consent, destructive actions, and other consequential workflows must not force users through an inaccessible CAPTCHA, gesture, timer, or out-of-band step without an equivalent supported route.
 
-- which elements participate in sequential focus;
-- expected arrow/tab/escape/enter/space behavior where the interaction pattern requires it;
-- whether a composite widget owns roving/managed focus;
-- who moves focus on open/close, route transition, validation failure, deletion, async replacement, and recovery;
-- where focus returns after a temporary surface closes;
-- how focus visibility remains perceivable in all supported themes/modes.
+Non-text alternatives follow product meaning rather than file type: informative images need useful alternatives, decorative imagery should be ignored appropriately, time-based media may need captions/transcripts, and charts/maps/canvas/status graphics need an equivalent way to obtain required information when users must act on it.
 
-Do not reorder focus with arbitrary positive tab indexes to repair a broken DOM/task order. Repair ownership/order instead.
+## Respect platform and shared-component ownership
 
-A focus trap is justified only while interaction is intentionally scoped (for example a modal surface). It must not strand the user after the owner unmounts, crashes, changes route, or becomes hidden.
+Web, iOS, Android, desktop shells, native dialogs/menus/notifications, and OS permission prompts expose different accessibility APIs. A browser-level pass does not prove native-shell accessibility. Do not erase platform semantics behind one visual cross-platform abstraction.
 
-Keyboard shortcuts must not steal expected text-entry/navigation keys, must respect platform conventions, and need a discoverable or remappable policy when material.
+Reusable controls such as buttons, inputs, dialogs, menus, tabs, comboboxes, navigation, tables, and notifications should centralize the semantics and focus behavior they can truly own. Feature code supplies domain labels/data/transitions rather than reimplementing interaction mechanics. Treat design-system accessibility changes as high-fan-out changes.
 
-## Async state, status, errors, and recovery
+## Validation must prove task completion
 
-A screen can be visually correct while assistive users never learn that anything changed.
+Automated checks are useful but do not prove end-to-end operability. Use the strongest practical stack for the changed mechanism:
 
-For material asynchronous transitions, decide whether the user needs:
+1. semantic/component assertions;
+2. keyboard/focus/state interaction tests at browser/native boundaries;
+3. zoom/reflow, contrast/non-color, and reduced-motion checks when material;
+4. representative screen-reader/assistive-technology smoke for critical workflows;
+5. package/device/native-shell validation when installed-app identity or platform surfaces matter.
 
-- a busy/loading state;
-- progress information;
-- a status/completion announcement;
-- an error announcement;
-- focus movement;
-- no automatic announcement because the user already initiated and can discover the result in context.
+Representative cases include keyboard-only completion, screen-reader completion, focus transitions across dialogs/routes/errors/async replacement, dynamic status/error updates, zoom/text scaling/reflow, non-color state, reduced motion, and gesture alternatives where applicable.
 
-Avoid announcing every render or intermediate state. Excessive live updates can be as unusable as silence.
+Prefer assertions on semantic roles/names/states, focus ownership, durable effects, and task completion over brittle snapshots of generated accessibility markup. Zero automated violations or the presence of ARIA attributes is not a completion claim; a task-level assistive-technology oracle must make reading order, announcements, focus transitions, action, and recovery coherent together.
 
-Errors must be programmatically connected to the affected field/action where applicable, explain recovery rather than only failure, and remain available long enough to perceive. Do not rely on red borders, toast position, animation, or iconography alone.
-
-When validation blocks submission, preserve user-entered data and provide a deterministic route to the first actionable problem without creating a focus loop.
-
-## Visual perception, zoom/reflow, contrast, and motion
-
-Do not encode required meaning only in color, shape, location, motion, or hover.
-
-Validate that required content/actions survive the supported combinations of:
-
-- text resizing/font scaling;
-- browser/page zoom and reflow;
-- narrow/large viewports and orientation where applicable;
-- high-contrast/forced-color or equivalent platform modes;
-- light/dark themes;
-- reduced-motion preferences.
-
-Avoid fixed-height/overflow patterns that clip scaled text or controls. A responsive layout that looks correct at multiple viewport widths can still fail when text alone grows.
-
-Focus indicators are interaction state, not decoration. Do not remove them unless an equivalent visible focus treatment exists for every keyboard/alternative-input path.
-
-Nonessential animation should follow reduced-motion preferences. If motion conveys required state, provide an equivalent non-motion signal rather than simply suppressing the information.
-
-## Pointer, touch, gestures, and timing
-
-Required interactions should tolerate the precision available on the supported device/input mode.
-
-Do not make hover the only discovery path for required controls. Avoid edge-only, tiny, overlapping, or moving targets that become impractical under tremor, magnification, or touch.
-
-When an interaction depends on complex or path-based gestures, drag/drop, multi-pointer input, device motion, or similar mechanisms, define the equivalent simple action when the product contract requires one.
-
-For time limits, expiring sessions, transient controls, auto-advancing content, or disappearing notifications, define pause/extend/recovery behavior. Security/session constraints may justify limits, but they still need an explicit accessible recovery path.
-
-## Forms, authentication, and error-prone workflows
-
-Inputs need durable labels and instructions that survive placeholder disappearance, responsive layout, and validation state.
-
-Preserve the distinction between:
-
-- required/optional state;
-- format guidance;
-- error state;
-- help text;
-- the value itself.
-
-Do not make placeholder text the only label or instruction. Do not encode validation only with color or a summary detached from field relationships.
-
-For authentication, payments, consent, destructive actions, or other consequential workflows, accessibility is part of the authorization/completion contract. A user must not be forced into an inaccessible CAPTCHA, gesture, timer, or out-of-band step without an equivalent supported route.
-
-## Media and non-text content
-
-Define alternatives according to product meaning, not file type alone.
-
-Examples include:
-
-- useful alternative text for informative images;
-- intentionally empty/ignored semantics for purely decorative imagery;
-- captions/transcripts or other alternatives for time-based media where the product requires them;
-- text/state equivalents for charts, maps, status graphics, or canvas content when users need the underlying information to complete the task.
-
-If a capability is genuinely not applicable, record that in the contract instead of inventing low-quality placeholder alternatives.
-
-## Mobile and desktop platform semantics
-
-Accessibility APIs are platform contracts. The same visual component can need different native semantics on web, iOS, Android, or desktop shells.
-
-On mobile, validate screen-reader navigation, accessible names/actions, dynamic text/font scaling, orientation/form-factor behavior, switch/keyboard input where supported, and platform focus/announcement semantics.
-
-On desktop/Electron or other host shells, separate renderer/web semantics from native shell surfaces such as menus, dialogs, tray items, notifications, and operating-system permission prompts. A browser-level accessibility test does not prove native shell accessibility.
-
-Do not force one cross-platform abstraction to erase platform semantics merely to keep component APIs visually identical.
-
-## Shared components and design systems
-
-Accessibility belongs in the component contract whenever the interaction is reusable.
-
-A shared button, input, dialog, menu, tab set, combobox, notification, table, or navigation primitive should centralize the semantics/focus behavior it can own. Feature code should provide domain labels, descriptions, data, and transitions rather than reimplementing keyboard/focus behavior per screen.
-
-Treat a design-system change as a fan-out change. A semantic or focus regression in one shared primitive can affect many product workflows even when screenshots remain stable.
-
-Variant styling must not silently drop labels, focus indicators, disabled semantics, or target size/spacing assumptions.
-
-## Validation shape
-
-Automated accessibility checks are useful but are not a proof of end-to-end operability.
-
-A useful risk-shaped validation stack is:
-
-1. source/component semantics and deterministic accessibility assertions;
-2. browser/native interaction coverage for keyboard/focus/state behavior;
-3. representative zoom/reflow, contrast/non-color, and reduced-motion checks when material;
-4. real or platform-equivalent screen-reader/assistive-technology smoke for critical workflows;
-5. package/device/native-shell validation when behavior depends on installed application identity or platform surfaces.
-
-Representative scenario classes should include:
-
-- keyboard-only completion;
-- screen-reader completion;
-- focus transitions across dialogs/routes/errors/async replacement;
-- dynamic loading/status/error updates;
-- zoom/text scaling and reflow;
-- state conveyed without color alone;
-- reduced motion when animation is present;
-- touch/gesture alternatives when material.
-
-Prefer assertions on semantic roles/names/states, focus ownership, durable effects, and task completion over brittle snapshots of generated accessibility markup.
-
-Automated tooling can find many structural issues, but only a task-level assistive-technology oracle can prove that reading order, announcements, focus transitions, and recovery make sense together.
-
-## Observability and release
-
-Accessibility failures often enter through shared components, content/config changes, responsive redesigns, or platform updates without producing ordinary application errors.
-
-Where material, track bounded evidence such as:
-
-- deterministic accessibility regression failures;
-- inaccessible-flow support incidents;
-- component/version identity for known regressions;
-- rollout cohorts when a new design-system primitive changes semantics/focus.
-
-Do not log assistive-technology state or user disability information as a proxy for accessibility usage unless the product has an explicit privacy-authorized reason. Accessibility correctness should not depend on identifying disabled users.
-
-Roll out high-fan-out component or navigation changes with a recovery path. Code rollback and user-state recovery are separate: reverting a component must not discard user work created through the workflow.
-
-## Completion boundary
-
-An accessible product slice is not complete because an audit tool reports zero violations or because controls have ARIA attributes.
-
-Close the real task contract: semantic structure, accessible name/role/state, keyboard/alternative input, focus ownership, async feedback, errors/recovery, zoom/reflow, non-color cues, motion, pointer/gesture/timing behavior, forms/media where applicable, shared-component ownership, representative assistive-technology validation, and platform-specific behavior.
-
-For web/UI implementation also use `references/frontend-product-patterns.md`. For native/cross-platform clients use `references/mobile-product-engineering.md`. For desktop shell surfaces add `references/host-shell-platform-patterns.md`. For high-risk validation and regression design add the repository testing/evidence references rather than duplicating them here.
+Keep accessibility evidence privacy-safe: do not log disability or assistive-technology usage merely to prove accessibility. Roll back high-fan-out component regressions without discarding user work created through the workflow.
