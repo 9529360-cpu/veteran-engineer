@@ -168,9 +168,16 @@ def main() -> int:
         names = set()
         rows = delivery.get(key, [])
         if isinstance(rows, list):
-            for row in rows:
+            for index, row in enumerate(rows):
                 if isinstance(row, dict) and nonempty(row.get("name")):
-                    names.add(row["name"])
+                    name = row["name"]
+                    if name in names:
+                        add(
+                            "DELIVERY_ELEMENT_DUPLICATE",
+                            f"duplicate delivery {kind} {name!r}; trace links by (kind, name) require unique identities",
+                            f"delivery.{key}[{index}].name",
+                        )
+                    names.add(name)
         delivery_elements[kind] = names
 
     if trace.get("schema") != TRACE_SCHEMA:
