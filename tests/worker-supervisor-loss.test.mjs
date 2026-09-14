@@ -50,7 +50,7 @@ async function assertHeartbeatStopped(file) {
   const before = (await fs.stat(file)).size;
   await sleep(250);
   const after = (await fs.stat(file)).size;
-  assert.equal(after, before, 'worker descendant heartbeat must stop after supervisor loss');
+  assert.equal(after, before, 'worker descendant heartbeat must stop after worker execution ends');
 }
 
 async function killIfAlive(pid) {
@@ -120,6 +120,57 @@ test('unexpected supervisor SIGKILL fails closed and drains the real worker tree
   } finally {
     await killIfAlive(supervisorPid);
     await killIfAlive(workerPid);
+    await killIfAlive(grandchildPid);
+    await cleanup(root);
+  }
+});
+
+test('successful worker exit reaps background descendants before adapter completion', { skip: process.platform === 'win32' }, async () => {
+  const root = await tempDir('veteran-worker-background-reap-');
+  const worktreePath = path.join(root, 'worktree');
+  const artifactsPath = path.join(root, 'artifacts');
+  const heartbeat = path.join(root, 'heartbeat.txt');
+  const grandchildPidFile = path.join(root, 'grandchild.pid');
+  const grandchildPath = path.join(root, 'background-child.cjs');
+  const workerPath = path.join(root, 'worker-parent.cjs');
+  let grandchildPid = null;
+  try {
+    await fs.mkdir(worktreePath, { recursive: true });
+    await fs.mkdir(artifactsPath, { recursive: true });
+    await fs.writeFile(grandchildPath, [
+      "const fs=require('node:fs');",
+      `fs.writeFileSync(${JSON.stringify(grandchildPidFile)},String(process.pid));`,
+      `fs.appendFileSync(${JSON.stringify(heartbeat)},'x');`,
+      `setInterval(()=>fs.appendFileSync(${JSON.stringify(heartbeat)},'x'),25);`,
+      "if(process.send)process.send('ready');"
+    ].join('\n'));
+    await fs.writeFile(workerPath, [
+      "const {fork}=require('node:child_process');",
+      `const child=fork(${JSON.stringify(grandchildPath)},[],{stdio:['ignore','ignore','ignore','ipc']});`,
+      "child.once('message',()=>process.exit(0));"
+    ].join('\n'));
+
+    const adapter = new WorkerAdapter();
+    const result = await adapter.run({
+      project,
+      mission,
+      task: { id: 'T2', key: 'M1:T2', risk: 'low', writeSet: ['src'] },
+      worktreePath,
+      packet: { protocol: 'veteran-worker-v1' },
+      packetPath: path.join(artifactsPath, 'packet.json'),
+      packetRoot: artifactsPath,
+      config: { type: 'custom', command: process.execPath, args: [workerPath], timeoutMs: 10_000 }
+    });
+
+    assert.equal(result.code, 0);
+    assert.equal(result.signal, null);
+    await waitForFile(grandchildPidFile);
+    await waitForFile(heartbeat);
+    grandchildPid = Number(await fs.readFile(grandchildPidFile, 'utf8'));
+    await waitForProcessExit(grandchildPid);
+    await assertHeartbeatStopped(heartbeat);
+    assert.deepEqual(adapter.snapshot(), []);
+  } finally {
     await killIfAlive(grandchildPid);
     await cleanup(root);
   }
