@@ -19,6 +19,21 @@ async function freePort() {
   });
 }
 
+async function bounded(promise, timeoutMs, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(Object.assign(new Error(`Timed out waiting for ${label}`), {
+      code: 'TEST_TIMEOUT',
+      details: { label, timeoutMs }
+    })), timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function serviceFor(port) {
   return {
     command: [process.execPath, 'server.cjs', String(port)],
@@ -47,10 +62,11 @@ test('runtime release drains a live session that is still starting and fences ne
   });
   let app = null;
   let manager = null;
+  let acquiring = null;
+  let continueReservation = null;
   try {
     app = await createVeteranApp({ stateRoot });
     let reservationReached;
-    let continueReservation;
     const reached = new Promise((resolve) => { reservationReached = resolve; });
     const proceed = new Promise((resolve) => { continueReservation = resolve; });
     let paused = false;
@@ -82,8 +98,8 @@ test('runtime release drains a live session that is still starting and fences ne
       service
     };
 
-    const acquiring = manager.acquire(input);
-    await reached;
+    acquiring = manager.acquire(input);
+    await bounded(reached, 5_000, 'durable live-session reservation');
     assert.equal(manager.snapshot().length, 0, 'durable reservation must be observable before the session enters the active map');
 
     let cleanupSettled = false;
@@ -93,18 +109,22 @@ test('runtime release drains a live session that is still starting and fences ne
     });
 
     await assert.rejects(
-      manager.acquire({
+      bounded(manager.acquire({
         ...input,
         project: { ...project, id: 'project-release-race-blocked' },
         mission: { id: 'mission-release-race-blocked' }
-      }),
+      }), 5_000, 'runtime release fence rejection'),
       (error) => error.code === 'LIVE_VALIDATION_SESSION_RELEASE_IN_PROGRESS'
         && error.details?.scope === 'runtime'
     );
     assert.equal(cleanupSettled, false, 'runtime release must wait for the already-registered startup to settle');
 
     continueReservation();
-    const [acquired, released] = await Promise.all([acquiring, releasing]);
+    const [acquired, released] = await bounded(
+      Promise.all([acquiring, releasing]),
+      10_000,
+      'live startup and release drain'
+    );
     assert.equal(acquired.active, true, 'the startup may finish, but it must still be drained before cleanup returns');
     assert.equal(released.length, 1);
     assert.equal(manager.snapshot().length, 0);
@@ -114,13 +134,14 @@ test('runtime release drains a live session that is still starting and fences ne
     assert.equal(Object.keys(state.runtime?.liveValidationLeases?.sessions || {}).length, 0);
     assert.equal(Object.keys(state.runtime?.liveValidationLeases?.endpoints || {}).length, 0);
 
-    const retry = await manager.acquire(input);
+    const retry = await bounded(manager.acquire(input), 10_000, 'post-cleanup live-session acquire');
     assert.equal(retry.active, true, 'the release fence must open again after cleanup completes');
     assert.equal(manager.snapshot().length, 1);
   } finally {
     continueReservation?.();
-    await manager?.releaseAll({ reason: 'test-cleanup' }).catch(() => {});
-    await app?.services.liveSessionManager.releaseAll({ reason: 'test-cleanup' }).catch(() => {});
+    await bounded(acquiring?.catch(() => {}), 10_000, 'in-flight startup cleanup').catch(() => {});
+    await bounded(manager?.releaseAll({ reason: 'test-cleanup' }) || Promise.resolve(), 10_000, 'manager cleanup').catch(() => {});
+    await bounded(app?.services.liveSessionManager.releaseAll({ reason: 'test-cleanup' }) || Promise.resolve(), 10_000, 'app manager cleanup').catch(() => {});
     await cleanup(root);
   }
 });
