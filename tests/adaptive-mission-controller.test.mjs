@@ -58,6 +58,46 @@ test('adaptive task risk preserves explicit authority and infers meaningful engi
   assert.equal(consequential.concurrency.riskShaped, true);
 });
 
+test('mission planning preserves explicit medium risk envelope authority', async () => {
+  const fixture = await createGitRepo({ files: { 'src/a.txt': 'a\n' } });
+  try {
+    const app = await createVeteranApp({ stateRoot: fixture.stateRoot });
+    const project = await app.callTool('project_open', {
+      requestId: 'adaptive-envelope-project',
+      repoPath: fixture.repo
+    });
+
+    const baseline = await app.callTool('mission_plan', {
+      requestId: 'adaptive-envelope-baseline',
+      projectId: project.id,
+      goal: 'baseline low-risk mission',
+      doneDefinition: 'strategy stays light by default',
+      tasks: [task('T1', ['src/a.txt'])]
+    });
+    assert.equal(baseline.mission.executionStrategy.riskEnvelope, 'medium');
+    assert.equal(baseline.mission.executionStrategy.riskEnvelopeSource, 'baseline');
+    assert.equal(baseline.mission.executionStrategy.taskClass, 'light');
+    assert.equal(baseline.mission.executionStrategy.validation.mode, 'focused');
+
+    const explicit = await app.callTool('mission_plan', {
+      requestId: 'adaptive-envelope-explicit',
+      projectId: project.id,
+      goal: 'explicit medium-risk mission',
+      doneDefinition: 'explicit operator envelope is preserved',
+      riskEnvelope: 'medium',
+      tasks: [task('T1', ['src/a.txt'])]
+    });
+    assert.equal(explicit.mission.executionStrategy.riskEnvelope, 'medium');
+    assert.equal(explicit.mission.executionStrategy.riskEnvelopeSource, 'explicit');
+    assert.equal(explicit.mission.executionStrategy.effectiveRisk, 'medium');
+    assert.equal(explicit.mission.executionStrategy.taskClass, 'moderate');
+    assert.equal(explicit.mission.executionStrategy.validation.mode, 'cross-boundary');
+    assert.ok(explicit.mission.executionStrategy.reasons.includes('explicit-risk-envelope:medium'));
+  } finally {
+    await cleanup(fixture.root);
+  }
+});
+
 test('mission planning refreshes project context and records adaptive parallel strategy', async () => {
   const fixture = await createGitRepo({ files: { 'src/a.txt': 'a\n', 'src/b.txt': 'b\n' } });
   try {
