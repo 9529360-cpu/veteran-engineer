@@ -22,6 +22,13 @@ export class FeedbackAwareWorkerOrchestrator {
     this.validationService = validationService;
   }
 
+  async #liveCheckpointEnabled(mission) {
+    const projectService = this.runtimeFeedbackService?.projectService;
+    if (!projectService?.get || !mission?.projectId) return false;
+    const project = await projectService.get(mission.projectId);
+    return project.runtimeFeedbackPolicy?.liveSession === true;
+  }
+
   async #runWithFeedback(missionId, operation) {
     const before = await this.missionService.status({ missionId });
     const result = await operation();
@@ -38,7 +45,7 @@ export class FeedbackAwareWorkerOrchestrator {
       }
     } else if (before.mission.phase === 'execution' && end === start) {
       const integrated = integratedCheckpoint(before, after, start);
-      if (integrated) {
+      if (integrated && await this.#liveCheckpointEnabled(before.mission)) {
         checkpoint = await this.runtimeFeedbackService.runCheckpointSafe({
           missionId,
           waveIndex: start,
