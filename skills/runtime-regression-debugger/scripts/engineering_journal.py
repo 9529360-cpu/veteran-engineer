@@ -10,6 +10,7 @@ Examples:
   engineering_journal.py /tmp/work.json hypothesis H1 --mechanism "timeout after commit" --falsifier "lookup operation id"
   engineering_journal.py /tmp/work.json evidence --hypothesis H1 --result supports --note "operation exists after timeout"
   engineering_journal.py /tmp/work.json attempt --name retry-handler --assumption "timeout means no commit" --outcome failed --equivalence-class symptom-retry --forbid symptom-retry
+  engineering_journal.py /tmp/work.json reconsider --equivalence-class symptom-retry --basis "provider contract changed" --new-evidence "current provider docs plus fresh integration probe"
   engineering_journal.py /tmp/work.json blocker --kind authorization --note "production deploy not authorized" --requires production
   engineering_journal.py /tmp/work.json decision --action "reconcile by operation id" --basis "provider shows committed charge"
   engineering_journal.py /tmp/work.json assess
@@ -39,6 +40,7 @@ def fresh() -> dict:
         "hypotheses": {},
         "evidence": [],
         "attempts": [],
+        "equivalence_class_reviews": [],
         "decisions": [],
         "blockers": [],
         "checkpoints": [],
@@ -60,6 +62,7 @@ def load(path: pathlib.Path) -> dict:
     data.setdefault("next_action", None)
     data.setdefault("blockers", [])
     data.setdefault("checkpoints", [])
+    data.setdefault("equivalence_class_reviews", [])
     for item in data.setdefault("attempts", []):
         item.setdefault("equivalence_class", None)
         item.setdefault("forbidden_equivalent_class", None)
@@ -78,16 +81,40 @@ def require_open(data: dict) -> None:
         raise RuntimeError("journal is closed")
 
 
-def forbidden_equivalence_classes(data: dict) -> set[str]:
-    """Return explicitly forbidden classes from prior failed attempts only."""
-    forbidden: set[str] = set()
-    for item in data.get("attempts", []):
+def latest_forbidden_attempts(data: dict) -> dict[str, int]:
+    """Return the latest failed attempt index that explicitly forbids each class."""
+    latest: dict[str, int] = {}
+    for index, item in enumerate(data.get("attempts", [])):
         if not isinstance(item, dict) or item.get("outcome") != "failed":
             continue
         value = item.get("forbidden_equivalent_class")
         if isinstance(value, str) and value.strip():
-            forbidden.add(value.strip())
-    return forbidden
+            latest[value.strip()] = index
+    return latest
+
+
+def reopened_forbidden_attempts(data: dict) -> set[tuple[str, int]]:
+    """Return exact historical bans that were explicitly reconsidered."""
+    reopened: set[tuple[str, int]] = set()
+    for review in data.get("equivalence_class_reviews", []):
+        if not isinstance(review, dict) or review.get("action") != "reopen":
+            continue
+        value = review.get("equivalence_class")
+        attempt_index = review.get("forbidden_attempt_index")
+        if isinstance(value, str) and value.strip() and isinstance(attempt_index, int) and attempt_index >= 0:
+            reopened.add((value.strip(), attempt_index))
+    return reopened
+
+
+def forbidden_equivalence_classes(data: dict) -> set[str]:
+    """Return classes whose latest explicit failed-attempt ban is still active."""
+    latest = latest_forbidden_attempts(data)
+    reopened = reopened_forbidden_attempts(data)
+    return {
+        equivalence_class
+        for equivalence_class, attempt_index in latest.items()
+        if (equivalence_class, attempt_index) not in reopened
+    }
 
 
 def main() -> int:
@@ -123,6 +150,11 @@ def main() -> int:
     p.add_argument("--outcome", choices=["succeeded", "failed", "partial"], required=True)
     p.add_argument("--equivalence-class", default="")
     p.add_argument("--forbid", default="")
+
+    p = sub.add_parser("reconsider")
+    p.add_argument("--equivalence-class", required=True)
+    p.add_argument("--basis", required=True)
+    p.add_argument("--new-evidence", required=True)
 
     p = sub.add_parser("decision")
     p.add_argument("--action", required=True)
@@ -217,6 +249,31 @@ def main() -> int:
         })
         data["updated_at"] = now()
         save(path, data)
+    elif args.command == "reconsider":
+        require_open(data)
+        equivalence_class = args.equivalence_class.strip()
+        basis = args.basis.strip()
+        new_evidence = args.new_evidence.strip()
+        if not equivalence_class:
+            raise RuntimeError("--equivalence-class must not be empty")
+        if not basis:
+            raise RuntimeError("--basis must not be empty")
+        if not new_evidence:
+            raise RuntimeError("--new-evidence must not be empty")
+        latest = latest_forbidden_attempts(data)
+        forbidden_attempt_index = latest.get(equivalence_class)
+        if forbidden_attempt_index is None or equivalence_class not in forbidden_equivalence_classes(data):
+            raise RuntimeError(f"equivalence class is not currently forbidden: {equivalence_class}")
+        data["equivalence_class_reviews"].append({
+            "at": now(),
+            "action": "reopen",
+            "equivalence_class": equivalence_class,
+            "forbidden_attempt_index": forbidden_attempt_index,
+            "basis": basis,
+            "new_evidence": new_evidence,
+        })
+        data["updated_at"] = now()
+        save(path, data)
     elif args.command == "decision":
         require_open(data)
         data["decisions"].append({
@@ -280,6 +337,7 @@ def main() -> int:
         print("attempts:", len(data["attempts"]), f"({len(failed)} failed)")
         classes = [item.get("equivalence_class") for item in failed if item.get("equivalence_class")]
         print("failed equivalence classes:", ", ".join(classes) or "none")
+        print("equivalence class reviews:", len(data.get("equivalence_class_reviews", [])))
         print("decisions:", len(data["decisions"]))
         print("blockers:", len(data.get("blockers", [])))
         print("checkpoints:", len(data.get("checkpoints", [])))

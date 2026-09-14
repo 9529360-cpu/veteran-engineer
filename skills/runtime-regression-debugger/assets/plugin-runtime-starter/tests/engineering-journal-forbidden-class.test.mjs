@@ -127,3 +127,103 @@ test('engineering journal only allows failed attempts to create a forbidden equi
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
+
+test('engineering journal can reopen only the latest active ban with explicit new evidence and can forbid it again', async (t) => {
+  if (!(await exists(journalScript))) {
+    t.skip('source Skill engineering journal is not present in this isolated runtime fixture');
+    return;
+  }
+
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'veteran-journal-reconsider-'));
+  const journalPath = path.join(dir, 'journal.json');
+  try {
+    const init = runPython([journalPath, 'init', '--contract', 'timeout -> provider outcome -> safe next action']);
+    assert.ok(init, 'python is required by the Skill journal regression');
+    assert.equal(init.status, 0, init.stderr || init.stdout);
+
+    const ban = runPython([
+      journalPath,
+      'attempt',
+      '--name', 'blind-retry',
+      '--assumption', 'timeout means no remote commit',
+      '--outcome', 'failed',
+      '--equivalence-class', 'timeout-means-no-commit',
+      '--forbid', 'timeout-means-no-commit'
+    ]);
+    assert.equal(ban.status, 0, ban.stderr || ban.stdout);
+
+    const unknownReview = runPython([
+      journalPath,
+      'reconsider',
+      '--equivalence-class', 'never-forbidden',
+      '--basis', 'new mechanism',
+      '--new-evidence', 'fresh integration observation'
+    ]);
+    assert.notEqual(unknownReview.status, 0);
+    assert.match(unknownReview.stderr, /equivalence class is not currently forbidden: never-forbidden/);
+
+    const emptyEvidence = runPython([
+      journalPath,
+      'reconsider',
+      '--equivalence-class', 'timeout-means-no-commit',
+      '--basis', 'provider now exposes authoritative operation status',
+      '--new-evidence', ''
+    ]);
+    assert.notEqual(emptyEvidence.status, 0);
+    assert.match(emptyEvidence.stderr, /--new-evidence must not be empty/);
+
+    const reopen = runPython([
+      journalPath,
+      'reconsider',
+      '--equivalence-class', 'timeout-means-no-commit',
+      '--basis', 'provider now exposes authoritative operation status',
+      '--new-evidence', 'fresh integration probe resolves the operation id after timeout'
+    ]);
+    assert.equal(reopen.status, 0, reopen.stderr || reopen.stdout);
+
+    const allowedAgain = runPython([
+      journalPath,
+      'attempt',
+      '--name', 'status-aware-retry',
+      '--assumption', 'authoritative operation status distinguishes committed from absent',
+      '--outcome', 'succeeded',
+      '--equivalence-class', 'timeout-means-no-commit'
+    ]);
+    assert.equal(allowedAgain.status, 0, allowedAgain.stderr || allowedAgain.stdout);
+
+    const reban = runPython([
+      journalPath,
+      'attempt',
+      '--name', 'provider-regression',
+      '--assumption', 'operation status is always authoritative',
+      '--outcome', 'failed',
+      '--equivalence-class', 'timeout-means-no-commit',
+      '--forbid', 'timeout-means-no-commit'
+    ]);
+    assert.equal(reban.status, 0, reban.stderr || reban.stdout);
+
+    const blockedAgain = runPython([
+      journalPath,
+      'attempt',
+      '--name', 'repeat-after-reban',
+      '--assumption', 'operation status is always authoritative',
+      '--outcome', 'failed',
+      '--equivalence-class', 'timeout-means-no-commit'
+    ]);
+    assert.notEqual(blockedAgain.status, 0);
+    assert.match(blockedAgain.stderr, /equivalence class is forbidden by a prior failed attempt: timeout-means-no-commit/);
+
+    const journal = await readJournal(journalPath);
+    assert.equal(journal.equivalence_class_reviews.length, 1);
+    assert.equal(journal.equivalence_class_reviews[0].action, 'reopen');
+    assert.equal(journal.equivalence_class_reviews[0].forbidden_attempt_index, 0);
+    assert.equal(journal.attempts.length, 3, 'rejected attempts and invalid reviews must not mutate attempt history');
+
+    const summary = runPython([journalPath, 'summary']);
+    assert.equal(summary.status, 0, summary.stderr || summary.stdout);
+    assert.match(summary.stdout, /equivalence class reviews: 1/);
+    assert.match(summary.stdout, /forbidden equivalent patch classes: timeout-means-no-commit/);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
