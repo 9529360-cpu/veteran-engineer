@@ -64,13 +64,16 @@ export function workerCapabilityProfile(project, task) {
 
 export function runtimeManagedExecutionReadiness(task, project) {
   const profile = workerCapabilityProfile(project, task);
+  const requested = task.executionCapabilities || [];
   const blockers = [];
-  if (!profile.enabled) blockers.push('worker-execution-disabled');
-  if (profile.enabled && !profile.configured) blockers.push(profile.configError?.code || 'worker-not-configured');
-  if (profile.enabled && profile.configured && !profile.policyValid) blockers.push(profile.configError?.code || 'worker-policy-invalid');
+  if (requested.length) {
+    if (!profile.enabled) blockers.push('worker-execution-disabled');
+    if (profile.enabled && !profile.configured) blockers.push(profile.configError?.code || 'worker-not-configured');
+    if (profile.enabled && profile.configured && !profile.policyValid) blockers.push(profile.configError?.code || 'worker-policy-invalid');
+  }
   const available = new Set(profile.availableCapabilities);
   const derived = new Set(profile.derivedCapabilities);
-  const missingExecution = (task.executionCapabilities || []).filter((name) =>
+  const missingExecution = requested.filter((name) =>
     requiresDerivedProof(name) ? !derived.has(name) : !available.has(name)
   );
   return {
