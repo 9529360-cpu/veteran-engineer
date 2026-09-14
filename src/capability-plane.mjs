@@ -89,18 +89,34 @@ export function runtimeResourcesConflict(left = [], right = [], leftContext = {}
 
 function validationCapabilityNames(catalog = []) {
   if (!Array.isArray(catalog)) return [];
-  return catalog
+  return [...new Set(catalog
     .map((entry) => typeof entry === 'string' ? entry : entry?.name)
     .filter((name) => typeof name === 'string' && name.trim())
-    .map((name) => name.trim());
+    .map((name) => name.trim()))].sort();
+}
+
+function configuredCapabilityNames(values = []) {
+  if (!Array.isArray(values)) return [];
+  return [...new Set(values
+    .filter((name) => typeof name === 'string' && name.trim())
+    .map((name) => name.trim()))].sort();
+}
+
+export function projectCapabilityDiagnostics(project) {
+  const providers = new Set(validationCapabilityNames(project.validationCapabilities));
+  return {
+    unbackedRuntimeFeedbackCapabilities: configuredCapabilityNames(project.runtimeFeedbackCapabilities)
+      .filter((name) => !providers.has(name)),
+    unbackedRequiredValidationCapabilities: configuredCapabilityNames(project.requiredValidationCapabilities)
+      .filter((name) => !providers.has(name))
+  };
 }
 
 export function availableProjectCapabilities(project) {
   return {
     sensing: [...new Set([
       ...BUILTIN_SENSING_CAPABILITIES,
-      ...validationCapabilityNames(project.validationCapabilities),
-      ...(project.runtimeFeedbackCapabilities || [])
+      ...validationCapabilityNames(project.validationCapabilities)
     ])].sort(),
     execution: [...new Set(project.workerPolicy?.capabilities || [])].sort()
   };
@@ -169,6 +185,7 @@ export function buildCapabilitySnapshot({ project, mission, tasks, liveSourceIde
     sourceIdentity: liveSourceIdentity,
     mission: { id: mission.id, phase: mission.phase, status: mission.status, waveIndex: mission.nextWaveIndex },
     availableCapabilities: availableProjectCapabilities(project),
+    capabilityDiagnostics: projectCapabilityDiagnostics(project),
     wave: waveTasks.map((task) => ({
       taskId: task.id,
       status: task.status,
