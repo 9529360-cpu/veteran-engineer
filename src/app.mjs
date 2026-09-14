@@ -103,8 +103,18 @@ export async function createVeteranApp({
 
   async function cancelMission(args) {
     const result = await missionService.cancel(args);
+    const workerDrain = workerAdapter.cancelMission(args.missionId);
+    const capabilityLeaseReconciliation = await workerOrchestrator.reconcileMission({
+      missionId: args.missionId,
+      reason: 'mission-cancel'
+    });
     const released = await validationService.releaseRuntimeFeedbackSessions({ missionId: args.missionId, reason: 'mission-cancelled' });
-    return { ...result, runtimeFeedbackSessionsReleased: released.length };
+    return {
+      ...result,
+      workerDrain,
+      capabilityLeaseReconciliation,
+      runtimeFeedbackSessionsReleased: released.length
+    };
   }
 
   async function resumeMission(args) {
