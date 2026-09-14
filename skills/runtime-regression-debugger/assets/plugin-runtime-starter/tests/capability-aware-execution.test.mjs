@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import { createVeteranApp } from '../src/app.mjs';
+import { CapabilityAwareWorkerOrchestrator } from '../src/capability-aware-worker-orchestrator.mjs';
 import { cleanup, createGitRepo } from './helpers.mjs';
 
 async function createConfiguredApp(stateRoot, workerPolicy = {}) {
@@ -30,6 +31,28 @@ function missionTask(id, overrides = {}) {
     ...overrides
   };
 }
+
+test('mission readiness exposes capability sensing without growing the MCP tool surface', async () => {
+  const fixture = await createGitRepo();
+  try {
+    const app = await createConfiguredApp(fixture.stateRoot, { capabilities: ['networkless-worker'] });
+    const project = await app.services.projectService.open({ repoPath: fixture.repo });
+    const planned = await app.services.missionService.plan({
+      projectId: project.id,
+      goal: 'sense execution readiness',
+      doneDefinition: 'report missing worker capability before execution',
+      tasks: [missionTask('A', { executionCapabilities: ['docker'] })]
+    });
+
+    const readiness = await app.handlers.mission_readiness({ missionId: planned.mission.id });
+    assert.equal(readiness.capabilitySnapshot.contract, 'veteran-capability-snapshot-v1');
+    assert.equal(readiness.capabilitySnapshot.wave[0].taskId, 'A');
+    assert.equal(readiness.capabilitySnapshot.wave[0].capabilityReady, false);
+    assert.deepEqual(readiness.capabilitySnapshot.availableCapabilities.execution, ['networkless-worker']);
+  } finally {
+    await cleanup(fixture.root);
+  }
+});
 
 test('mission execution blocks before dispatch when required execution capability is unavailable', async () => {
   const fixture = await createGitRepo();
@@ -97,6 +120,45 @@ test('project-exclusive runtime resource lease blocks a competing mission until 
 
     const secondDispatch = await app.services.workerOrchestrator.execute({ missionId: second.mission.id, runWorkers: false });
     assert.equal(secondDispatch.dispatched.length, 1);
+  } finally {
+    await cleanup(fixture.root);
+  }
+});
+
+test('uncertain execution keeps its runtime resource lease when the delegate throws after start', async () => {
+  const fixture = await createGitRepo();
+  try {
+    const app = await createConfiguredApp(fixture.stateRoot);
+    const project = await app.services.projectService.open({ repoPath: fixture.repo });
+    const planned = await app.services.missionService.plan({
+      projectId: project.id,
+      goal: 'retain isolation across uncertain execution outcome',
+      doneDefinition: 'lease remains while worker status is executing',
+      tasks: [missionTask('A', { runtimeResources: [{ key: 'queue:integration', scope: 'project', mode: 'exclusive' }] })]
+    });
+    const delegate = {
+      execute: async () => {
+        await app.store.transaction('test_worker_started', (state) => {
+          state.tasks[`${planned.mission.id}:A`].status = 'executing';
+        }, { missionId: planned.mission.id });
+        throw Object.assign(new Error('simulated acknowledgement loss'), { code: 'SIMULATED_UNKNOWN' });
+      }
+    };
+    const guarded = new CapabilityAwareWorkerOrchestrator({
+      delegate,
+      store: app.store,
+      projectService: app.services.projectService,
+      missionService: app.services.missionService
+    });
+
+    await assert.rejects(
+      guarded.execute({ missionId: planned.mission.id, runWorkers: true }),
+      (error) => error.code === 'SIMULATED_UNKNOWN'
+    );
+    const status = await app.services.missionService.status({ missionId: planned.mission.id });
+    assert.equal(status.tasks[0].status, 'executing');
+    assert.ok(status.tasks[0].capabilityLease);
+    assert.equal(status.tasks[0].capabilityLease.resources[0].identity, `project:${project.id}:queue:integration`);
   } finally {
     await cleanup(fixture.root);
   }
