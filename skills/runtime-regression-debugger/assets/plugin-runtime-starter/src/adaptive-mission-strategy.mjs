@@ -7,6 +7,7 @@ const RISK_RANK = new Map(RISK_LEVELS.map((risk, index) => [risk, index]));
 const TERMINAL_MISSION_STATUSES = new Set(['completed', 'cancelled']);
 const TERMINAL_TASK_STATUSES = new Set(['done', 'failed', 'cancelled', 'blocked', 'superseded']);
 const ACTIVE_EXECUTION_STATUSES = new Set(['admitted', 'dispatched', 'executing', 'cancelling', 'interrupted']);
+const ACTIVE_RUNTIME_WORKER_STATUSES = new Set(['admitted', 'executing', 'cancelling', 'interrupted']);
 const MAX_CONTINUITY_MISSIONS = 8;
 const MAX_CONTINUITY_TASKS = 32;
 
@@ -15,11 +16,17 @@ function compactString(value, limit = 240) {
   return String(value).slice(0, limit);
 }
 
+function higherRisk(left = 'low', right = 'low') {
+  return (RISK_RANK.get(right) ?? 0) > (RISK_RANK.get(left) ?? 0) ? right : left;
+}
+
 function maxRisk(tasks) {
-  return tasks.reduce((highest, task) => {
-    const candidate = RISK_RANK.get(task.risk) ?? 0;
-    return candidate > (RISK_RANK.get(highest) ?? 0) ? task.risk : highest;
-  }, 'low');
+  return tasks.reduce((highest, task) => higherRisk(highest, task.risk), 'low');
+}
+
+function workerLimit(value, fallback = 2) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 1 ? Math.max(1, Math.floor(parsed)) : fallback;
 }
 
 function unique(values) {
@@ -143,21 +150,77 @@ export function activeProjectWriteConflicts({ state, mission, task } = {}) {
   return conflicts;
 }
 
-export function compileMissionExecutionStrategy({ tasks = [], waves = [], project = {}, riskEnvelope = 'medium', continuity = null } = {}) {
+export function missionExecutionCapacity({ state, mission, project, runWorkers = false } = {}) {
+  const configuredMaxWorkers = workerLimit(project?.workerPolicy?.maxWorkers, 2);
+  const strategyLimit = workerLimit(mission?.executionStrategy?.concurrency?.maxConcurrentWorkers, configuredMaxWorkers);
+  const missionMaxWorkers = Math.min(configuredMaxWorkers, strategyLimit);
+  if (!runWorkers) {
+    return {
+      configuredMaxWorkers,
+      missionMaxWorkers,
+      globalActive: 0,
+      missionActive: 0,
+      globalCapacity: configuredMaxWorkers,
+      missionCapacity: missionMaxWorkers,
+      capacity: missionMaxWorkers,
+      reason: null
+    };
+  }
+
+  const tasks = Object.values(state?.tasks || {});
+  const globalActive = tasks.filter((task) => ACTIVE_RUNTIME_WORKER_STATUSES.has(task.status)).length;
+  const missionActive = tasks.filter((task) => task.missionId === mission?.id && ACTIVE_RUNTIME_WORKER_STATUSES.has(task.status)).length;
+  const globalCapacity = Math.max(0, configuredMaxWorkers - globalActive);
+  const missionCapacity = Math.max(0, missionMaxWorkers - missionActive);
+  const capacity = Math.min(globalCapacity, missionCapacity);
+  return {
+    configuredMaxWorkers,
+    missionMaxWorkers,
+    globalActive,
+    missionActive,
+    globalCapacity,
+    missionCapacity,
+    capacity,
+    reason: capacity > 0
+      ? null
+      : (globalCapacity === 0 ? 'global-worker-admission-full' : 'adaptive-mission-admission-full')
+  };
+}
+
+export function compileMissionExecutionStrategy({
+  tasks = [],
+  waves = [],
+  project = {},
+  riskEnvelope = 'medium',
+  riskEnvelopeSource = 'default',
+  continuity = null
+} = {}) {
   const maxWaveWidth = waves.reduce((largest, wave) => Math.max(largest, wave.length), 0);
   const taskRisk = maxRisk(tasks);
+  const elevatedEnvelope = riskEnvelopeSource === 'explicit' || ['high', 'critical'].includes(riskEnvelope);
+  const envelopeRisk = elevatedEnvelope && RISK_LEVELS.includes(riskEnvelope) ? riskEnvelope : 'low';
+  const resolvedRiskEnvelopeSource = riskEnvelopeSource === 'explicit'
+    ? 'explicit'
+    : (['high', 'critical'].includes(riskEnvelope) ? 'elevated' : 'baseline');
+  const effectiveRisk = higherRisk(taskRisk, envelopeRisk);
   const inferredRiskTasks = tasks.filter((task) => task.riskAssessment?.source === 'inferred').map((task) => task.id);
   const projectWriteConflicts = plannedProjectWriteConflicts(tasks, continuity);
-  const executionMode = tasks.length <= 1
-    ? 'single-worker'
-    : maxWaveWidth > 1
-      ? 'parallel-mission'
-      : 'serial-mission';
 
   let taskClass = 'light';
-  if (taskRisk === 'critical') taskClass = 'consequential';
-  else if (taskRisk === 'high' || tasks.length >= 5 || waves.length >= 4) taskClass = 'heavy';
-  else if (taskRisk === 'medium' || tasks.length > 1 || projectWriteConflicts.length) taskClass = 'moderate';
+  if (effectiveRisk === 'critical') taskClass = 'consequential';
+  else if (effectiveRisk === 'high' || tasks.length >= 5 || waves.length >= 4) taskClass = 'heavy';
+  else if (effectiveRisk === 'medium' || tasks.length > 1 || projectWriteConflicts.length) taskClass = 'moderate';
+
+  const configuredMaxWorkers = workerLimit(project.workerPolicy?.maxWorkers, 2);
+  const structuralParallelism = Math.max(1, Math.min(configuredMaxWorkers, maxWaveWidth || 1));
+  let maxConcurrentWorkers = structuralParallelism;
+  if (tasks.length <= 1 || maxWaveWidth <= 1 || taskClass === 'consequential') maxConcurrentWorkers = 1;
+  else if (taskClass === 'heavy') maxConcurrentWorkers = Math.min(structuralParallelism, 2);
+  const executionMode = tasks.length <= 1
+    ? 'single-worker'
+    : maxConcurrentWorkers > 1
+      ? 'parallel-mission'
+      : 'serial-mission';
 
   const runtimeFeedbackCapabilities = project.runtimeFeedbackCapabilities || [];
   const validationNames = (project.validationCapabilities || []).map((capability) => capability?.name).filter(Boolean);
@@ -172,8 +235,10 @@ export function compileMissionExecutionStrategy({ tasks = [], waves = [], projec
   if (tasks.length > 1) reasons.push('multi-task');
   if (maxWaveWidth > 1) reasons.push('safe-parallel-wave');
   if (taskRisk !== 'low') reasons.push(`max-task-risk:${taskRisk}`);
+  if (resolvedRiskEnvelopeSource !== 'baseline') reasons.push(`${resolvedRiskEnvelopeSource}-risk-envelope:${riskEnvelope}`);
   if (inferredRiskTasks.length) reasons.push('runtime-inferred-task-risk');
   if (projectWriteConflicts.length) reasons.push('same-project-write-overlap');
+  if (maxConcurrentWorkers < structuralParallelism) reasons.push('risk-shaped-concurrency');
   if (runtimeFeedbackCapabilities.length) reasons.push('runtime-feedback-available');
   if (browserLikeValidationAvailable) reasons.push('browser-validation-available');
 
@@ -183,8 +248,16 @@ export function compileMissionExecutionStrategy({ tasks = [], waves = [], projec
     executionMode,
     maxWaveWidth,
     riskEnvelope,
+    riskEnvelopeSource: resolvedRiskEnvelopeSource,
     maxTaskRisk: taskRisk,
+    effectiveRisk,
     inferredRiskTasks,
+    concurrency: {
+      configuredMaxWorkers,
+      structuralParallelism,
+      maxConcurrentWorkers,
+      riskShaped: maxConcurrentWorkers < structuralParallelism
+    },
     coordination: {
       requiresCoordination: projectWriteConflicts.length > 0,
       plannedProjectWriteConflicts: projectWriteConflicts
