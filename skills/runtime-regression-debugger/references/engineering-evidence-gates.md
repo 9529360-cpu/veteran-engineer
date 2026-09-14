@@ -30,6 +30,8 @@ Start from the material invariant/semantic delta and ask what observation could 
 
 Typical mapping: pure decision logic -> unit/property; public contract -> schema/consumer compatibility; auth/tenant -> positive plus negative isolation; data migration -> mixed-version/resume/data checks; async/external effect -> duplicate/reorder/timeout-after-success; runtime/release -> exact artifact plus lifecycle/canary evidence. Prefer deterministic scheduling, fake clocks, controlled dependency outcomes, and explicit old/new fixtures over arbitrary sleeps. A surprising result is a reason to revisit ownership/assumptions before broadening the suite blindly. Use `scripts/validation_planner.py` only as a deterministic baseline.
 
+When `validation_planner.py` receives a risk outside its built-in baseline routes, `unmatched_risks` is a **coverage gap**, not a successful fallback. The planner returns `status: needs-repository-specific-proof` and a non-zero exit until that risk is mapped through repository-specific evidence/adversarial cases outside the baseline planner. Do not rename an unfamiliar risk to the nearest built-in label merely to obtain exit 0; prove the actual mechanism instead.
+
 ## Additional gates by risk surface
 
 ### Authorization / multi-tenancy
