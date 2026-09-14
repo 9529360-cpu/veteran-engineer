@@ -253,6 +253,35 @@ test('local worker receives a dispatch runtime namespace and randomized disposab
   }
 });
 
+test('worker output capture reports truncation instead of silently discarding evidence', async () => {
+  const root = await tempDir('veteran-worker-output-');
+  try {
+    const worktreePath = path.join(root, 'worktree');
+    await fs.mkdir(worktreePath, { recursive: true });
+    const adapter = new WorkerAdapter();
+    const result = await adapter.run({
+      project: localProject,
+      mission: { id: 'M1' },
+      task: localTask('OUTPUT'),
+      worktreePath,
+      packet: { protocol: 'veteran-worker-v1' },
+      packetPath: path.join(root, 'output-packet.json'),
+      config: {
+        type: 'custom',
+        command: process.execPath,
+        args: ['-e', "process.stdout.write('x'.repeat(2000123));process.stderr.write('err');"]
+      }
+    });
+    assert.equal(result.code, 0);
+    assert.equal(result.stdout.length, 2_000_000);
+    assert.deepEqual(result.outputCapture.stdout, { capturedChars: 2_000_000, totalChars: 2_000_123, truncated: true });
+    assert.equal(result.stderr, 'err');
+    assert.deepEqual(result.outputCapture.stderr, { capturedChars: 3, totalChars: 3, truncated: false });
+  } finally {
+    await cleanup(root);
+  }
+});
+
 test('broad write scope still rejects symlink traversal outside repository', async () => {
   const { root, repo } = await createGitRepo();
   try {
