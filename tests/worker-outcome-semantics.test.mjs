@@ -78,7 +78,7 @@ test('operator cancellation lands as cancelled with dedicated evidence and remai
     await fs.writeFile(worker, [
       "import fs from 'node:fs/promises';",
       `await fs.writeFile(${JSON.stringify(marker)}, 'ready\\n');`,
-      'await new Promise(() => {});'
+      'setInterval(() => {}, 1000);'
     ].join('\n'));
     const rt = await buildRuntime(fixture, { type: 'custom', command: process.execPath, args: [worker], timeoutMs: 10_000 });
     const planned = await planSingleTask(rt, 'CANCEL');
@@ -122,7 +122,7 @@ test('worker timeout remains failed but is classified separately from generic wo
   const fixture = await createGitRepo({ files: { 'src/a.txt': 'before\n' } });
   const worker = path.join(fixture.root, 'timeout-worker.mjs');
   try {
-    await fs.writeFile(worker, 'await new Promise(() => {});\n');
+    await fs.writeFile(worker, 'setInterval(() => {}, 1000);\n');
     const rt = await buildRuntime(fixture, { type: 'custom', command: process.execPath, args: [worker], timeoutMs: 250 });
     const planned = await planSingleTask(rt, 'TIMEOUT');
     const missionId = planned.mission.id;
