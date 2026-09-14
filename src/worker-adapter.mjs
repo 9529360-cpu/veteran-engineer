@@ -275,6 +275,8 @@ export class WorkerAdapter {
       const termination = running?.termination || claim.termination || null;
       return {
         taskKey,
+        missionId: claim.missionId,
+        taskId: claim.taskId,
         phase: running ? (termination ? 'terminating' : 'running') : (termination ? 'cancelling' : 'preparing'),
         pid: running?.child?.pid || null,
         claimedAt: claim.claimedAt,
@@ -294,6 +296,8 @@ export class WorkerAdapter {
     const ownsPacketPath = !packetPath;
     const claimedAt = nowIso();
     const claim = {
+      missionId: mission.id,
+      taskId: task.id,
       claimedAt,
       worktreePath: path.resolve(worktreePath),
       packetPath: packetPath ? path.resolve(packetPath) : null,
@@ -464,6 +468,18 @@ export class WorkerAdapter {
     } catch {
       // Best effort only; the runtime still records the worker outcome and reconciliation state.
     }
+  }
+
+  cancelMission(missionId) {
+    const tasks = [...this.claims.entries()]
+      .filter(([, claim]) => claim.missionId === missionId)
+      .map(([taskKey, claim]) => ({ taskKey, taskId: claim.taskId, accepted: this.cancel(taskKey) }));
+    return {
+      missionId,
+      requested: tasks.length,
+      accepted: tasks.filter((item) => item.accepted).length,
+      tasks
+    };
   }
 
   cancel(taskKey) {
