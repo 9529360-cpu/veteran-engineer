@@ -149,6 +149,7 @@ export function buildCapabilitySnapshot({ project, mission, tasks, liveSourceIde
   const waveIds = mission.waves?.[mission.nextWaveIndex] || [];
   const waveTasks = tasks.filter((task) => waveIds.includes(task.id));
   const latestFeedback = mission.runtimeFeedback?.latestRound || null;
+  const feedbackSourceBound = latestFeedback ? latestFeedback.commitSha === liveSourceIdentity.head : false;
   const activeLeases = Object.values(state.tasks || {})
     .filter((task) => task.capabilityLease && !TERMINAL_TASK_STATUSES.has(task.status))
     .filter((task) => leaseVisibleToSnapshot(task, project, mission))
@@ -174,7 +175,8 @@ export function buildCapabilitySnapshot({ project, mission, tasks, liveSourceIde
     })),
     runtimeFeedback: latestFeedback ? {
       sourceHead: latestFeedback.commitSha || null,
-      sourceBoundToLiveHead: latestFeedback.commitSha === liveSourceIdentity.head,
+      sourceBoundToLiveHead: feedbackSourceBound,
+      sourceBoundToCurrentMissionHead: feedbackSourceBound,
       scope: latestFeedback.scope || 'wave',
       passed: latestFeedback.passed === true,
       evidenceId: latestFeedback.aggregateEvidenceId || null
