@@ -1,181 +1,86 @@
 # Subscription, Billing, and Entitlements Product Engineering
 
-Use this reference when a product sells recurring access, trials, seats, usage, add-ons, licenses, quotas, or other commercial entitlements whose lifecycle crosses product state, payment/provider state, and authorization.
+Use this when recurring access, trials, seats, usage, add-ons, licenses, quotas, or similar commercial rights cross product state, payment/provider state, and authorization.
 
-The product contract is:
+The contract is:
 
-`commercial intent -> scoped subscription mutation -> versioned quote/catalog decision -> provider/payment transition -> durable subscription truth -> entitlement projection -> user-visible access -> reconciliation/recovery`
+`commercial intent -> scoped subscription mutation -> versioned catalog/quote decision -> provider/payment transition -> durable subscription truth -> entitlement projection -> user-visible access -> reconciliation/recovery`
 
-Do not collapse this into “the payment succeeded” or “the provider webhook arrived.” Subscription state, monetary truth, provider state, and current product access are related but distinct authorities.
+Do not collapse this into “payment succeeded” or “webhook arrived.” Subscription lifecycle, monetary truth, provider state, and product access are related but distinct authorities. For exact money movement, ledger conservation, refunds, settlement, and irreversible monetary effects, use `payments-ledger-integrity.md`; this reference owns the commercial-access lifecycle around that monetary authority.
 
-For exact money movement, ledger conservation, refunds, settlement, and irreversible monetary effects, also read `payments-ledger-integrity.md`. This reference owns the commercial-access lifecycle around that monetary authority.
+## Keep commercial authorities singular
 
-## Separate the authorities
+Recover the owner of each fact before changing code:
 
-Name the owner of each fact before changing code:
+- catalog: plan/price/currency/interval/feature/quota/add-on/seat semantics and versioning;
+- subscription: durable account-scoped lifecycle and effective-time transitions;
+- payment/ledger: charge, invoice, credit, refund, settlement, balance, and monetary finality;
+- provider projection: scoped external object/event state used as evidence, not automatic product truth;
+- entitlement: current product-access projection derived from approved subscription/add-on/seat state;
+- metering: accepted usage facts and aggregation windows for usage-based billing.
 
-- **Catalog authority** owns plan, price, currency, billing interval, feature, quota, add-on, seat, and migration semantics.
-- **Subscription authority** owns the durable account-scoped lifecycle: trialing, active, past-due, grace, canceling, canceled, expired, and domain-specific equivalents.
-- **Payment/ledger authority** owns charge, invoice, credit, refund, settlement, balance, and monetary finality.
-- **Provider authority** owns the external provider object and its accepted/failed/pending state; provider state is evidence about the external system, not automatically internal product truth.
-- **Entitlement authority** owns the current product-access projection derived from approved subscription/add-on/seat state.
-- **Metering authority** owns accepted usage facts and aggregation windows used for usage-based billing.
-
-A pricing UI, checkout return page, cached plan name, provider webhook, invoice status, or feature flag is not a substitute for these authorities.
+A pricing UI, checkout return page, cached plan label, provider webhook, invoice status, or feature flag is not a substitute for those owners. Do not create a second entitlement truth merely to make UI or provider integration convenient.
 
 ## Stable identity before retries
 
-Use stable internal identity independent of provider request attempts:
+Keep stable internal account/subscription identity independent of provider attempts. Commercial mutations such as upgrade, downgrade, cancel, resume, seat change, or add-on change need stable request/idempotency identity. Preserve scoped provider references, billing-period/effective-time identity, entitlement generation, and usage-event identity where they affect correctness.
 
-- tenant/account id;
-- internal subscription id;
-- change-request/idempotency id for upgrade, downgrade, cancel, resume, seat change, and add-on mutation;
-- provider customer/subscription/invoice ids as scoped external references;
-- billing-period identity and effective-time boundaries;
-- entitlement generation/version;
-- usage event and meter identity.
+If a provider mutation times out after acceptance may have occurred, reconcile the existing request/provider identity before issuing another logical mutation. A new retry transport attempt must not silently become a second upgrade, cancellation, charge, or entitlement transition.
 
-If a provider mutation times out after acceptance may have occurred, reconcile by stable request/provider identity before issuing another logical mutation.
+## Catalog and lifecycle are versioned contracts
 
-## Catalog and pricing are versioned contracts
+Do not let a mutable “current plan” record rewrite history. Bind durable subscriptions/quotes to explicit immutable or time-bounded catalog identity, keep old versions interpretable during coexistence, and separate marketing labels from plan/price/feature authority.
 
-Do not let a mutable “current plan” row silently rewrite history.
+Define trial start/end, conversion, payment-pending/failed/unknown behavior, renewal evidence, grace/dunning, expiration, cancellation/resume, and upgrade/downgrade effective time as real lifecycle states. Delayed workers and duplicate/out-of-order provider events must not extend trials forever, resurrect cancelled subscriptions, revoke resumed access, or apply a commercial change twice.
 
-- Bind subscriptions and quotes to explicit plan/price versions or immutable identifiers.
-- Preserve old versions long enough to interpret grandfathered subscriptions, invoices, queued jobs, and audit history.
-- Separate display names from durable plan/price identity.
-- Define currency, interval, unit, rounding, and approved tax-treatment inputs explicitly; delegate exact monetary calculation/accounting to the payment authority.
-- Define feature/limit mapping separately from marketing labels.
-- For price or packaging migrations, define grandfathering, forced migration, opt-in migration, and removal conditions.
+For plan changes, a preview/quote is not the final invoice. Bind the intended change to plan/version, quantity, period, currency, account/subscription, and request identity. Reconcile provider/payment outcome before advancing the durable subscription state whose entitlements depend on it.
 
-## Trials are real lifecycle states
+Downgrade semantics must define what happens when current seats, usage, data, or feature state exceed the new plan. Do not delete customer data merely because access shrank unless a separate safe lifecycle explicitly owns that deletion.
 
-Define trial eligibility, start/end instant, payment-method requirements, trial entitlements, conversion trigger, payment-pending/failed/unknown behavior, extension authority, and terminal behavior at expiration.
+## Seats and entitlements
 
-Do not grant an endless trial because a delayed worker never executed the expiry transition.
+Purchased quantity and assignment are distinct tenant-scoped facts. Concurrent assignment must preserve quantity invariants; downgrade behavior must define what happens to excess assignments.
 
-## Activation and renewal
+Entitlements are a projection with one derivation owner. Derive them from authoritative subscription/add-on/seat state, carry generation/version information to reject stale updates, and define grant/revoke effective time, cache/session freshness, degraded behavior, and old-client compatibility. Re-authorize active sessions when revocation matters; login-time claims alone are not durable access authority.
 
-Separate:
+If more than one system can mutate entitlements, establish one owner or explicit reconciliation. “Last webhook wins” is not an authority model.
 
-`billing attempt -> monetary outcome -> subscription transition -> entitlement effect`
+## Usage metering
 
-A provider-created invoice does not necessarily mean paid access. A successful payment attempt does not mean every entitlement projection/cache/session has converged.
+Usage events need stable tenant/account/subscription/meter/event identity, unit, aggregation rule, window/timezone, late/out-of-order policy, correction semantics, billing cutoff, retention, and auditability.
 
-For renewal, define cycle boundary/timezone, evidence required for renewal, dunning ownership, grace access, final expiration/revocation, and late-payment recovery.
+Producer retry must not increase billable quantity unless duplicates are intentionally billable. Period close must define whether late usage is still billable, corrected, carried forward, or rejected. Corrections should be auditable inputs/compensation rather than unexplained history rewrite.
 
-## Upgrade, downgrade, and proration
+## Provider events and reconciliation
 
-State exactly when a commercial change becomes effective: immediately, next period, after payment, after approval, or after another domain condition.
+Authenticate callbacks, scope event/object identity to the correct provider/account, deduplicate replay, tolerate delay and reordering, and never regress newer internal state from an older event. Keep unknown outcomes explicit.
 
-For prorated changes:
+Webhooks can be missed, duplicated, reordered, or delayed, so reconciliation is a first-class owner. Compare bounded internal subscription/payment references/provider state/entitlement generation/access and record drift such as provider-active/internal-expired, payment-unresolved beyond allowed grace, stale entitlement projection, seat mismatch, wrong-account provider reference, or usage aggregate mismatch.
 
-- a preview/quote is not the final invoice;
-- bind quote inputs to plan versions, quantity, currency, period bounds, and scoped customer/subscription identity;
-- handle timeout-after-provider-acceptance without duplicating the change;
-- reconcile final invoice/credit against the intended change;
-- preserve old/new entitlement timing explicitly.
+Repair drift through idempotent domain transitions instead of direct row edits that erase the history needed to explain the mismatch.
 
-Downgrades need explicit policy when current usage exceeds the new plan. Define read-only, no-new-creation, scheduled cleanup, or next-cycle behavior. Never delete customer data merely because an entitlement shrank unless the product contract explicitly defines a safe lifecycle.
+## Compatibility, rollback, and observability
 
-## Cancellation, resume, and grace periods
+Assume old/new clients, workers, webhook schemas, catalog identifiers, queued work, and provider integrations can overlap. Keep stable internal subscription identity while external provider or catalog identifiers migrate; evolve contracts additively or through explicit versions until old readers and queued work are retired.
 
-Distinguish immediate cancellation, cancel-at-period-end, non-renewal, provider cancellation, internal effective cancellation, resume-before-end, involuntary cancellation after dunning/grace, and account deletion.
+Code rollback cannot undo a captured charge, issued invoice/credit, provider-side cancellation, billing message already sent, or access already granted/revoked and consumed. Separate artifact rollback from monetary/domain compensation and reconciliation.
 
-A cancel request should have stable identity and an effective timestamp. Stale workers or duplicate provider events must not resurrect a canceled subscription or revoke a resumed one.
-
-Grace periods are product policy, not a timing accident. Define access during grace, retry boundaries, visible state, and terminal behavior.
-
-## Seats, licenses, and account scope
-
-Purchased quantity and assigned members/devices are different facts.
-
-- Scope quantities and assignments to the correct tenant/account/product.
-- Define who may assign/revoke seats.
-- Prevent concurrent assignment from violating quantity invariants.
-- Define downgrade behavior when current assignments exceed the new quantity.
-- Re-authorize active sessions after entitlement revocation; do not rely only on login-time claims.
-- Keep cache keys and provider references scoped by tenant/account and entitlement generation.
-
-## Entitlements are a projection with one derivation owner
-
-Entitlements answer “what can this principal/account do now?” Derive them from authoritative subscription/add-on/seat state rather than mutating them independently from every webhook or UI flow.
-
-Carry enough generation/version information to reject stale updates. Define grant/revoke effective time, source identity, cache freshness/invalidation, degraded behavior, session/token refresh, and old-client compatibility.
-
-If multiple systems can write entitlements, either establish one mutation owner or define explicit reconciliation. “Last webhook wins” is not an authority model.
-
-## Usage metering is an accounting-adjacent data pipeline
-
-For every meter define tenant/account/subscription/meter scope, stable event identity, unit, aggregation rule, event-time versus processing-time behavior, period/window timezone, late/out-of-order event policy, corrections, billing cutoff, retention, and auditability.
-
-Do not make retry of a usage producer increase billable quantity unless duplicate delivery is intentionally billable.
-
-## Provider webhooks are asynchronous evidence
-
-- Authenticate callbacks and protect secrets.
-- Scope event/object ids to the intended account/provider context.
-- Deduplicate replay and tolerate out-of-order/delayed delivery.
-- Compare provider object version/timestamp when meaningful.
-- Never regress newer internal state from an older event.
-- Make handlers retry-safe and keep unknown outcomes explicit.
-
-A checkout redirect or webhook should normally drive a durable/reconciled transition; it should not bypass trusted subscription/entitlement authority because it arrived from a successful provider path.
-
-## Reconciliation is a first-class owner
-
-Webhooks can be missed, duplicated, reordered, or delayed. Periodically reconcile bounded authoritative sets:
-
-`internal subscription -> provider subscription/invoice/payment refs -> expected entitlement generation -> observed entitlement/access`
-
-Record drift explicitly: provider-active/internal-expired, internal-active/payment-unresolved beyond allowed grace, entitlement projection stale, seat quantity mismatch, missing/cross-account provider reference, or usage aggregate mismatch.
-
-Repair through idempotent domain transitions. Avoid silent direct row edits that erase the history needed to explain drift.
-
-## Mixed versions and migrations
-
-- Evolve subscription/webhook/event schemas additively or through explicit versions.
-- Keep old catalog identifiers interpretable until all readers and queued work are migrated.
-- During provider migration, keep stable internal subscription identity and define dual-read/event reconciliation windows.
-- Do not let provider-specific ids become the only product identity.
-- Roll out new entitlement capabilities so old clients fail predictably rather than interpreting unknown access as free access.
-
-## Rollback boundaries
-
-Code rollback cannot undo a captured charge, issued invoice/credit, provider-side cancellation, billing notification already sent, or access already granted/revoked and used.
-
-Separate artifact rollback from domain compensation/reconciliation. Define forward repair for external effects before risky migrations or bulk subscription operations.
-
-## Observability
-
-Correlate by stable identities:
-
-`account -> change request -> quote/catalog version -> provider object/attempt -> invoice/payment evidence -> subscription transition -> entitlement generation -> user-visible access`
-
-Track subscription/payment/provider/entitlement drift, webhook lag/duplicates/order, dunning/grace aging, entitlement propagation lag, seat conflicts, late/duplicate/rejected usage, reconciliation repairs, and unresolved unknown outcomes.
-
-Redact payment credentials, provider secrets, raw signed URLs, and unnecessary personal/invoice content.
+Correlate stable identities from account and change request through catalog/quote, provider/payment evidence, subscription transition, entitlement generation, and visible access. Observe drift, webhook delay/replay/order, grace aging, entitlement propagation, seat conflicts, usage duplicates/latency/corrections, reconciliation repairs, and unresolved unknown outcomes. Redact payment credentials, provider secrets, signed URLs, and unnecessary personal/invoice content.
 
 ## Validation shape
 
-High-value cases include:
+Use tests that can falsify the changed mechanism, such as:
 
-- duplicate provider event;
-- out-of-order webhook;
+- duplicate/out-of-order provider event;
 - timeout after provider accepted a plan change;
-- trial expiration/conversion failure;
+- trial expiry/conversion failure;
 - cancel-at-period-end plus resume-before-end;
 - payment failure through grace and late recovery;
-- immediate upgrade with proration;
-- next-cycle downgrade with entitlement timing;
+- upgrade/downgrade effective-time and proration handoff;
 - concurrent seat assignment at the limit;
-- late/duplicate metered usage;
+- late/duplicate usage;
 - cross-tenant subscription/provider-reference rejection;
-- provider reconciliation drift;
-- mixed old/new plan identifiers during migration.
+- provider/subscription/entitlement reconciliation drift;
+- mixed old/new catalog or provider identities.
 
-The strongest oracle is not “HTTP 200.” It is that catalog, subscription, payment evidence, provider state, entitlement projection, and user-visible access agree after retries, replay, delay, migration, and reconciliation.
-
-## Common failed approaches
-
-Avoid treating a checkout success page as subscription authority; toggling entitlements directly from every provider webhook; using provider ids as unscoped internal identity; overwriting current plan/price and losing grandfathered semantics; retrying unknown provider mutations with a new logical identity; letting cached session claims preserve revoked access indefinitely; billing duplicate usage after producer retry; conflating cancel request/provider cancel/entitlement revoke times; deleting customer data as an implicit downgrade mechanism; or calling the provider dashboard the ledger/internal subscription truth.
+The useful oracle is not “HTTP 200.” It is that scoped catalog/subscription/payment evidence/provider state/entitlement projection and user-visible access converge correctly after retry, replay, delay, migration, and reconciliation.
