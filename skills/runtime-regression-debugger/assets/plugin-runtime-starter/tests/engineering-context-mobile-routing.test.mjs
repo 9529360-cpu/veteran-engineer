@@ -22,7 +22,7 @@ async function exists(target) {
 
 function runRouter(signals) {
   for (const executable of ['python3', 'python']) {
-    const result = spawnSync(executable, [router, '--signals', signals, '--max', '7', '--json'], {
+    const result = spawnSync(executable, [router, '--signals', signals, '--max', '8', '--json'], {
       cwd: root,
       encoding: 'utf8'
     });
@@ -48,6 +48,7 @@ test('engineering context router treats mobile engineering as a first-class prod
   assert.ok(paths.includes('references/mobile-product-engineering.md'));
   assert.ok(paths.includes('references/full-stack-product-engineering.md'));
   assert.ok(paths.includes('references/frontend-product-patterns.md'));
+  assert.ok(paths.includes('references/notification-delivery-product-engineering.md'));
   assert.ok(paths.includes('references/async-edge-job-patterns.md'));
   assert.ok(paths.includes('references/distributed-systems-consistency.md'));
 
