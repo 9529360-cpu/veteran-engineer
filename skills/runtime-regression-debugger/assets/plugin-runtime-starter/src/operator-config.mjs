@@ -59,6 +59,7 @@ function validatePolicyScope(value, pathValue) {
     for (const key of ['enabled', 'allowUnconfinedCustomWorkers', 'allowRawValidation']) {
       assertBooleanField(workerPolicy, key, `${pathValue}.workerPolicy`);
     }
+    assertStringArrayField(workerPolicy, 'capabilities', `${pathValue}.workerPolicy`);
     if (workerPolicy.maxWorkers !== undefined && (!Number.isInteger(workerPolicy.maxWorkers) || workerPolicy.maxWorkers < 1)) {
       throw invalidOperatorConfig(`${pathValue}.workerPolicy.maxWorkers`, 'positive integer', workerPolicy.maxWorkers);
     }
@@ -103,6 +104,7 @@ export function projectPolicy(operatorConfig, repoPath, remoteUrl = null) {
     workerPolicy: {
       enabled: false,
       maxWorkers: 2,
+      capabilities: [],
       allowUnconfinedCustomWorkers: false,
       allowRawValidation: false,
       ...(defaults.workerPolicy || {}),
