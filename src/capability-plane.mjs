@@ -64,7 +64,7 @@ function resourceIdentity(resource, context = {}) {
 }
 
 export function bindRuntimeResources(resources = [], context = {}) {
-  return resources.map((resource) => ({ ...resource, identity: resourceIdentity(resource, context) }));
+  return resources.map((resource) => resource.identity ? { ...resource } : ({ ...resource, identity: resourceIdentity(resource, context) }));
 }
 
 export function runtimeResourceConflicts(left = [], right = [], leftContext = {}, rightContext = {}) {
