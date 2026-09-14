@@ -47,6 +47,14 @@ function assertValidationCapabilitiesField(scope, key, pathValue) {
   }
 }
 
+function normalizedStringArray(values = []) {
+  return [...new Set(values.map((value) => value.trim()))];
+}
+
+function normalizedValidationCapabilities(values = []) {
+  return values.map((capability) => ({ ...capability, name: capability.name.trim() }));
+}
+
 function validateRuntimeFeedbackPolicy(raw, pathValue) {
   if (raw === undefined || raw === null) return null;
   if (!isRecord(raw)) throw invalidOperatorConfig(pathValue, 'object', raw);
@@ -111,28 +119,33 @@ export async function loadOperatorConfig({ stateRoot, configPath = process.env.V
 export function projectPolicy(operatorConfig, repoPath, remoteUrl = null) {
   const { defaults, projects } = validateOperatorConfig(operatorConfig || {});
   const specific = projects[repoPath] || projects[repoPath.replaceAll('\\', '/')] || (remoteUrl ? projects[remoteUrl] : null) || {};
+  const validationCapabilities = normalizedValidationCapabilities(specific.validationCapabilities || defaults.validationCapabilities || []);
+  const runtimeFeedbackCapabilities = normalizedStringArray(specific.runtimeFeedbackCapabilities || defaults.runtimeFeedbackCapabilities || []);
+  const requiredValidationCapabilities = normalizedStringArray(specific.requiredValidationCapabilities || defaults.requiredValidationCapabilities || []);
+  const workerPolicy = {
+    enabled: false,
+    maxWorkers: 2,
+    capabilities: [],
+    allowUnconfinedCustomWorkers: false,
+    allowRawValidation: false,
+    ...(defaults.workerPolicy || {}),
+    ...(specific.workerPolicy || {})
+  };
+  workerPolicy.capabilities = normalizedStringArray(workerPolicy.capabilities || []);
   return {
-    validationCapabilities: specific.validationCapabilities || defaults.validationCapabilities || [],
-    runtimeFeedbackCapabilities: specific.runtimeFeedbackCapabilities || defaults.runtimeFeedbackCapabilities || [],
+    validationCapabilities,
+    runtimeFeedbackCapabilities,
     runtimeFeedbackPolicy: {
       autoRepair: false,
       maxRepairAttempts: 1,
       ...(defaults.runtimeFeedbackPolicy || {}),
       ...(specific.runtimeFeedbackPolicy || {})
     },
-    workerPolicy: {
-      enabled: false,
-      maxWorkers: 2,
-      capabilities: [],
-      allowUnconfinedCustomWorkers: false,
-      allowRawValidation: false,
-      ...(defaults.workerPolicy || {}),
-      ...(specific.workerPolicy || {})
-    },
+    workerPolicy,
     plannerProvider: specific.plannerProvider || defaults.plannerProvider || null,
     reviewerProvider: specific.reviewerProvider || defaults.reviewerProvider || null,
     requireSemanticReview: specific.requireSemanticReview ?? defaults.requireSemanticReview ?? false,
     requireValidation: specific.requireValidation ?? defaults.requireValidation ?? false,
-    requiredValidationCapabilities: specific.requiredValidationCapabilities || defaults.requiredValidationCapabilities || []
+    requiredValidationCapabilities
   };
 }
