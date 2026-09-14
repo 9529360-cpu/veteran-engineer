@@ -26,11 +26,21 @@ function safeRuntimeNamespace(value) {
     .slice(0, 96) || 'task';
 }
 
-async function createLocalRuntimeTempDir(runtimeNamespace) {
+async function createLocalRuntimeProfile(runtimeNamespace) {
   const prefix = path.join(os.tmpdir(), `veteran-engineer-${safeRuntimeNamespace(runtimeNamespace)}-`);
-  const runtimeTempDir = await fs.mkdtemp(prefix);
-  await fs.chmod(runtimeTempDir, 0o700).catch(() => {});
-  return runtimeTempDir;
+  const root = await fs.mkdtemp(prefix);
+  await fs.chmod(root, 0o700).catch(() => {});
+  const profile = {
+    root,
+    tmp: path.join(root, 'tmp'),
+    home: path.join(root, 'home'),
+    config: path.join(root, 'config'),
+    cache: path.join(root, 'cache'),
+    data: path.join(root, 'data'),
+    state: path.join(root, 'state')
+  };
+  await Promise.all(Object.values(profile).slice(1).map((dir) => fs.mkdir(dir, { recursive: true, mode: 0o700 })));
+  return profile;
 }
 
 function createOutputCapture() {
@@ -321,7 +331,7 @@ export class WorkerAdapter {
     const startedAtMs = Date.now();
     let resolvedPacketPath = null;
     let runtimeNamespace = null;
-    let runtimeTempDir = null;
+    let runtimeProfile = null;
     let running = null;
     let completed = false;
     try {
@@ -330,7 +340,7 @@ export class WorkerAdapter {
       const dispatchIdentity = path.basename(resolvedPacketPath, path.extname(resolvedPacketPath));
       runtimeNamespace = packet?.runtimeIsolation?.namespace || `${mission.id}:${task.id}:${dispatchIdentity}`;
       claim.runtimeNamespace = runtimeNamespace;
-      runtimeTempDir = config.type === 'container' ? null : await createLocalRuntimeTempDir(runtimeNamespace);
+      runtimeProfile = config.type === 'container' ? null : await createLocalRuntimeProfile(runtimeNamespace);
 
       if (claim.termination?.reason === 'operator-cancel') {
         completed = true;
@@ -362,10 +372,20 @@ export class WorkerAdapter {
       for (const key of SAFE_ENV_KEYS) if (process.env[key] !== undefined) env[key] = process.env[key];
       for (const key of config.envAllowlist || []) if (process.env[key] !== undefined) env[key] = process.env[key];
       if (config.type !== 'container') Object.assign(env, config.env || {});
-      if (runtimeTempDir) {
-        env.TMP = runtimeTempDir;
-        env.TEMP = runtimeTempDir;
-        env.TMPDIR = runtimeTempDir;
+      if (runtimeProfile) {
+        env.TMP = runtimeProfile.tmp;
+        env.TEMP = runtimeProfile.tmp;
+        env.TMPDIR = runtimeProfile.tmp;
+      }
+      if (runtimeProfile && config.type === 'custom') {
+        env.HOME = runtimeProfile.home;
+        env.USERPROFILE = runtimeProfile.home;
+        env.XDG_CONFIG_HOME = runtimeProfile.config;
+        env.XDG_CACHE_HOME = runtimeProfile.cache;
+        env.XDG_DATA_HOME = runtimeProfile.data;
+        env.XDG_STATE_HOME = runtimeProfile.state;
+        env.APPDATA = runtimeProfile.config;
+        env.LOCALAPPDATA = runtimeProfile.cache;
       }
       env.VETERAN_TASK_PACKET = resolvedPacketPath;
       env.VETERAN_WORKTREE = worktreePath;
@@ -441,7 +461,7 @@ export class WorkerAdapter {
       if (!completed && running) this.#terminateRunning(running, 'adapter-error');
       this.running.delete(task.key);
       this.claims.delete(task.key);
-      if (runtimeTempDir) await fs.rm(runtimeTempDir, { recursive: true, force: true }).catch(() => {});
+      if (runtimeProfile) await fs.rm(runtimeProfile.root, { recursive: true, force: true }).catch(() => {});
       if (ownsPacketPath && resolvedPacketPath) await fs.rm(resolvedPacketPath, { force: true }).catch(() => {});
     }
   }
