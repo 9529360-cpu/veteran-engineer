@@ -7,6 +7,7 @@ import { buildContainerInvocation, validateContainerWorkerConfig } from './conta
 
 const SAFE_ENV_KEYS = ['PATH', 'HOME', 'USERPROFILE', 'TMP', 'TEMP', 'TMPDIR', 'SYSTEMROOT', 'COMSPEC', 'LANG', 'LC_ALL', 'SHELL'];
 const MAX_ENV_NAMES = 64;
+const MAX_CAPTURED_OUTPUT_CHARS = 2_000_000;
 const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const FORBIDDEN_CODEX_FLAGS = new Set([
   '--dangerously-bypass-approvals-and-sandbox', '--yolo', '--dangerously-bypass-hook-trust',
@@ -30,6 +31,32 @@ async function createLocalRuntimeTempDir(runtimeNamespace) {
   const runtimeTempDir = await fs.mkdtemp(prefix);
   await fs.chmod(runtimeTempDir, 0o700).catch(() => {});
   return runtimeTempDir;
+}
+
+function createOutputCapture() {
+  return { value: '', totalChars: 0, truncated: false };
+}
+
+function appendOutput(capture, chunk) {
+  const text = String(chunk);
+  capture.totalChars += text.length;
+  capture.value += text;
+  if (capture.value.length > MAX_CAPTURED_OUTPUT_CHARS) {
+    capture.value = capture.value.slice(-MAX_CAPTURED_OUTPUT_CHARS);
+    capture.truncated = true;
+  }
+}
+
+function outputCaptureSummary(capture) {
+  return {
+    capturedChars: capture.value.length,
+    totalChars: capture.totalChars,
+    truncated: capture.truncated
+  };
+}
+
+function emptyOutputCaptureSummary() {
+  return { capturedChars: 0, totalChars: 0, truncated: false };
 }
 
 function pathInside(parentPath, candidatePath) {
@@ -111,6 +138,7 @@ function preSpawnCancellationResult({ startedAt, startedAtMs, packetPath, runtim
     signal: null,
     stdout: '',
     stderr: '',
+    outputCapture: { stdout: emptyOutputCaptureSummary(), stderr: emptyOutputCaptureSummary() },
     startedAt,
     endedAt: nowIso(),
     durationMs: Math.max(0, Date.now() - startedAtMs),
@@ -354,12 +382,12 @@ export class WorkerAdapter {
       if (config.stdinMode === 'codex-prompt') child.stdin.end(codexPrompt(packet));
       else if (config.stdin !== undefined) child.stdin.end(String(config.stdin));
       else child.stdin.end();
-      let stdout = '';
-      let stderr = '';
+      const stdoutCapture = createOutputCapture();
+      const stderrCapture = createOutputCapture();
       child.stdout.setEncoding('utf8');
       child.stderr.setEncoding('utf8');
-      child.stdout.on('data', (chunk) => { stdout += chunk; if (stdout.length > 2_000_000) stdout = stdout.slice(-2_000_000); });
-      child.stderr.on('data', (chunk) => { stderr += chunk; if (stderr.length > 2_000_000) stderr = stderr.slice(-2_000_000); });
+      child.stdout.on('data', (chunk) => appendOutput(stdoutCapture, chunk));
+      child.stderr.on('data', (chunk) => appendOutput(stderrCapture, chunk));
       const effectiveTimeoutMs = timeoutMs || config.timeoutMs || 900_000;
       const outcome = await new Promise((resolve, reject) => {
         const timer = setTimeout(() => this.#terminateRunning(running, 'timeout'), effectiveTimeoutMs);
@@ -379,8 +407,12 @@ export class WorkerAdapter {
       completed = true;
       return {
         ...outcome,
-        stdout,
-        stderr,
+        stdout: stdoutCapture.value,
+        stderr: stderrCapture.value,
+        outputCapture: {
+          stdout: outputCaptureSummary(stdoutCapture),
+          stderr: outputCaptureSummary(stderrCapture)
+        },
         startedAt,
         endedAt: nowIso(),
         durationMs: Math.max(0, Date.now() - startedAtMs),
