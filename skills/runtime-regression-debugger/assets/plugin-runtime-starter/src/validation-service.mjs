@@ -10,6 +10,7 @@ import {
 } from './product-validation-runner.mjs';
 import { normalizeValidationArtifacts, collectValidationArtifacts } from './validation-artifact-collector.mjs';
 import { normalizeBrowserValidation, runBrowserValidation } from './browser-validation-provider.mjs';
+import { BrowserValidationSessionManager } from './browser-validation-session-manager.mjs';
 import { CredentialBroker } from './credential-broker.mjs';
 import { normalizeObservabilityValidation, runObservabilityValidation } from './observability-validation-provider.mjs';
 import { LiveValidationSessionManager } from './live-validation-session-manager.mjs';
@@ -79,8 +80,31 @@ function appendResultError(result, message) {
   };
 }
 
+function browserFallbackSession(attempt, liveSession) {
+  if (!attempt?.used) {
+    return liveSession
+      ? { mode: 'ephemeral', active: false, reason: attempt?.reason || 'browser-session-disabled' }
+      : { mode: 'ephemeral', active: false, reason: 'persistent-live-service-required' };
+  }
+  return {
+    mode: 'ephemeral-fallback',
+    active: false,
+    fallbackReason: attempt.errorCode || 'BROWSER_SESSION_FAILED',
+    fallbackMessage: String(attempt.message || '').slice(0, 500)
+  };
+}
+
 export class ValidationService {
-  constructor({ store, projectService, missionService, worktreeManager, evidenceService, credentialBroker = null, liveSessionManager = null }) {
+  constructor({
+    store,
+    projectService,
+    missionService,
+    worktreeManager,
+    evidenceService,
+    credentialBroker = null,
+    liveSessionManager = null,
+    browserSessionManager = null
+  }) {
     this.store = store;
     this.projectService = projectService;
     this.missionService = missionService;
@@ -88,6 +112,7 @@ export class ValidationService {
     this.evidenceService = evidenceService;
     this.credentialBroker = credentialBroker || new CredentialBroker();
     this.liveSessionManager = liveSessionManager || new LiveValidationSessionManager({ store });
+    this.browserSessionManager = browserSessionManager || new BrowserValidationSessionManager();
   }
 
   async capabilities({ projectId }) {
@@ -96,7 +121,16 @@ export class ValidationService {
   }
 
   async releaseRuntimeFeedbackSessions({ missionId, reason = 'mission-finished' } = {}) {
-    return this.liveSessionManager.releaseMission({ missionId, reason });
+    const browserReleased = await this.browserSessionManager.releaseMission({ missionId, reason });
+    const liveReleased = await this.liveSessionManager.releaseMission({ missionId, reason });
+    liveReleased.browserSessionsReleased = browserReleased.length;
+    return liveReleased;
+  }
+
+  async releaseAllRuntimeFeedbackSessions({ reason = 'runtime-cleanup' } = {}) {
+    const browser = await this.browserSessionManager.releaseAll({ reason });
+    const live = await this.liveSessionManager.releaseAll({ reason });
+    return { browser, live };
   }
 
   async run({
@@ -265,10 +299,29 @@ export class ValidationService {
         } else if (selected.browser) {
           try {
             const browserCwd = await resolveWorktreeCwd(wt, selected.browser.cwd, 'Browser provider');
-            browserSummary = await runBrowserValidation(selected.browser, {
-              cwd: browserCwd,
-              serviceReadinessUrl: selected.service?.readiness?.url || null
-            });
+            const sessionAttempt = purpose === 'runtime-feedback' && liveSession && selected.browser.session
+              ? await this.browserSessionManager.observe({
+                  projectId,
+                  missionId,
+                  capability: selected.name,
+                  browser: selected.browser,
+                  cwd: browserCwd,
+                  serviceReadinessUrl: selected.service?.readiness?.url || null,
+                  serviceSessionId: liveSession.sessionId,
+                  sourceHead: commitSha
+                })
+              : { used: false, reason: selected.browser.session ? 'persistent-live-service-required' : 'browser-session-disabled' };
+            if (sessionAttempt.used && sessionAttempt.ok) {
+              browserSummary = sessionAttempt.result;
+            } else {
+              browserSummary = await runBrowserValidation(selected.browser, {
+                cwd: browserCwd,
+                serviceReadinessUrl: selected.service?.readiness?.url || null
+              });
+              if (purpose === 'runtime-feedback') {
+                browserSummary = { ...browserSummary, session: browserFallbackSession(sessionAttempt, liveSession) };
+              }
+            }
             result = {
               code: browserSummary.passed ? 0 : 1,
               signal: null,
@@ -320,9 +373,18 @@ export class ValidationService {
         } else if (!liveSourceCheck) {
           liveSourceCheck = finalSourceCheck;
         }
+        const keepLive = liveSession.active === true && finalSourceCheck.ok;
+        if (!keepLive && selected.browser?.session) {
+          await this.browserSessionManager.releaseCapability({
+            projectId,
+            missionId,
+            capability: selected.name,
+            reason: finalSourceCheck.ok ? 'live-service-released' : 'source-drift'
+          });
+        }
         liveSessionFinish = await this.liveSessionManager.finish({
           sessionId: liveSession.sessionId,
-          keepAlive: liveSession.active === true && finalSourceCheck.ok,
+          keepAlive: keepLive,
           reason: finalSourceCheck.ok ? null : 'source-drift'
         });
       } else if (serviceRun) {

@@ -107,9 +107,10 @@ export async function createVeteranApp({
 
   async function cleanupRuntime(args = {}) {
     const before = liveSessionManager.snapshot();
+    const browserBefore = validationService.browserSessionManager.snapshot();
     const released = args.apply === true
-      ? await liveSessionManager.releaseAll({ reason: 'runtime-cleanup' })
-      : [];
+      ? await validationService.releaseAllRuntimeFeedbackSessions({ reason: 'runtime-cleanup' })
+      : { live: [], browser: [] };
     const result = await runtimeService.cleanup(args);
     if (args.apply !== true && before.length) {
       const activeNames = new Set(before.map((session) => session.worktreeName));
@@ -119,7 +120,11 @@ export async function createVeteranApp({
       ...result,
       liveSessions: {
         active: args.apply === true ? liveSessionManager.snapshot() : before,
-        released
+        released: released.live
+      },
+      browserSessions: {
+        active: args.apply === true ? validationService.browserSessionManager.snapshot() : browserBefore,
+        released: released.browser
       }
     };
   }
