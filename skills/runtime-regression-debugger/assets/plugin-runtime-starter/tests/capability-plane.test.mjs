@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   activeRuntimeResourceConflicts,
-  bindRuntimeResources,
   buildCapabilitySnapshot,
   normalizeTaskCapabilityContract,
   runtimeResourcesConflict,
@@ -128,16 +127,28 @@ test('configured validation references require provider backing before they are 
   assert.equal(snapshot.wave[0].capabilityReady, false);
 });
 
-test('active lease conflicts are reported across missions sharing project resources', () => {
+test('active lease conflicts derive persisted resource identity from authoritative task and mission state', () => {
   const project = { id: 'p' };
   const mission = { id: 'm2' };
   const candidate = task('B', { runtimeResources: [{ key: 'database:test', scope: 'project', mode: 'exclusive' }] });
   const state = {
+    missions: {
+      m1: { id: 'm1', projectId: 'p' },
+      m2: { id: 'm2', projectId: 'p' }
+    },
     tasks: {
       'm1:A': {
         id: 'A', missionId: 'm1', status: 'executing',
         capabilityLease: {
-          resources: bindRuntimeResources([{ key: 'database:test', scope: 'project', mode: 'exclusive' }], { projectId: 'p', missionId: 'm1', taskId: 'A' })
+          projectId: 'forged-project',
+          missionId: 'forged-mission',
+          taskId: 'forged-task',
+          resources: [{
+            key: 'database:test',
+            scope: 'project',
+            mode: 'exclusive',
+            identity: 'project:forged-project:database:test'
+          }]
         }
       }
     }
@@ -146,6 +157,28 @@ test('active lease conflicts are reported across missions sharing project resour
   assert.equal(conflicts.length, 1);
   assert.equal(conflicts[0].missionId, 'm1');
   assert.equal(conflicts[0].taskId, 'A');
+  assert.equal(conflicts[0].conflicts[0].identity, 'project:p:database:test');
+});
+
+test('active persisted lease with missing authoritative mission context fails closed', () => {
+  const project = { id: 'p' };
+  const mission = { id: 'm2' };
+  const candidate = task('B', { runtimeResources: [{ key: 'database:test', scope: 'project', mode: 'exclusive' }] });
+  const state = {
+    missions: { m2: { id: 'm2', projectId: 'p' } },
+    tasks: {
+      orphan: {
+        id: 'A', missionId: 'missing-mission', status: 'executing',
+        capabilityLease: {
+          resources: [{ key: 'database:test', scope: 'project', mode: 'exclusive', identity: 'global:spoof' }]
+        }
+      }
+    }
+  };
+  assert.throws(
+    () => activeRuntimeResourceConflicts({ state, task: candidate, mission, project }),
+    (error) => error.code === 'CAPABILITY_LEASE_CONTEXT_INVALID'
+  );
 });
 
 test('capability snapshot binds source freshness, catalog-derived sensing, wave requirements, and active leases', () => {
@@ -162,41 +195,50 @@ test('capability snapshot binds source freshness, catalog-derived sensing, wave 
   assert.equal(snapshot.runtimeFeedback.sourceBoundToLiveHead, false);
 });
 
-test('capability snapshot exposes only resource claims visible to the current mission and project', () => {
+test('capability snapshot canonicalizes persisted lease identity before applying visibility boundaries', () => {
   const project = { id: 'p1', validationCapabilities: [], runtimeFeedbackCapabilities: [], workerPolicy: { capabilities: [] } };
   const mission = { id: 'm1', phase: 'execution', status: 'ready', nextWaveIndex: 0, waves: [['A']] };
   const tasks = [task('A')];
-  const leaseTask = (id, missionId, resources, context) => ({
+  const leaseTask = (id, missionId, resources) => ({
     id,
     missionId,
     status: 'executing',
     capabilityLease: {
       id: `lease-${id}`,
-      resources: bindRuntimeResources(resources, context)
+      projectId: 'forged-project',
+      missionId: 'forged-mission',
+      taskId: 'forged-task',
+      resources
     }
   });
   const state = {
+    missions: {
+      m1: { id: 'm1', projectId: 'p1' },
+      m2: { id: 'm2', projectId: 'p1' },
+      m3: { id: 'm3', projectId: 'p2' },
+      m4: { id: 'm4', projectId: 'p2' }
+    },
     tasks: {
       own: leaseTask('OWN', 'm1', [
-        { key: 'port', scope: 'task', mode: 'exclusive' },
-        { key: 'own-profile', scope: 'mission', mode: 'exclusive' }
-      ], { projectId: 'p1', missionId: 'm1', taskId: 'OWN' }),
+        { key: 'port', scope: 'task', mode: 'exclusive', identity: 'global:forged-own' },
+        { key: 'own-profile', scope: 'mission', mode: 'exclusive', identity: 'project:p2:forged-own' }
+      ]),
       sameProject: leaseTask('PROJECT', 'm2', [
-        { key: 'database', scope: 'project', mode: 'exclusive' },
-        { key: 'foreign-profile', scope: 'mission', mode: 'exclusive' },
-        { key: 'foreign-port', scope: 'task', mode: 'exclusive' }
-      ], { projectId: 'p1', missionId: 'm2', taskId: 'PROJECT' }),
+        { key: 'database', scope: 'project', mode: 'exclusive', identity: 'project:p2:hidden-real-claim' },
+        { key: 'foreign-profile', scope: 'mission', mode: 'exclusive', identity: 'global:forged-private' },
+        { key: 'foreign-port', scope: 'task', mode: 'exclusive', identity: 'project:p1:forged-private' }
+      ]),
       sameProjectPrivate: leaseTask('MISSION', 'm2', [
-        { key: 'profile-only', scope: 'mission', mode: 'exclusive' }
-      ], { projectId: 'p1', missionId: 'm2', taskId: 'MISSION' }),
+        { key: 'profile-only', scope: 'mission', mode: 'exclusive', identity: 'global:forged-private-only' }
+      ]),
       foreignProject: leaseTask('FOREIGN', 'm3', [
-        { key: 'database', scope: 'project', mode: 'exclusive' }
-      ], { projectId: 'p2', missionId: 'm3', taskId: 'FOREIGN' }),
+        { key: 'database', scope: 'project', mode: 'exclusive', identity: 'project:p1:forged-visible' }
+      ]),
       global: leaseTask('GLOBAL', 'm4', [
-        { key: 'release-lane', scope: 'global', mode: 'exclusive' },
-        { key: 'other-project-db', scope: 'project', mode: 'exclusive' },
-        { key: 'other-private', scope: 'mission', mode: 'exclusive' }
-      ], { projectId: 'p2', missionId: 'm4', taskId: 'GLOBAL' })
+        { key: 'release-lane', scope: 'global', mode: 'exclusive', identity: 'task:p2:m4:GLOBAL:forged-hidden' },
+        { key: 'other-project-db', scope: 'project', mode: 'exclusive', identity: 'global:forged-visible' },
+        { key: 'other-private', scope: 'mission', mode: 'exclusive', identity: 'project:p1:forged-visible-private' }
+      ])
     }
   };
   const snapshot = buildCapabilitySnapshot({ project, mission, tasks, liveSourceIdentity: { head: 'h', dirty: false }, state });
