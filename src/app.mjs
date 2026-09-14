@@ -94,7 +94,7 @@ export async function createVeteranApp({
   const validationService = new ValidationService({ store, projectService, missionService, worktreeManager, evidenceService, liveSessionManager });
   const runtimeFeedbackService = new RuntimeFeedbackService({ store, projectService, missionService, validationService, evidenceService });
   const feedbackWorkerOrchestrator = new FeedbackAwareWorkerOrchestrator({ delegate: coreWorkerOrchestrator, missionService, runtimeFeedbackService, validationService });
-  const workerOrchestrator = new CapabilityAwareWorkerOrchestrator({ delegate: feedbackWorkerOrchestrator, store, projectService, missionService });
+  const workerOrchestrator = new CapabilityAwareWorkerOrchestrator({ delegate: feedbackWorkerOrchestrator, store, projectService, missionService, worktreeManager });
   const reviewService = new ReviewService({ store, projectService, missionService, worktreeManager, evidenceService, experienceService });
   const candidateService = new CandidateService({ store, projectService, missionService, worktreeManager, evidenceService });
   const runtimeService = new RuntimeService({ store, experienceService, protocolMode, surfaceProfile: resolvedSurfaceProfile });
