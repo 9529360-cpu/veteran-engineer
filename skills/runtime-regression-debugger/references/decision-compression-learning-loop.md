@@ -49,6 +49,8 @@ Do not repeat a behaviorally equivalent patch under a different name. A failed c
 
 For long investigations, use `scripts/engineering_journal.py` and give failed attempts an `--equivalence-class` when a useful class is evident. When the evidence justifies forbidding that mechanism, pass the stable class id through `--forbid`. The journal then rejects later attempts that declare that exact forbidden class instead of merely printing the lesson in a summary. It deliberately does not guess semantic similarity: classify the mechanism explicitly, and do not invent a new class name just to evade a prior failed-model boundary.
 
+A failed-model ban is evidence-backed state, not permanent dogma. If genuinely new evidence changes the mechanism judgment, use `reconsider --equivalence-class <class> --basis <why-the-old-judgment-no-longer-holds> --new-evidence <new-observation>`. The journal preserves the original failed attempt and ban, records the explicit reopen review, and only reopens the latest active ban for that exact class. A later failed attempt may forbid the class again. The command checks the explicit state transition and required rationale; it does not verify that the evidence note is truthful, so consequential decisions still require the appropriate proof/evidence gates.
+
 ## Classify failed attempts by behavioral equivalence
 
 Two patches are behaviorally equivalent when they depend on the same unproven mechanism even if they touch different files.
