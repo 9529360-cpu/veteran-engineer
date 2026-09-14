@@ -21,7 +21,7 @@ async function configureWorker(stateRoot, workerScript) {
   }, null, 2)}\n`);
 }
 
-test('capability snapshot follows mission worktree source and invalidates feedback when that source becomes dirty', async () => {
+test('capability snapshot follows mission worktree source and fails closed when established source truth is unavailable', async () => {
   const fixture = await createGitRepo({ files: { 'src/a.txt': 'before\n' } });
   try {
     const worker = path.join(fixture.root, 'worker.cjs');
@@ -54,6 +54,7 @@ test('capability snapshot follows mission worktree source and invalidates feedba
     assert.equal(execution.capabilitySnapshot.observation.stage, 'post-execution');
     assert.equal(execution.capabilitySnapshot.observation.currentAtReturn, true);
     assert.equal(execution.capabilitySnapshot.sourceScope, 'mission-worktree');
+    assert.deepEqual(execution.capabilitySnapshot.sourceAuthority, { expectedScope: 'mission-worktree', available: true });
     assert.equal(execution.capabilitySnapshot.sourceIdentity.head, integratedHead);
     assert.equal(execution.capabilitySnapshot.projectSourceIdentity.head, fixture.head);
     assert.equal(execution.capabilitySnapshot.activeLeases.length, 0);
@@ -82,6 +83,7 @@ test('capability snapshot follows mission worktree source and invalidates feedba
     const readiness = await app.handlers.mission_readiness({ missionId: planned.mission.id });
     const snapshot = readiness.capabilitySnapshot;
     assert.equal(snapshot.sourceScope, 'mission-worktree');
+    assert.deepEqual(snapshot.sourceAuthority, { expectedScope: 'mission-worktree', available: true });
     assert.equal(snapshot.sourceIdentity.head, integratedHead);
     assert.equal(snapshot.sourceIdentity.dirty, false);
     assert.equal(snapshot.projectSourceIdentity.head, fixture.head);
@@ -99,6 +101,25 @@ test('capability snapshot follows mission worktree source and invalidates feedba
     assert.equal(dirtySnapshot.runtimeFeedback.sourceDirty, true);
     assert.equal(dirtySnapshot.runtimeFeedback.sourceBoundToLiveHead, false);
     assert.equal(dirtySnapshot.runtimeFeedback.sourceBoundToCurrentMissionHead, false);
+
+    await fs.writeFile(path.join(missionPath, 'src', 'a.txt'), 'after\n');
+    assert.equal((await sourceIdentity(missionPath)).dirty, false);
+    await fs.rm(missionPath, { recursive: true, force: true });
+
+    const unavailableReadiness = await app.handlers.mission_readiness({ missionId: planned.mission.id });
+    const unavailableSnapshot = unavailableReadiness.capabilitySnapshot;
+    assert.equal(unavailableSnapshot.sourceScope, 'mission-worktree-unavailable');
+    assert.equal(unavailableSnapshot.sourceAuthority.expectedScope, 'mission-worktree');
+    assert.equal(unavailableSnapshot.sourceAuthority.available, false);
+    assert.equal(unavailableSnapshot.sourceAuthority.reason, 'mission-worktree-source-unavailable');
+    assert.equal(typeof unavailableSnapshot.sourceAuthority.errorCode, 'string');
+    assert.equal(unavailableSnapshot.sourceIdentity.head, null);
+    assert.equal(unavailableSnapshot.sourceIdentity.dirty, true);
+    assert.equal(unavailableSnapshot.sourceIdentity.unavailable, true);
+    assert.equal(unavailableSnapshot.projectSourceIdentity.head, fixture.head);
+    assert.equal(unavailableSnapshot.runtimeFeedback.sourceDirty, true);
+    assert.equal(unavailableSnapshot.runtimeFeedback.sourceBoundToLiveHead, false);
+    assert.equal(unavailableSnapshot.runtimeFeedback.sourceBoundToCurrentMissionHead, false);
   } finally {
     await cleanup(fixture.root);
   }
