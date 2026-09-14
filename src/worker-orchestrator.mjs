@@ -237,7 +237,13 @@ export class WorkerOrchestrator {
           missionId,
           taskId: item.task.id,
           type: 'worker',
-          summary: { exitCode: run.code, changedPaths: paths, runtimeNamespace: run.runtimeNamespace || null, durationMs: run.durationMs ?? null },
+          summary: {
+            exitCode: run.code,
+            changedPaths: paths,
+            runtimeNamespace: run.runtimeNamespace || null,
+            durationMs: run.durationMs ?? null,
+            outputCapture: run.outputCapture || null
+          },
           sourceIdentity: { head: waveBase },
           artifact: `${run.stdout}\n--- stderr ---\n${run.stderr}`
         });
@@ -264,7 +270,8 @@ export class WorkerOrchestrator {
             message: error.message,
             runtimeNamespace: error.details?.runtimeNamespace || null,
             durationMs: error.details?.durationMs ?? null,
-            termination: error.details?.termination || null
+            termination: error.details?.termination || null,
+            outputCapture: error.details?.outputCapture || null
           },
           sourceIdentity: { head: waveBase },
           artifact: error.details || null
@@ -305,7 +312,8 @@ export class WorkerOrchestrator {
               error: { code, message: result.error.message },
               runtimeNamespace: result.error.details?.runtimeNamespace || null,
               durationMs: result.error.details?.durationMs ?? null,
-              termination: result.error.details?.termination || null
+              termination: result.error.details?.termination || null,
+              outputCapture: result.error.details?.outputCapture || null
             });
           }
           state.missions[missionId].status = 'blocked';
@@ -345,7 +353,8 @@ export class WorkerOrchestrator {
             integrationSha,
             runtimeNamespace: result.run?.runtimeNamespace || null,
             durationMs: result.run?.durationMs ?? null,
-            termination: result.run?.termination || null
+            termination: result.run?.termination || null,
+            outputCapture: result.run?.outputCapture || null
           });
         }
         state.runtime.timeline.push({ type: 'task_integrated', missionId, taskId: result.task.id, integrationSha, at: nowIso() });
@@ -365,11 +374,17 @@ export class WorkerOrchestrator {
         bootstrap: result.bootstrap || null,
         bootstrapEvidenceId: result.bootstrapEvidenceId || null,
         runtime: result.ok
-          ? { namespace: result.run?.runtimeNamespace || null, durationMs: result.run?.durationMs ?? null, termination: result.run?.termination || null }
+          ? {
+              namespace: result.run?.runtimeNamespace || null,
+              durationMs: result.run?.durationMs ?? null,
+              termination: result.run?.termination || null,
+              outputCapture: result.run?.outputCapture || null
+            }
           : {
               namespace: result.error.details?.runtimeNamespace || null,
               durationMs: result.error.details?.durationMs ?? null,
-              termination: result.error.details?.termination || null
+              termination: result.error.details?.termination || null,
+              outputCapture: result.error.details?.outputCapture || null
             },
         error: result.ok ? null : { code: result.error.code || 'ERROR', message: result.error.message }
       })),
