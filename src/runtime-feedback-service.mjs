@@ -3,6 +3,7 @@ import { nowIso } from './util.mjs';
 export const RUNTIME_FEEDBACK_CONTRACT = 'veteran-runtime-feedback-v1';
 
 const MAX_OBSERVATION_ITEMS = 12;
+const MAX_MISSION_TASKS = 64;
 
 function boundedText(value, limit = 1000) {
   if (value === undefined || value === null) return null;
@@ -391,6 +392,17 @@ export class RuntimeFeedbackService {
         exhausted
       };
     }
+    if (tasks.length + repairTasks.length > MAX_MISSION_TASKS) {
+      return {
+        configured: true,
+        scheduled: false,
+        reason: 'mission-task-limit-reached',
+        maxRepairAttempts: policy.maxRepairAttempts,
+        taskCount: tasks.length,
+        requestedRepairTasks: repairTasks.length,
+        exhausted
+      };
+    }
 
     return this.store.transaction('mission_runtime_feedback_repair_scheduled', (state) => {
       const target = state.missions[missionId];
@@ -405,6 +417,17 @@ export class RuntimeFeedbackService {
       const currentNextIds = target.waves?.[target.nextWaveIndex] || [];
       if (currentNextIds.some((id) => state.tasks[`${missionId}:${id}`]?.status !== 'planned')) {
         return { configured: true, scheduled: false, reason: 'next-wave-already-active', maxRepairAttempts: policy.maxRepairAttempts };
+      }
+      const currentTaskCount = Object.values(state.tasks).filter((task) => task.missionId === missionId).length;
+      if (currentTaskCount + repairTasks.length > MAX_MISSION_TASKS) {
+        return {
+          configured: true,
+          scheduled: false,
+          reason: 'mission-task-limit-reached',
+          maxRepairAttempts: policy.maxRepairAttempts,
+          taskCount: currentTaskCount,
+          requestedRepairTasks: repairTasks.length
+        };
       }
       for (const task of repairTasks) {
         if (state.tasks[task.key]) throw Object.assign(new Error(`Repair task already exists: ${task.id}`), { code: 'RUNTIME_FEEDBACK_REPAIR_TASK_CONFLICT' });
