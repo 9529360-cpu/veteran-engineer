@@ -45,11 +45,17 @@ test('capability contract normalizes coordination keys into project-exclusive re
 });
 
 test('capability contract rejects coercible identities and explicit malformed resource metadata', () => {
+  for (const value of ['', false, 0, {}]) {
+    assert.throws(() => normalizeTaskCapabilityContract({ sensingCapabilities: value }, 'T1'), /must be an array/);
+    assert.throws(() => normalizeTaskCapabilityContract({ executionCapabilities: value }, 'T1'), /must be an array/);
+    assert.throws(() => normalizeTaskCapabilityContract({ coordinationKeys: value }, 'T1'), /must be an array/);
+  }
   for (const value of [42, true, {}, ['nested']]) {
     assert.throws(() => normalizeTaskCapabilityContract({ sensingCapabilities: [value] }, 'T1'), /must be a string/);
     assert.throws(() => normalizeTaskCapabilityContract({ executionCapabilities: [value] }, 'T1'), /must be a string/);
     assert.throws(() => normalizeTaskCapabilityContract({ coordinationKeys: [value] }, 'T1'), /must be a string/);
   }
+  assert.throws(() => normalizeTaskCapabilityContract({ runtimeResources: false }, 'T1'), /must be an array/);
   assert.throws(() => normalizeTaskCapabilityContract({ runtimeResources: [{ key: 42 }] }, 'T1'), /must be a string/);
   assert.throws(() => normalizeTaskCapabilityContract({ runtimeResources: [{ key: 'db', scope: 42 }] }, 'T1'), /must be a string/);
   assert.throws(() => normalizeTaskCapabilityContract({ runtimeResources: [{ key: 'db', mode: false }] }, 'T1'), /must be a string/);
