@@ -128,7 +128,10 @@ test('project-exclusive runtime resource lease blocks a competing mission until 
 test('uncertain execution keeps its runtime resource lease when the delegate throws after start', async () => {
   const fixture = await createGitRepo();
   try {
-    const app = await createConfiguredApp(fixture.stateRoot);
+    const app = await createConfiguredApp(fixture.stateRoot, {
+      enabled: true,
+      worker: { type: 'custom', command: process.execPath, args: ['-e', 'process.exit(0)'] }
+    });
     const project = await app.services.projectService.open({ repoPath: fixture.repo });
     const planned = await app.services.missionService.plan({
       projectId: project.id,
