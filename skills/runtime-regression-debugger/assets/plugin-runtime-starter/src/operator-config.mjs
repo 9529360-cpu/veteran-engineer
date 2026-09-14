@@ -97,8 +97,6 @@ export function projectPolicy(operatorConfig, repoPath, remoteUrl = null) {
     runtimeFeedbackPolicy: {
       autoRepair: false,
       maxRepairAttempts: 1,
-      liveSession: false,
-      liveSessionIdleMs: 5 * 60_000,
       ...(defaults.runtimeFeedbackPolicy || {}),
       ...(specific.runtimeFeedbackPolicy || {})
     },
