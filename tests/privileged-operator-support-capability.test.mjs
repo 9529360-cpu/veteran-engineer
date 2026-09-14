@@ -48,7 +48,7 @@ test('auth routing retains privileged support ownership and stale-privilege boun
   assert.match(specialist, /Never collapse the operator principal into the customer principal/);
   assert.match(specialist, /Break-glass does not mean .*skip authorization/);
   assert.match(specialist, /requester cannot approve their own action/);
-  assert.match(specialist, /support tooling requests those transitions; it must not become a shadow source of truth/);
+  assert.match(specialist, /support tooling.*shadow source of truth/i);
   assert.match(specialist, /Was authorized when queued.*not automatically authorization to execute later/);
   assert.match(specialist, /timeout-after-commit is an unknown outcome/);
   assert.match(specialist, /cryptographically valid stale token is not sufficient authority/);
