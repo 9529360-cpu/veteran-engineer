@@ -87,3 +87,38 @@ test('packet writer rejects a symlinked packet-root child before writing outside
     await cleanup(root);
   }
 });
+
+test('packet writer removes a file created before serialization fails and leaves the path reusable', async () => {
+  const root = await tempDir('veteran-worker-packet-partial-');
+  try {
+    const worktreePath = path.join(root, 'worktree');
+    const packetRoot = path.join(root, 'artifacts');
+    const packetPath = path.join(packetRoot, 'task.json');
+    await fs.mkdir(worktreePath, { recursive: true });
+    await fs.mkdir(packetRoot, { recursive: true });
+
+    await assert.rejects(
+      writeWorkerPacket({
+        worktreePath,
+        packetPath,
+        taskId: task.id,
+        packet: { protocol: 'veteran-worker-v1', unserializable: 1n },
+        packetRoot
+      }),
+      (error) => error instanceof TypeError
+    );
+    await missing(packetPath);
+
+    const written = await writeWorkerPacket({
+      worktreePath,
+      packetPath,
+      taskId: task.id,
+      packet: { protocol: 'veteran-worker-v1', retry: true },
+      packetRoot
+    });
+    assert.equal(written, packetPath);
+    assert.deepEqual(JSON.parse(await fs.readFile(packetPath, 'utf8')), { protocol: 'veteran-worker-v1', retry: true });
+  } finally {
+    await cleanup(root);
+  }
+});
