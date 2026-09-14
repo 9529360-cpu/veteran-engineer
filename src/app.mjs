@@ -107,6 +107,14 @@ export async function createVeteranApp({
     return { ...result, runtimeFeedbackSessionsReleased: released.length };
   }
 
+  async function missionReadiness(args) {
+    const [readiness, capabilitySnapshot] = await Promise.all([
+      missionService.readiness(args),
+      workerOrchestrator.snapshot(args)
+    ]);
+    return { ...readiness, capabilitySnapshot };
+  }
+
   async function cleanupRuntime(args = {}) {
     const before = liveSessionManager.snapshot();
     const browserBefore = validationService.browserSessionManager.snapshot();
@@ -138,7 +146,7 @@ export async function createVeteranApp({
     mission_execute: (a) => workerOrchestrator.execute(a),
     mission_status: (a) => missionService.status(a),
     mission_advance: (a) => missionAdvanceService.advance(a),
-    mission_readiness: (a) => missionService.readiness(a),
+    mission_readiness: (a) => missionReadiness(a),
     mission_timeline: (a) => missionService.timeline(a),
     mission_cancel: (a) => cancelMission(a),
     mission_resume: (a) => missionService.resume(a),
