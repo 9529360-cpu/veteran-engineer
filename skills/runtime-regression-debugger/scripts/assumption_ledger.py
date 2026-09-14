@@ -57,7 +57,7 @@ def main() -> int:
             problems.append("decision_sensitive_unknown")
         if sensitive and not falsifier and status != "proven":
             problems.append("missing_falsifier")
-        if sensitive and status == "proven":
+        if sensitive and status in {"proven", "refuted"}:
             if not proof_claim_id:
                 problems.append("missing_proof_claim")
             if proof_payload is None:
@@ -88,7 +88,7 @@ def main() -> int:
         "assumptions": rows,
         "gate_passed": not blockers,
         "blockers": blockers,
-        "note": "Task-local reasoning aid; decision-sensitive proven assumptions must reference a usable claim from the current proof bundle. No persistence is required or implied.",
+        "note": "Task-local reasoning aid; decision-sensitive proven or refuted assumptions must reference a usable claim from the current proof bundle. No persistence is required or implied.",
     }
     if a.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
