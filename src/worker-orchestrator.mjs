@@ -6,6 +6,28 @@ import { nowIso, randomId } from './util.mjs';
 import { resolveWorkerConfig } from './worker-adapter.mjs';
 import { ProjectBootstrapExecutor, normalizeBootstrapAuthorization } from './bootstrap-executor.mjs';
 
+function runtimeFeedbackForPacket(mission, waveBase) {
+  const latest = mission.runtimeFeedback?.latestRound || null;
+  if (!latest) return null;
+  const sourceBound = latest.commitSha === waveBase;
+  return {
+    contract: mission.runtimeFeedback?.contract || 'veteran-runtime-feedback-v1',
+    sourceBound,
+    sourceHead: latest.commitSha || null,
+    waveBase,
+    observedWaveIndex: Number.isInteger(latest.waveIndex) ? latest.waveIndex : null,
+    passed: sourceBound ? latest.passed === true : null,
+    aggregateEvidenceId: latest.aggregateEvidenceId || null,
+    capabilities: sourceBound ? (latest.capabilities || []) : [],
+    reason: sourceBound ? null : 'feedback-source-does-not-match-wave-base',
+    advisory: true,
+    instructions: [
+      'Treat source-bound failures as current product evidence and adapt within the current task contract and writeSet.',
+      'If feedback points outside the current task authority, report it as an unresolved risk instead of broadening scope.'
+    ]
+  };
+}
+
 function packetFor(project, mission, task, waveBase, experience = { items: [], precedence: 'Current repository/runtime evidence outranks project experience.' }) {
   return {
     protocol: 'veteran-worker-v1',
@@ -22,6 +44,8 @@ function packetFor(project, mission, task, waveBase, experience = { items: [], p
       validationCapability: task.validationCapability
     },
     waveBase,
+    runtimeFeedback: runtimeFeedbackForPacket(mission, waveBase),
+    runtimeFeedbackPrecedence: 'Source-bound runtime feedback is current product evidence and outranks project experience, but it never expands task authority or write scope.',
     projectExperience: experience.items || [],
     experiencePrecedence: experience.precedence || 'Current repository/runtime evidence outranks project experience.',
     returnContract: ['files changed', 'behavior changed', 'tests/evidence', 'unresolved risks', 'discoveries that invalidate plan'],
@@ -149,7 +173,7 @@ export class WorkerOrchestrator {
             throw error;
           }
         }
-        const packet = packetFor(project, mission, task, waveBase, experience);
+        const packet = packetFor(project, refreshed.mission, task, waveBase, experience);
         const packetPath = path.join(this.store.artifactsDir, 'worker-packets', `${dispatchId}.json`);
         await fs.mkdir(path.dirname(packetPath), { recursive: true });
         await fs.writeFile(packetPath, `${JSON.stringify(packet, null, 2)}\n`, { mode: 0o600 });
