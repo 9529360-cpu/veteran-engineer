@@ -24,6 +24,10 @@ function task(id, overrides = {}) {
   };
 }
 
+function validationCapability(name) {
+  return { name, command: ['node', '--version'] };
+}
+
 test('capability contract normalizes coordination keys into project-exclusive resources', () => {
   const normalized = normalizeTaskCapabilityContract({
     sensingCapabilities: ['browser', 'browser'],
@@ -72,9 +76,9 @@ test('mission waves account for runtime-resource conflicts in addition to file w
   assert.deepEqual(computeWaves(tasks), [['A', 'C'], ['B']]);
 });
 
-test('capability readiness distinguishes sensing from execution requirements', () => {
+test('capability readiness derives sensing names from validation catalog objects and separates execution requirements', () => {
   const project = {
-    validationCapabilities: ['browser'],
+    validationCapabilities: [validationCapability('browser')],
     runtimeFeedbackCapabilities: ['observability'],
     workerPolicy: { capabilities: ['docker', 'networkless-worker'] }
   };
@@ -115,8 +119,8 @@ test('active lease conflicts are reported across missions sharing project resour
   assert.equal(conflicts[0].taskId, 'A');
 });
 
-test('capability snapshot binds source freshness, wave requirements, and active leases', () => {
-  const project = { id: 'p', validationCapabilities: ['browser'], runtimeFeedbackCapabilities: [], workerPolicy: { capabilities: ['docker'] } };
+test('capability snapshot binds source freshness, catalog-derived sensing, wave requirements, and active leases', () => {
+  const project = { id: 'p', validationCapabilities: [validationCapability('browser')], runtimeFeedbackCapabilities: [], workerPolicy: { capabilities: ['docker'] } };
   const mission = {
     id: 'm', phase: 'execution', status: 'ready', nextWaveIndex: 0, waves: [['A']],
     runtimeFeedback: { latestRound: { commitSha: 'old', scope: 'checkpoint', passed: false, aggregateEvidenceId: 'e1' } }
@@ -124,6 +128,7 @@ test('capability snapshot binds source freshness, wave requirements, and active 
   const tasks = [task('A', { sensingCapabilities: ['browser'], executionCapabilities: ['docker'] })];
   const snapshot = buildCapabilitySnapshot({ project, mission, tasks, liveSourceIdentity: { head: 'new', dirty: false }, state: { tasks: {} } });
   assert.equal(snapshot.contract, 'veteran-capability-snapshot-v1');
+  assert.deepEqual(snapshot.availableCapabilities.sensing, ['browser', 'mission-state', 'source-identity', 'task-state']);
   assert.equal(snapshot.wave[0].capabilityReady, true);
   assert.equal(snapshot.runtimeFeedback.sourceBoundToLiveHead, false);
 });
