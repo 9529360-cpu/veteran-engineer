@@ -377,8 +377,16 @@ export class WorkerOrchestrator {
         return true;
       }, { missionId, taskId: result.task.id, integrationSha });
       if (!integrated) {
-        if (result.commitSha) await git(missionWt.path, ['reset', '--hard', integrationBefore]);
+        const discardedCommitSha = result.commitSha || null;
+        if (discardedCommitSha) await git(missionWt.path, ['reset', '--hard', integrationBefore]);
         await this.#recordDiscardedWorkerResult({ missionId, result });
+        result.ok = false;
+        result.discardedCommitSha = discardedCommitSha;
+        result.commitSha = null;
+        result.error = Object.assign(new Error('Worker result was discarded because the mission was cancelled before integration'), {
+          code: 'MISSION_CANCELLED',
+          details: result.run
+        });
         continue;
       }
       await this.worktreeManager.removeTaskWorktree(project, mission, result.task);
@@ -393,6 +401,7 @@ export class WorkerOrchestrator {
         taskId: result.task.id,
         ok: result.ok,
         commitSha: result.commitSha || null,
+        discardedCommitSha: result.discardedCommitSha || null,
         bootstrap: result.bootstrap || null,
         bootstrapEvidenceId: result.bootstrapEvidenceId || null,
         runtime: result.ok
