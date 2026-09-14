@@ -23,12 +23,20 @@ function assertBooleanField(scope, key, pathValue) {
   }
 }
 
+function assertStringArrayField(scope, key, pathValue) {
+  if (scope[key] === undefined) return;
+  if (!Array.isArray(scope[key]) || scope[key].some((value) => typeof value !== 'string' || !value.trim())) {
+    throw invalidOperatorConfig(`${pathValue}.${key}`, 'array of non-empty strings', scope[key]);
+  }
+}
+
 function validatePolicyScope(value, pathValue) {
   if (value === undefined || value === null) return {};
   if (!isRecord(value)) throw invalidOperatorConfig(pathValue, 'object', value);
 
   assertBooleanField(value, 'requireSemanticReview', pathValue);
   assertBooleanField(value, 'requireValidation', pathValue);
+  assertStringArrayField(value, 'runtimeFeedbackCapabilities', pathValue);
 
   const workerPolicy = value.workerPolicy;
   if (workerPolicy !== undefined && workerPolicy !== null) {
@@ -70,6 +78,7 @@ export function projectPolicy(operatorConfig, repoPath, remoteUrl = null) {
   const specific = projects[repoPath] || projects[repoPath.replaceAll('\\', '/')] || (remoteUrl ? projects[remoteUrl] : null) || {};
   return {
     validationCapabilities: specific.validationCapabilities || defaults.validationCapabilities || [],
+    runtimeFeedbackCapabilities: specific.runtimeFeedbackCapabilities || defaults.runtimeFeedbackCapabilities || [],
     workerPolicy: {
       enabled: false,
       maxWorkers: 2,
