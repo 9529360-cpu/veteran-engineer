@@ -1,6 +1,12 @@
 import { RISK_LEVELS } from './constants.mjs';
 import { allowlistedProcessEnvironment, runProcess, sourceIdentity, writeSetsConflict } from './git.mjs';
 import { normalizeTaskCapabilityContract, runtimeResourcesConflict } from './capability-plane.mjs';
+import {
+  assessTaskRisk,
+  buildProjectContinuitySnapshot,
+  compileMissionExecutionStrategy,
+  plannerProjectAwareness
+} from './adaptive-mission-strategy.mjs';
 import { normalizePathList, nowIso, randomId } from './util.mjs';
 
 const TERMINAL_TASKS = new Set(['done', 'failed', 'cancelled', 'blocked', 'superseded']);
@@ -11,8 +17,18 @@ function validateTask(raw, index) {
   const id = String(raw.id || `T${index + 1}`);
   const dependencies = [...new Set((raw.dependencies || []).map(String))];
   const writeSet = normalizePathList(raw.writeSet || []);
-  const risk = raw.risk || 'low';
   const capabilityContract = normalizeTaskCapabilityContract(raw, id);
+  const validationCapability = raw.validationCapability || null;
+  const riskAssessment = assessTaskRisk({
+    explicitRisk: raw.risk,
+    writeSet,
+    validationCapability,
+    sensingCapabilities: capabilityContract.sensingCapabilities,
+    executionCapabilities: capabilityContract.executionCapabilities,
+    coordinationKeys: capabilityContract.coordinationKeys,
+    runtimeResources: capabilityContract.runtimeResources
+  });
+  const risk = riskAssessment.risk;
   if (!RISK_LEVELS.includes(risk)) throw new Error(`Invalid risk level for ${id}: ${risk}`);
   if (!String(raw.contract || '').trim()) throw new Error(`Task ${id} requires a contract`);
   if (!String(raw.owner || '').trim()) throw new Error(`Task ${id} requires an owner/boundary`);
@@ -24,7 +40,8 @@ function validateTask(raw, index) {
     writeSet,
     protectedPaths: normalizePathList(raw.protectedPaths || []),
     risk,
-    validationCapability: raw.validationCapability || null,
+    riskAssessment,
+    validationCapability,
     worker: raw.worker || 'default',
     notes: raw.notes || null,
     ...capabilityContract
@@ -95,15 +112,20 @@ export class MissionService {
   }
 
   async plan({ projectId, goal, doneDefinition, nonGoals = [], tasks = null, riskEnvelope = 'medium' }) {
-    const project = await this.projectService.get(projectId);
-    const live = await sourceIdentity(project.repoPath);
+    if (!RISK_LEVELS.includes(riskEnvelope)) throw new Error(`Invalid mission risk envelope: ${riskEnvelope}`);
+    if (!String(goal || '').trim() || !String(doneDefinition || '').trim()) throw new Error('goal and doneDefinition are required');
+
+    const project = await this.projectService.snapshot({ projectId });
+    const live = project.sourceIdentity || await sourceIdentity(project.repoPath);
     if (live.dirty) {
       const error = new Error('Cannot plan a mission from a dirty source checkout; HEAD alone is not complete source identity.');
       error.code = 'DIRTY_SOURCE_BLOCKED';
       error.details = live.dirtyPaths;
       throw error;
     }
-    if (!String(goal || '').trim() || !String(doneDefinition || '').trim()) throw new Error('goal and doneDefinition are required');
+
+    const projectState = await this.store.read();
+    const continuity = buildProjectContinuitySnapshot({ state: projectState, projectId, liveHead: live.head });
     const experience = this.experienceService
       ? await this.experienceService.route({ projectId, sourceHead: live.head, role: 'planner', limit: 8 })
       : { role: 'planner', items: [], excludedConflicts: 0, precedence: 'Current repository/runtime evidence outranks project experience.' };
@@ -116,6 +138,7 @@ export class MissionService {
         protocol: 'veteran-planner-v1',
         project: { id: project.id, repoPath: project.repoPath, sourceIdentity: live },
         mission: { goal: String(goal).trim(), doneDefinition: String(doneDefinition).trim(), nonGoals: nonGoals.map(String), riskEnvelope },
+        projectAwareness: plannerProjectAwareness(project, continuity),
         projectExperience: experience.items,
         experiencePrecedence: experience.precedence,
         limits: { maxTasks: 64 }
@@ -141,7 +164,12 @@ export class MissionService {
         const evidence = await this.evidenceService.record({
           projectId,
           type: 'planner-provider',
-          summary: { exitCode: result.code, taskCount: proposedTasks.length, experienceIds: experience.items.map((item) => item.id) },
+          summary: {
+            exitCode: result.code,
+            taskCount: proposedTasks.length,
+            experienceIds: experience.items.map((item) => item.id),
+            activeProjectMissionCount: continuity.activeMissionCount
+          },
           sourceIdentity: live,
           artifact: `${result.stdout}\n--- stderr ---\n${result.stderr}`
         });
@@ -152,6 +180,7 @@ export class MissionService {
     const normalized = proposedTasks.map(validateTask);
     topo(normalized);
     const waves = computeWaves(normalized);
+    const executionStrategy = compileMissionExecutionStrategy({ tasks: normalized, waves, project, riskEnvelope, continuity });
     const missionId = randomId('mission');
     const createdAt = nowIso();
     const mission = {
@@ -161,6 +190,8 @@ export class MissionService {
       doneDefinition: String(doneDefinition).trim(),
       nonGoals: nonGoals.map(String),
       riskEnvelope,
+      executionStrategy,
+      projectContinuity: continuity,
       baseSourceIdentity: live,
       currentSourceIdentity: live,
       status: 'ready',
@@ -202,9 +233,17 @@ export class MissionService {
     return this.store.transaction('mission_planned', (state) => {
       state.missions[missionId] = mission;
       for (const task of taskRecords) state.tasks[task.key] = task;
-      state.runtime.timeline.push({ type: 'mission_planned', missionId, at: createdAt, baseHead: live.head });
+      state.runtime.timeline.push({
+        type: 'mission_planned',
+        missionId,
+        at: createdAt,
+        baseHead: live.head,
+        taskClass: executionStrategy.taskClass,
+        executionMode: executionStrategy.executionMode,
+        activeProjectMissionCount: continuity.activeMissionCount
+      });
       return { mission, tasks: taskRecords };
-    }, { missionId, projectId, baseHead: live.head, taskCount: taskRecords.length });
+    }, { missionId, projectId, baseHead: live.head, taskCount: taskRecords.length, taskClass: executionStrategy.taskClass, executionMode: executionStrategy.executionMode });
   }
 
   async status({ missionId }) {
@@ -263,6 +302,8 @@ export class MissionService {
       phase: mission.phase,
       status: mission.status,
       liveSourceIdentity: live,
+      executionStrategy: mission.executionStrategy || null,
+      projectContinuity: mission.projectContinuity || null,
       blockers,
       operatorActionRequired,
       nextAction,
