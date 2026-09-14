@@ -73,8 +73,8 @@ export class CapabilityAwareWorkerOrchestrator {
 
   async #snapshot(missionId) {
     const { mission, tasks } = await this.missionService.status({ missionId });
-    const project = await this.projectService.snapshot({ projectId: mission.projectId });
-    const projectSourceIdentity = project.sourceIdentity || await sourceIdentity(project.repoPath);
+    const project = await this.projectService.get(mission.projectId);
+    const projectSourceIdentity = await sourceIdentity(project.repoPath);
     const missionSourceExpected = Boolean(this.worktreeManager) && missionSourceAuthorityEstablished(tasks);
     let missionSourceIdentity = null;
     let missionSourceErrorCode = null;
@@ -295,6 +295,8 @@ export class CapabilityAwareWorkerOrchestrator {
 
   async execute(args) {
     const runWorkers = args.runWorkers === true;
+    const { mission } = await this.missionService.status({ missionId: args.missionId });
+    await this.projectService.snapshot({ projectId: mission.projectId });
     const preflightSnapshot = await this.#snapshot(args.missionId);
     const reservation = await this.#reserve({ missionId: args.missionId, runWorkers });
     if (reservation.reason === 'capability-preflight-blocked') {
