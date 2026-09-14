@@ -28,7 +28,9 @@ Before running a command, changing code, clearing state, or restarting a service
 
 A useful probe produces different predicted outcomes for different hypotheses. A probe that all hypotheses predict equally is usually low information.
 
-Use `scripts/causal_discriminator.py` when several probes are available and their predicted outcomes, cost, and blast radius can be stated explicitly.
+Use `scripts/causal_discriminator.py` when several probes are available and their predicted outcomes, cost, and blast radius can be stated explicitly. Mark a probe `irreversible: true` when it cannot be safely undone and `production_wide: true` when it changes a broad live-production boundary. Those probes are scored for comparison but are kept in `escalation_only_probes`, never `ranked_probes` or `recommended_probe`. If no reversible bounded probe exists, the discriminator returns a blocked status rather than recommending a destructive experiment. Authorization and action-threshold decisions remain separate; a high information score never creates permission.
+
+The discriminator fails closed on ambiguous safety/ranking metadata such as string booleans, negative/non-finite cost or blast radius, duplicate probe ids, and prediction keys that do not name an active hypothesis. Its ranking is still only as good as the declared hypotheses and predictions.
 
 ## Prefer interventions over correlations
 
