@@ -292,9 +292,11 @@ def main() -> int:
             links = []
         for link_index, link in enumerate(links):
             link_path = f"{path}.delivery_links[{link_index}]"
+            kind = link.get("kind") if isinstance(link, dict) else None
             if (
                 not isinstance(link, dict)
-                or link.get("kind") not in DELIVERY_KINDS
+                or not isinstance(kind, str)
+                or kind not in DELIVERY_KINDS
                 or not nonempty(link.get("name"))
             ):
                 add(
@@ -303,7 +305,6 @@ def main() -> int:
                     link_path,
                 )
                 continue
-            kind = link["kind"]
             name = link["name"]
             if name not in delivery_elements[kind]:
                 add(
@@ -359,9 +360,11 @@ def main() -> int:
     explained_elements = set()
     for index, item in enumerate(shared_elements):
         path = f"trace.shared_delivery_elements[{index}]"
+        kind = item.get("kind") if isinstance(item, dict) else None
         if (
             not isinstance(item, dict)
-            or item.get("kind") not in DELIVERY_KINDS
+            or not isinstance(kind, str)
+            or kind not in DELIVERY_KINDS
             or not nonempty(item.get("name"))
             or not nonempty(item.get("reason"))
         ):
@@ -371,8 +374,8 @@ def main() -> int:
                 path,
             )
             continue
-        pair = (item["kind"], item["name"])
-        if item["name"] not in delivery_elements[item["kind"]]:
+        pair = (kind, item["name"])
+        if item["name"] not in delivery_elements[kind]:
             add("SHARED_ELEMENT_UNKNOWN", f"{path} references unknown delivery element", path)
         explained_elements.add(pair)
 

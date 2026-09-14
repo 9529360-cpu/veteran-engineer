@@ -77,7 +77,7 @@ def validate_closed_rows(
             gap(gaps, f"{prefix}.applicable must be boolean")
             continue
         status = row.get("status")
-        if status not in CLOSED_STATUS:
+        if not isinstance(status, str) or status not in CLOSED_STATUS:
             gap(gaps, f"{prefix} is not closed: {status!r}")
             continue
         if applicable:
@@ -140,7 +140,7 @@ def main() -> int:
         gap(gaps, f"schema must be {SCHEMA!r}")
 
     stage = payload.get("completion_stage")
-    if stage not in STAGES:
+    if not isinstance(stage, str) or stage not in STAGES:
         gap(gaps, f"completion_stage must be one of {sorted(STAGES)}")
         stage_rank = 0
     else:
