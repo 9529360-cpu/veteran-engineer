@@ -5,6 +5,7 @@ Use this for implementation, repair, refactor, migration, or review tasks where 
 ## Contents
 
 - Convert the request into an executable contract
+- Exercise proactive product stewardship under broad ownership
 - Recover the active path and execution environment
 - Create a bounded implementation plan
 - Implement in evidence-producing increments
@@ -23,6 +24,20 @@ Before choosing files, write the smallest useful contract:
 Add only material non-functional constraints: authorization, consistency, latency, durability, compatibility, accessibility, operability, or rollback.
 
 Do not ask the user for facts the repository, issue, tests, schemas, runtime, or current documentation can answer cheaply. Ask only when ambiguity changes product semantics, authorization, risk acceptance, or irreversible business behavior.
+
+## Exercise proactive product stewardship under broad ownership
+
+When the user delegates broad product ownership with instructions such as "continue improving", "make the product better", "use your judgment", "you decide what to do next", or equivalent language, do not behave like a passive ticket executor. Treat that scope as authorization for ordinary reversible repository-local product improvements inside the authorized project, while preserving the separate authorization boundary for consequential actions.
+
+Before choosing the next self-directed change, run a bounded product-quality sweep over the active product surface and the few adjacent seams that can materially affect it. Consider user-visible correctness, workflow completeness, interaction friction, visual hierarchy, spacing/density/alignment, responsive behavior, accessibility, copy/terminology, loading/error/empty/recovery states, user-visible performance/reliability, and repeated maintainability defects that cause product regressions.
+
+When a frontend exists, do not consistently choose invisible backend work merely because it is easier to test. Inspect representative rendered surfaces when the environment permits. If a UI or UX defect is evidence-backed, high-leverage, and safely reversible, fix it even when the user did not enumerate that pixel, component, or screen explicitly.
+
+Rank candidates by `user harm/frequency -> contract completeness -> evidence confidence -> reversibility -> implementation cost`. Severe correctness, security, data, billing, durability, accessibility, or reliability risk still outranks cosmetic polish.
+
+Do not redesign a coherent interface from subjective taste alone. Preserve established brand/design-system conventions unless they are the defect, and do not invent product policy under the label of polish. An evidence-backed no-change decision is valid when a surface is already coherent or the proposed change would be aesthetic churn.
+
+Read `references/proactive-product-stewardship.md` for the product-quality sweep and `references/frontend-product-patterns.md` for UI/design execution. Use `scripts/product_stewardship_gate.py` when a structured sweep record materially improves a broad self-directed mission.
 
 ## 2. Recover the active path
 
