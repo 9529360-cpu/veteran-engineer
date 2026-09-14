@@ -11,6 +11,8 @@ import {
 const DEFAULT_IDLE_MS = 5 * 60_000;
 const MAX_IDLE_MS = 30 * 60_000;
 const MAX_LIVE_SESSIONS = 16;
+const LIFECYCLE_LOCK_KEY = '\u0000live-session-lifecycle';
+const RELEASE_LOCK_KEY = '\u0000live-session-release';
 
 function boundedIdleMs(value) {
   if (!Number.isInteger(value)) return DEFAULT_IDLE_MS;
@@ -142,6 +144,9 @@ export class LiveValidationSessionManager {
     this.store = store;
     this.maxSessions = Math.max(1, Math.min(MAX_LIVE_SESSIONS, Number(maxSessions) || MAX_LIVE_SESSIONS));
     this.sessions = new Map();
+    this.startingSessions = new Map();
+    this.releaseAllInProgress = false;
+    this.releasingMissions = new Set();
     this.locks = new Map();
   }
 
@@ -289,23 +294,72 @@ export class LiveValidationSessionManager {
   }
 
   async releaseMission({ missionId, reason = 'mission-finished' } = {}) {
-    const targets = [...this.sessions.values()].filter((session) => session.missionId === missionId);
-    const released = [];
-    for (const session of targets) {
-      const cleanup = await this.#withLock(this.locks, session.key, () => this.#releaseSession(session, reason));
-      released.push({ sessionId: session.id, worktreeName: session.worktreeName, cleanup });
-    }
-    return released;
+    return this.#releaseScope({ missionId, reason });
   }
 
   async releaseAll({ reason = 'runtime-cleanup' } = {}) {
-    const targets = [...this.sessions.values()];
-    const released = [];
-    for (const session of targets) {
-      const cleanup = await this.#withLock(this.locks, session.key, () => this.#releaseSession(session, reason));
-      released.push({ sessionId: session.id, worktreeName: session.worktreeName, cleanup });
-    }
-    return released;
+    return this.#releaseScope({ missionId: null, reason });
+  }
+
+  async #beginStart(key, missionId) {
+    return this.#withLock(this.locks, LIFECYCLE_LOCK_KEY, async () => {
+      if (this.releaseAllInProgress || this.releasingMissions.has(missionId)) {
+        throw Object.assign(new Error('Persistent live validation session release is in progress'), {
+          code: 'LIVE_VALIDATION_SESSION_RELEASE_IN_PROGRESS',
+          details: { missionId, scope: this.releaseAllInProgress ? 'runtime' : 'mission' }
+        });
+      }
+      let settle;
+      const settled = new Promise((resolve) => { settle = resolve; });
+      const token = { key, missionId, settled, settle };
+      this.startingSessions.set(key, token);
+      return token;
+    });
+  }
+
+  async #finishStart(token) {
+    let settle = null;
+    await this.#withLock(this.locks, LIFECYCLE_LOCK_KEY, async () => {
+      if (this.startingSessions.get(token.key) === token) this.startingSessions.delete(token.key);
+      settle = token.settle;
+    });
+    settle?.();
+  }
+
+  async #beginRelease(missionId) {
+    return this.#withLock(this.locks, LIFECYCLE_LOCK_KEY, async () => {
+      if (missionId === null) this.releaseAllInProgress = true;
+      else this.releasingMissions.add(missionId);
+      return [...this.startingSessions.values()]
+        .filter((token) => missionId === null || token.missionId === missionId)
+        .map((token) => token.settled);
+    });
+  }
+
+  async #endRelease(missionId) {
+    return this.#withLock(this.locks, LIFECYCLE_LOCK_KEY, async () => {
+      if (missionId === null) this.releaseAllInProgress = false;
+      else this.releasingMissions.delete(missionId);
+    });
+  }
+
+  async #releaseScope({ missionId, reason }) {
+    return this.#withLock(this.locks, RELEASE_LOCK_KEY, async () => {
+      const pendingStarts = await this.#beginRelease(missionId);
+      try {
+        await Promise.allSettled(pendingStarts);
+        const targets = [...this.sessions.values()]
+          .filter((session) => missionId === null || session.missionId === missionId);
+        const released = [];
+        for (const session of targets) {
+          const cleanup = await this.#withLock(this.locks, session.key, () => this.#releaseSession(session, reason));
+          released.push({ sessionId: session.id, worktreeName: session.worktreeName, cleanup });
+        }
+        return released;
+      } finally {
+        await this.#endRelease(missionId);
+      }
+    });
   }
 
   async #reserveLease({ project, mission, capability, sessionId, worktreeName, endpoint }) {
@@ -374,65 +428,70 @@ export class LiveValidationSessionManager {
 
   async #startSession({ project, mission, capability, commitSha, service, idleMs }) {
     const key = sessionKey(project.id, mission.id, capability);
-    const endpoint = readinessEndpoint(service);
-    const sessionId = randomId('livesession');
-    const worktreeName = worktreeNameFor(key);
-    const worktreePath = path.join(this.store.worktreesDir, worktreeName);
-    const lease = await this.#reserveLease({ project, mission, capability, sessionId, worktreeName, endpoint });
-    const reclaimedWorktree = lease.reapedWorktreeNames.includes(worktreeName);
-    let serviceRun = null;
-    let ownsWorktree = false;
+    const startToken = await this.#beginStart(key, mission.id);
     try {
-      if (await pathExists(worktreePath)) {
-        if (!reclaimedWorktree) {
-          throw Object.assign(new Error('Persistent live validation worktree is already present without a reclaimable lease'), {
-            code: 'LIVE_VALIDATION_WORKTREE_IN_USE',
-            details: { worktreeName, worktreePath }
-          });
+      const endpoint = readinessEndpoint(service);
+      const sessionId = randomId('livesession');
+      const worktreeName = worktreeNameFor(key);
+      const worktreePath = path.join(this.store.worktreesDir, worktreeName);
+      const lease = await this.#reserveLease({ project, mission, capability, sessionId, worktreeName, endpoint });
+      const reclaimedWorktree = lease.reapedWorktreeNames.includes(worktreeName);
+      let serviceRun = null;
+      let ownsWorktree = false;
+      try {
+        if (await pathExists(worktreePath)) {
+          if (!reclaimedWorktree) {
+            throw Object.assign(new Error('Persistent live validation worktree is already present without a reclaimable lease'), {
+              code: 'LIVE_VALIDATION_WORKTREE_IN_USE',
+              details: { worktreeName, worktreePath }
+            });
+          }
+          await git(project.repoPath, ['worktree', 'remove', '--force', worktreePath], { allowFailure: true });
+          await fs.rm(worktreePath, { recursive: true, force: true });
         }
-        await git(project.repoPath, ['worktree', 'remove', '--force', worktreePath], { allowFailure: true });
-        await fs.rm(worktreePath, { recursive: true, force: true });
-      }
-      await git(project.repoPath, ['worktree', 'prune', '--expire', 'now'], { allowFailure: true });
-      await git(project.repoPath, ['worktree', 'add', '--detach', worktreePath, commitSha]);
-      ownsWorktree = true;
-      const serviceCwd = await resolveContainedCwd(worktreePath, service.cwd);
-      serviceRun = startValidationService(service, { cwd: serviceCwd });
-    } catch (error) {
-      if (serviceRun) await stopValidationService(serviceRun, service.shutdownGraceMs).catch(() => {});
-      if (ownsWorktree) {
-        await git(project.repoPath, ['worktree', 'remove', '--force', worktreePath], { allowFailure: true });
-        await fs.rm(worktreePath, { recursive: true, force: true });
         await git(project.repoPath, ['worktree', 'prune', '--expire', 'now'], { allowFailure: true });
+        await git(project.repoPath, ['worktree', 'add', '--detach', worktreePath, commitSha]);
+        ownsWorktree = true;
+        const serviceCwd = await resolveContainedCwd(worktreePath, service.cwd);
+        serviceRun = startValidationService(service, { cwd: serviceCwd });
+      } catch (error) {
+        if (serviceRun) await stopValidationService(serviceRun, service.shutdownGraceMs).catch(() => {});
+        if (ownsWorktree) {
+          await git(project.repoPath, ['worktree', 'remove', '--force', worktreePath], { allowFailure: true });
+          await fs.rm(worktreePath, { recursive: true, force: true });
+          await git(project.repoPath, ['worktree', 'prune', '--expire', 'now'], { allowFailure: true });
+        }
+        await this.#releaseLease({ key, id: sessionId, endpointLeaseKey: endpoint.leaseKey }, 'session-start-failed').catch(() => {});
+        throw error;
       }
-      await this.#releaseLease({ key, id: sessionId, endpointLeaseKey: endpoint.leaseKey }, 'session-start-failed').catch(() => {});
-      throw error;
-    }
 
-    const session = {
-      id: sessionId,
-      key,
-      projectId: project.id,
-      missionId: mission.id,
-      capability,
-      projectRepoPath: project.repoPath,
-      worktreeName,
-      worktreePath,
-      commitSha,
-      generation: 1,
-      reuseCount: 0,
-      serviceFingerprint: serviceFingerprint(service),
-      service,
-      serviceRun,
-      endpointLeaseKey: endpoint.leaseKey,
-      endpointOrigin: endpoint.origin,
-      idleMs,
-      idleTimer: null,
-      startedAt: nowIso(),
-      lastUsedAt: nowIso()
-    };
-    this.sessions.set(key, session);
-    return session;
+      const session = {
+        id: sessionId,
+        key,
+        projectId: project.id,
+        missionId: mission.id,
+        capability,
+        projectRepoPath: project.repoPath,
+        worktreeName,
+        worktreePath,
+        commitSha,
+        generation: 1,
+        reuseCount: 0,
+        serviceFingerprint: serviceFingerprint(service),
+        service,
+        serviceRun,
+        endpointLeaseKey: endpoint.leaseKey,
+        endpointOrigin: endpoint.origin,
+        idleMs,
+        idleTimer: null,
+        startedAt: nowIso(),
+        lastUsedAt: nowIso()
+      };
+      this.sessions.set(key, session);
+      return session;
+    } finally {
+      await this.#finishStart(startToken);
+    }
   }
 
   async #moveSessionSource(session, commitSha) {
