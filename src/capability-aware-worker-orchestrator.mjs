@@ -10,6 +10,7 @@ import {
 } from './capability-plane.mjs';
 
 const ACTIVE_EXECUTION_STATUSES = new Set(['admitted', 'executing', 'cancelling', 'interrupted']);
+const OUTSTANDING_LEASE_STATUSES = new Set(['admitted', 'dispatched', 'executing', 'cancelling', 'interrupted']);
 const TERMINAL_TASK_STATUSES = new Set(['done', 'failed', 'cancelled', 'blocked', 'superseded']);
 
 function readyWaveTasks(state, mission) {
@@ -156,6 +157,17 @@ export class CapabilityAwareWorkerOrchestrator {
     }, { missionId: reservation.missionId, reservationId: reservation.id, reason });
   }
 
+  async #reconcileReservation(reservation, reason) {
+    if (!reservation?.taskIds?.length) return { released: [], retained: [] };
+    const state = await this.store.read();
+    const retained = reservation.taskIds.filter((taskId) => {
+      const task = state.tasks[`${reservation.missionId}:${taskId}`];
+      return task?.capabilityLease?.reservationId === reservation.id && OUTSTANDING_LEASE_STATUSES.has(task.status);
+    });
+    const released = await this.#release(reservation, reason, retained);
+    return { released: released.released, retained };
+  }
+
   async #releaseTask(missionId, taskId, reason) {
     return this.store.transaction('capability_task_released', (state) => {
       const task = state.tasks[`${missionId}:${taskId}`];
@@ -189,16 +201,11 @@ export class CapabilityAwareWorkerOrchestrator {
     try {
       result = await this.delegate.execute(args);
     } catch (error) {
-      await this.#release(reservation, 'delegate-threw').catch(() => {});
+      await this.#reconcileReservation(reservation, 'delegate-threw').catch(() => {});
       throw error;
     }
 
-    if (runWorkers) {
-      await this.#release(reservation, 'worker-execution-returned');
-    } else {
-      const retained = (result.dispatched || []).map((item) => item.taskId);
-      await this.#release(reservation, 'external-dispatch-not-retained', retained);
-    }
+    await this.#reconcileReservation(reservation, 'delegate-returned');
     return { ...result, capabilitySnapshot: snapshot };
   }
 
