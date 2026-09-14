@@ -30,6 +30,37 @@ function assertStringArrayField(scope, key, pathValue) {
   }
 }
 
+function assertValidationCapabilitiesField(scope, key, pathValue) {
+  if (scope[key] === undefined) return;
+  const capabilities = scope[key];
+  if (!Array.isArray(capabilities)) {
+    throw invalidOperatorConfig(`${pathValue}.${key}`, 'array of validation capability objects', capabilities);
+  }
+  const seenNames = new Set();
+  for (let index = 0; index < capabilities.length; index += 1) {
+    const capability = capabilities[index];
+    if (!isRecord(capability)) {
+      throw invalidOperatorConfig(`${pathValue}.${key}[${index}]`, 'validation capability object', capability);
+    }
+    if (typeof capability.name !== 'string' || !capability.name.trim()) {
+      throw invalidOperatorConfig(`${pathValue}.${key}[${index}].name`, 'non-empty string', capability.name);
+    }
+    const normalizedName = capability.name.trim();
+    if (seenNames.has(normalizedName)) {
+      throw invalidOperatorConfig(`${pathValue}.${key}[${index}].name`, 'unique non-empty string', capability.name);
+    }
+    seenNames.add(normalizedName);
+  }
+}
+
+function normalizedStringArray(values = []) {
+  return [...new Set(values.map((value) => value.trim()))];
+}
+
+function normalizedValidationCapabilities(values = []) {
+  return values.map((capability) => ({ ...capability, name: capability.name.trim() }));
+}
+
 function validateRuntimeFeedbackPolicy(raw, pathValue) {
   if (raw === undefined || raw === null) return null;
   if (!isRecord(raw)) throw invalidOperatorConfig(pathValue, 'object', raw);
@@ -50,6 +81,8 @@ function validatePolicyScope(value, pathValue) {
 
   assertBooleanField(value, 'requireSemanticReview', pathValue);
   assertBooleanField(value, 'requireValidation', pathValue);
+  assertValidationCapabilitiesField(value, 'validationCapabilities', pathValue);
+  assertStringArrayField(value, 'requiredValidationCapabilities', pathValue);
   assertStringArrayField(value, 'runtimeFeedbackCapabilities', pathValue);
   validateRuntimeFeedbackPolicy(value.runtimeFeedbackPolicy, `${pathValue}.runtimeFeedbackPolicy`);
 
@@ -59,6 +92,7 @@ function validatePolicyScope(value, pathValue) {
     for (const key of ['enabled', 'allowUnconfinedCustomWorkers', 'allowRawValidation']) {
       assertBooleanField(workerPolicy, key, `${pathValue}.workerPolicy`);
     }
+    assertStringArrayField(workerPolicy, 'capabilities', `${pathValue}.workerPolicy`);
     if (workerPolicy.maxWorkers !== undefined && (!Number.isInteger(workerPolicy.maxWorkers) || workerPolicy.maxWorkers < 1)) {
       throw invalidOperatorConfig(`${pathValue}.workerPolicy.maxWorkers`, 'positive integer', workerPolicy.maxWorkers);
     }
@@ -91,27 +125,33 @@ export async function loadOperatorConfig({ stateRoot, configPath = process.env.V
 export function projectPolicy(operatorConfig, repoPath, remoteUrl = null) {
   const { defaults, projects } = validateOperatorConfig(operatorConfig || {});
   const specific = projects[repoPath] || projects[repoPath.replaceAll('\\', '/')] || (remoteUrl ? projects[remoteUrl] : null) || {};
+  const validationCapabilities = normalizedValidationCapabilities(specific.validationCapabilities || defaults.validationCapabilities || []);
+  const runtimeFeedbackCapabilities = normalizedStringArray(specific.runtimeFeedbackCapabilities || defaults.runtimeFeedbackCapabilities || []);
+  const requiredValidationCapabilities = normalizedStringArray(specific.requiredValidationCapabilities || defaults.requiredValidationCapabilities || []);
+  const workerPolicy = {
+    enabled: false,
+    maxWorkers: 2,
+    capabilities: [],
+    allowUnconfinedCustomWorkers: false,
+    allowRawValidation: false,
+    ...(defaults.workerPolicy || {}),
+    ...(specific.workerPolicy || {})
+  };
+  workerPolicy.capabilities = normalizedStringArray(workerPolicy.capabilities || []);
   return {
-    validationCapabilities: specific.validationCapabilities || defaults.validationCapabilities || [],
-    runtimeFeedbackCapabilities: specific.runtimeFeedbackCapabilities || defaults.runtimeFeedbackCapabilities || [],
+    validationCapabilities,
+    runtimeFeedbackCapabilities,
     runtimeFeedbackPolicy: {
       autoRepair: false,
       maxRepairAttempts: 1,
       ...(defaults.runtimeFeedbackPolicy || {}),
       ...(specific.runtimeFeedbackPolicy || {})
     },
-    workerPolicy: {
-      enabled: false,
-      maxWorkers: 2,
-      allowUnconfinedCustomWorkers: false,
-      allowRawValidation: false,
-      ...(defaults.workerPolicy || {}),
-      ...(specific.workerPolicy || {})
-    },
+    workerPolicy,
     plannerProvider: specific.plannerProvider || defaults.plannerProvider || null,
     reviewerProvider: specific.reviewerProvider || defaults.reviewerProvider || null,
     requireSemanticReview: specific.requireSemanticReview ?? defaults.requireSemanticReview ?? false,
     requireValidation: specific.requireValidation ?? defaults.requireValidation ?? false,
-    requiredValidationCapabilities: specific.requiredValidationCapabilities || defaults.requiredValidationCapabilities || []
+    requiredValidationCapabilities
   };
 }

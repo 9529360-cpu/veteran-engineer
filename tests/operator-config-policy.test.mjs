@@ -30,8 +30,28 @@ test('operator policy rejects ambiguous safety-sensitive scalar types', () => {
     'defaults.workerPolicy.maxWorkers'
   );
   rejectsConfig(
+    { defaults: { workerPolicy: { capabilities: 'container-worker' } } },
+    'defaults.workerPolicy.capabilities'
+  );
+  rejectsConfig(
+    { defaults: { validationCapabilities: 'browser' } },
+    'defaults.validationCapabilities'
+  );
+  rejectsConfig(
+    { defaults: { requiredValidationCapabilities: ['ok', 42] } },
+    'defaults.requiredValidationCapabilities'
+  );
+  rejectsConfig(
     { defaults: { requireValidation: 'false' } },
     'defaults.requireValidation'
+  );
+  rejectsConfig(
+    { projects: { '/repo': { validationCapabilities: [{ name: '' }] } } },
+    'projects./repo.validationCapabilities[0].name'
+  );
+  rejectsConfig(
+    { defaults: { validationCapabilities: [{ name: 'lint', command: ['node'] }, { name: ' lint ', command: ['other'] }] } },
+    'defaults.validationCapabilities[1].name'
   );
   rejectsConfig(
     { projects: { '/repo': { workerPolicy: { allowUnconfinedCustomWorkers: 'false' } } } },
@@ -54,13 +74,18 @@ test('operator config file fails closed before malformed policy reaches project 
   }
 });
 
-test('valid operator safety controls preserve extensible worker configuration', () => {
+test('valid operator safety controls preserve extensible worker configuration and canonicalize capability identities', () => {
+  const validationCapability = { name: ' lint ', command: ['node', '--version'] };
   const policy = projectPolicy({
     defaults: {
       requireValidation: true,
+      validationCapabilities: [validationCapability],
+      requiredValidationCapabilities: [' lint ', 'lint'],
+      runtimeFeedbackCapabilities: [' lint ', 'lint'],
       workerPolicy: {
         enabled: true,
         maxWorkers: 4,
+        capabilities: [' custom-tooling ', 'custom-tooling'],
         allowUnconfinedCustomWorkers: false,
         allowRawValidation: false,
         defaultWorker: 'codex',
@@ -80,8 +105,12 @@ test('valid operator safety controls preserve extensible worker configuration', 
 
   assert.equal(policy.requireValidation, true);
   assert.equal(policy.requireSemanticReview, true);
+  assert.deepEqual(policy.validationCapabilities, [{ name: 'lint', command: ['node', '--version'] }]);
+  assert.deepEqual(policy.requiredValidationCapabilities, ['lint']);
+  assert.deepEqual(policy.runtimeFeedbackCapabilities, ['lint']);
   assert.equal(policy.workerPolicy.enabled, true);
   assert.equal(policy.workerPolicy.maxWorkers, 1);
+  assert.deepEqual(policy.workerPolicy.capabilities, ['custom-tooling']);
   assert.equal(policy.workerPolicy.allowUnconfinedCustomWorkers, false);
   assert.equal(policy.workerPolicy.allowRawValidation, false);
   assert.equal(policy.workerPolicy.defaultWorker, 'codex');
@@ -91,4 +120,5 @@ test('valid operator safety controls preserve extensible worker configuration', 
   assert.deepEqual(policy.workerPolicy.codex, {
     model: 'example-model', extraArgs: ['--quiet']
   });
+  assert.equal(validationCapability.name, ' lint ');
 });

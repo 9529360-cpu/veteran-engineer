@@ -1,0 +1,257 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
+  activeRuntimeResourceConflicts,
+  buildCapabilitySnapshot,
+  normalizeTaskCapabilityContract,
+  runtimeResourcesConflict,
+  taskCapabilityReadiness
+} from '../src/capability-plane.mjs';
+import { computeWaves } from '../src/mission-service.mjs';
+
+function task(id, overrides = {}) {
+  return {
+    id,
+    contract: `contract ${id}`,
+    owner: `owner ${id}`,
+    dependencies: [],
+    writeSet: [],
+    runtimeResources: [],
+    sensingCapabilities: [],
+    executionCapabilities: [],
+    ...overrides
+  };
+}
+
+function validationCapability(name) {
+  return { name, command: ['node', '--version'] };
+}
+
+test('capability contract normalizes coordination keys into project-exclusive resources', () => {
+  const normalized = normalizeTaskCapabilityContract({
+    sensingCapabilities: ['browser', 'browser'],
+    executionCapabilities: ['docker'],
+    coordinationKeys: ['schema'],
+    runtimeResources: [{ key: 'port:3000', scope: 'task', mode: 'exclusive' }]
+  }, 'T1');
+  assert.deepEqual(normalized.sensingCapabilities, ['browser']);
+  assert.deepEqual(normalized.executionCapabilities, ['docker']);
+  assert.deepEqual(normalized.coordinationKeys, ['schema']);
+  assert.deepEqual(normalized.runtimeResources, [
+    { key: 'coordination:schema', scope: 'project', mode: 'exclusive' },
+    { key: 'port:3000', scope: 'task', mode: 'exclusive' }
+  ]);
+});
+
+test('capability contract rejects coercible identities and explicit malformed resource metadata', () => {
+  for (const value of ['', false, 0, {}]) {
+    assert.throws(() => normalizeTaskCapabilityContract({ sensingCapabilities: value }, 'T1'), /must be an array/);
+    assert.throws(() => normalizeTaskCapabilityContract({ executionCapabilities: value }, 'T1'), /must be an array/);
+    assert.throws(() => normalizeTaskCapabilityContract({ coordinationKeys: value }, 'T1'), /must be an array/);
+  }
+  for (const value of [42, true, {}, ['nested']]) {
+    assert.throws(() => normalizeTaskCapabilityContract({ sensingCapabilities: [value] }, 'T1'), /must be a string/);
+    assert.throws(() => normalizeTaskCapabilityContract({ executionCapabilities: [value] }, 'T1'), /must be a string/);
+    assert.throws(() => normalizeTaskCapabilityContract({ coordinationKeys: [value] }, 'T1'), /must be a string/);
+  }
+  assert.throws(() => normalizeTaskCapabilityContract({ runtimeResources: false }, 'T1'), /must be an array/);
+  assert.throws(() => normalizeTaskCapabilityContract({ runtimeResources: [{ key: 42 }] }, 'T1'), /must be a string/);
+  assert.throws(() => normalizeTaskCapabilityContract({ runtimeResources: [{ key: 'db', scope: 42 }] }, 'T1'), /must be a string/);
+  assert.throws(() => normalizeTaskCapabilityContract({ runtimeResources: [{ key: 'db', mode: false }] }, 'T1'), /must be a string/);
+  assert.throws(() => normalizeTaskCapabilityContract({ runtimeResources: [{ key: 'db', scope: '' }] }, 'T1'), /non-empty string/);
+  assert.throws(() => normalizeTaskCapabilityContract({ runtimeResources: [{ key: 'db', mode: '' }] }, 'T1'), /non-empty string/);
+});
+
+test('resource identities isolate task-scoped resources but serialize project-exclusive resources', () => {
+  const taskPort = [{ key: 'port:3000', scope: 'task', mode: 'exclusive' }];
+  assert.equal(runtimeResourcesConflict(taskPort, taskPort, { projectId: 'p', missionId: 'm', taskId: 'a' }, { projectId: 'p', missionId: 'm', taskId: 'b' }), false);
+
+  const schema = [{ key: 'coordination:schema', scope: 'project', mode: 'exclusive' }];
+  assert.equal(runtimeResourcesConflict(schema, schema, { projectId: 'p', missionId: 'm1', taskId: 'a' }, { projectId: 'p', missionId: 'm2', taskId: 'b' }), true);
+  assert.equal(runtimeResourcesConflict(schema, schema, { projectId: 'p1', missionId: 'm1', taskId: 'a' }, { projectId: 'p2', missionId: 'm2', taskId: 'b' }), false);
+});
+
+test('mission waves account for runtime-resource conflicts in addition to file write conflicts', () => {
+  const shared = [{ key: 'database:integration', scope: 'project', mode: 'exclusive' }];
+  const tasks = [
+    task('A', { writeSet: ['src/a'], runtimeResources: shared }),
+    task('B', { writeSet: ['src/b'], runtimeResources: shared }),
+    task('C', { writeSet: ['src/c'], runtimeResources: [{ key: 'browser-profile', scope: 'task', mode: 'exclusive' }] })
+  ];
+  assert.deepEqual(computeWaves(tasks), [['A', 'C'], ['B']]);
+});
+
+test('capability readiness derives sensing names from validation catalog objects and separates execution requirements', () => {
+  const project = {
+    validationCapabilities: [validationCapability('browser'), validationCapability('observability')],
+    runtimeFeedbackCapabilities: ['observability'],
+    workerPolicy: { capabilities: ['docker', 'networkless-worker'] }
+  };
+  assert.deepEqual(taskCapabilityReadiness(task('A', {
+    sensingCapabilities: ['source-identity', 'browser', 'observability'],
+    executionCapabilities: ['docker']
+  }), project), {
+    ready: true,
+    missingSensing: [],
+    missingExecution: [],
+    available: {
+      sensing: ['browser', 'mission-state', 'observability', 'source-identity', 'task-state'],
+      execution: ['docker', 'networkless-worker']
+    }
+  });
+  const missing = taskCapabilityReadiness(task('B', { executionCapabilities: ['gpu'] }), project);
+  assert.equal(missing.ready, false);
+  assert.deepEqual(missing.missingExecution, ['gpu']);
+});
+
+test('configured validation references require provider backing before they are advertised as sensing', () => {
+  const project = {
+    id: 'p',
+    validationCapabilities: [validationCapability('browser')],
+    runtimeFeedbackCapabilities: ['browser', 'ghost-feedback'],
+    requiredValidationCapabilities: ['browser', 'ghost-final'],
+    workerPolicy: { capabilities: [] }
+  };
+  const mission = { id: 'm', phase: 'execution', status: 'ready', nextWaveIndex: 0, waves: [['A']] };
+  const tasks = [task('A', { sensingCapabilities: ['ghost-feedback'] })];
+  const readiness = taskCapabilityReadiness(tasks[0], project);
+  assert.equal(readiness.ready, false);
+  assert.deepEqual(readiness.missingSensing, ['ghost-feedback']);
+  assert.deepEqual(readiness.available.sensing, ['browser', 'mission-state', 'source-identity', 'task-state']);
+
+  const snapshot = buildCapabilitySnapshot({ project, mission, tasks, liveSourceIdentity: { head: 'h', dirty: false }, state: { tasks: {} } });
+  assert.deepEqual(snapshot.capabilityDiagnostics, {
+    unbackedRuntimeFeedbackCapabilities: ['ghost-feedback'],
+    unbackedRequiredValidationCapabilities: ['ghost-final']
+  });
+  assert.equal(snapshot.wave[0].capabilityReady, false);
+});
+
+test('active lease conflicts derive persisted resource identity from authoritative task and mission state', () => {
+  const project = { id: 'p' };
+  const mission = { id: 'm2' };
+  const candidate = task('B', { runtimeResources: [{ key: 'database:test', scope: 'project', mode: 'exclusive' }] });
+  const state = {
+    missions: {
+      m1: { id: 'm1', projectId: 'p' },
+      m2: { id: 'm2', projectId: 'p' }
+    },
+    tasks: {
+      'm1:A': {
+        id: 'A', missionId: 'm1', status: 'executing',
+        capabilityLease: {
+          projectId: 'forged-project',
+          missionId: 'forged-mission',
+          taskId: 'forged-task',
+          resources: [{
+            key: 'database:test',
+            scope: 'project',
+            mode: 'exclusive',
+            identity: 'project:forged-project:database:test'
+          }]
+        }
+      }
+    }
+  };
+  const conflicts = activeRuntimeResourceConflicts({ state, task: candidate, mission, project });
+  assert.equal(conflicts.length, 1);
+  assert.equal(conflicts[0].missionId, 'm1');
+  assert.equal(conflicts[0].taskId, 'A');
+  assert.equal(conflicts[0].conflicts[0].identity, 'project:p:database:test');
+});
+
+test('active persisted lease with missing authoritative mission context fails closed', () => {
+  const project = { id: 'p' };
+  const mission = { id: 'm2' };
+  const candidate = task('B', { runtimeResources: [{ key: 'database:test', scope: 'project', mode: 'exclusive' }] });
+  const state = {
+    missions: { m2: { id: 'm2', projectId: 'p' } },
+    tasks: {
+      orphan: {
+        id: 'A', missionId: 'missing-mission', status: 'executing',
+        capabilityLease: {
+          resources: [{ key: 'database:test', scope: 'project', mode: 'exclusive', identity: 'global:spoof' }]
+        }
+      }
+    }
+  };
+  assert.throws(
+    () => activeRuntimeResourceConflicts({ state, task: candidate, mission, project }),
+    (error) => error.code === 'CAPABILITY_LEASE_CONTEXT_INVALID'
+  );
+});
+
+test('capability snapshot binds source freshness, catalog-derived sensing, wave requirements, and active leases', () => {
+  const project = { id: 'p', validationCapabilities: [validationCapability('browser')], runtimeFeedbackCapabilities: [], workerPolicy: { capabilities: ['docker'] } };
+  const mission = {
+    id: 'm', phase: 'execution', status: 'ready', nextWaveIndex: 0, waves: [['A']],
+    runtimeFeedback: { latestRound: { commitSha: 'old', scope: 'checkpoint', passed: false, aggregateEvidenceId: 'e1' } }
+  };
+  const tasks = [task('A', { sensingCapabilities: ['browser'], executionCapabilities: ['docker'] })];
+  const snapshot = buildCapabilitySnapshot({ project, mission, tasks, liveSourceIdentity: { head: 'new', dirty: false }, state: { tasks: {} } });
+  assert.equal(snapshot.contract, 'veteran-capability-snapshot-v1');
+  assert.deepEqual(snapshot.availableCapabilities.sensing, ['browser', 'mission-state', 'source-identity', 'task-state']);
+  assert.equal(snapshot.wave[0].capabilityReady, true);
+  assert.equal(snapshot.runtimeFeedback.sourceBoundToLiveHead, false);
+});
+
+test('capability snapshot canonicalizes persisted lease identity before applying visibility boundaries', () => {
+  const project = { id: 'p1', validationCapabilities: [], runtimeFeedbackCapabilities: [], workerPolicy: { capabilities: [] } };
+  const mission = { id: 'm1', phase: 'execution', status: 'ready', nextWaveIndex: 0, waves: [['A']] };
+  const tasks = [task('A')];
+  const leaseTask = (id, missionId, resources) => ({
+    id,
+    missionId,
+    status: 'executing',
+    capabilityLease: {
+      id: `lease-${id}`,
+      projectId: 'forged-project',
+      missionId: 'forged-mission',
+      taskId: 'forged-task',
+      resources
+    }
+  });
+  const state = {
+    missions: {
+      m1: { id: 'm1', projectId: 'p1' },
+      m2: { id: 'm2', projectId: 'p1' },
+      m3: { id: 'm3', projectId: 'p2' },
+      m4: { id: 'm4', projectId: 'p2' }
+    },
+    tasks: {
+      own: leaseTask('OWN', 'm1', [
+        { key: 'port', scope: 'task', mode: 'exclusive', identity: 'global:forged-own' },
+        { key: 'own-profile', scope: 'mission', mode: 'exclusive', identity: 'project:p2:forged-own' }
+      ]),
+      sameProject: leaseTask('PROJECT', 'm2', [
+        { key: 'database', scope: 'project', mode: 'exclusive', identity: 'project:p2:hidden-real-claim' },
+        { key: 'foreign-profile', scope: 'mission', mode: 'exclusive', identity: 'global:forged-private' },
+        { key: 'foreign-port', scope: 'task', mode: 'exclusive', identity: 'project:p1:forged-private' }
+      ]),
+      sameProjectPrivate: leaseTask('MISSION', 'm2', [
+        { key: 'profile-only', scope: 'mission', mode: 'exclusive', identity: 'global:forged-private-only' }
+      ]),
+      foreignProject: leaseTask('FOREIGN', 'm3', [
+        { key: 'database', scope: 'project', mode: 'exclusive', identity: 'project:p1:forged-visible' }
+      ]),
+      global: leaseTask('GLOBAL', 'm4', [
+        { key: 'release-lane', scope: 'global', mode: 'exclusive', identity: 'task:p2:m4:GLOBAL:forged-hidden' },
+        { key: 'other-project-db', scope: 'project', mode: 'exclusive', identity: 'global:forged-visible' },
+        { key: 'other-private', scope: 'mission', mode: 'exclusive', identity: 'project:p1:forged-visible-private' }
+      ])
+    }
+  };
+  const snapshot = buildCapabilitySnapshot({ project, mission, tasks, liveSourceIdentity: { head: 'h', dirty: false }, state });
+  const byTask = new Map(snapshot.activeLeases.map((lease) => [lease.taskId, lease]));
+  assert.deepEqual([...byTask.keys()].sort(), ['GLOBAL', 'OWN', 'PROJECT']);
+  assert.deepEqual(byTask.get('OWN').resources.map((resource) => resource.identity).sort(), [
+    'mission:p1:m1:own-profile',
+    'task:p1:m1:OWN:port'
+  ]);
+  assert.deepEqual(byTask.get('PROJECT').resources.map((resource) => resource.identity), [
+    'project:p1:database'
+  ]);
+  assert.deepEqual(byTask.get('GLOBAL').resources.map((resource) => resource.identity), [
+    'global:release-lane'
+  ]);
+});
