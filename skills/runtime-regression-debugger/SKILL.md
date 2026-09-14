@@ -188,7 +188,7 @@ Read `references/autonomous-repository-engineering.md` and use `scripts/action_g
 
 ## 10. Route specialist knowledge only when the mechanism demands it
 
-Keep active context small. Prefer three to seven relevant references over a broad dump; re-route after contrary evidence or a boundary crossing. Use `scripts/engineering_context_router.py --signals <csv>` when several mechanisms compete.
+Keep active context small. Prefer three to seven relevant references over a broad dump; re-route after contrary evidence or a boundary crossing. Use `scripts/engineering_context_router.py --signals <csv>` when several mechanisms compete. Treat that router as the specialist catalog authority for references not named here; do not preload or maintain a second static index.
 
 Common routes:
 
@@ -239,25 +239,3 @@ Use calibrated completion language:
 Also allow `evidence-backed no-change` when that is the correct engineering outcome.
 
 Never say "fixed" when only source changes or weak local tests exist. Never say "released" when only an artifact was built.
-
-## Reference index
-
-Use these only when their mechanism is active. Each reference is one level from this entrypoint.
-
-**Core judgment/delivery:** `references/veteran-engineering-judgment.md`, `references/staff-engineering-execution.md`, `references/autonomous-repository-engineering.md`, `references/full-stack-product-engineering.md`, `references/project-takeover-engineering.md`, `references/batch-mission-orchestration.md`, `references/cognitive-routing-invariant-compiler.md`, `references/decision-compression-learning-loop.md`, `references/failure-memory-antipatterns.md`, `references/git-archaeology-maintenance.md`, `references/dogfood-skill-evolution.md`.
-
-**Design/change quality:** `references/architecture-refactoring-patterns.md`, `references/architecture-fitness-assumption-decay.md`, `references/lifecycle-closure-design-to-deletion.md`, `references/legacy-modernization-longevity.md`, `references/project-takeover-engineering.md`, `references/semantic-diff-behavior-change.md`, `references/negative-space-patch-compression.md`, `references/change-entropy-rollback-paradox.md`.
-
-**Evidence/testing/operability:** `references/testing-quality-patterns.md`, `references/mutation-metamorphic-regression-testing.md`, `references/engineering-evidence-gates.md`, `references/proof-carrying-change-evidence.md`, `references/decision-compression-learning-loop.md`, `references/temporal-debugging-state-transitions.md`, `references/causal-debugging-experiment-design.md`, `references/operability-control-plane-contract.md`.
-
-**Plugin/persistence/orchestration:** `references/plugin-control-plane.md`, `references/plugin-runtime-v2.md`, `references/worker-execution-runtime.md`, `references/engineering-experience-governance.md`, `references/batch-mission-orchestration.md`, `references/cross-host-plugin-distribution.md`, `references/hosted-state-backend-engineering.md`.
-
-**Application/full-stack:** `references/frontend-product-patterns.md`, `references/api-backend-patterns.md`, `references/data-consistency-migration-patterns.md`, `references/security-multitenancy-patterns.md`, `references/async-edge-job-patterns.md`, `references/performance-scale-patterns.md`, `references/code-review-patterns.md`, `references/operations-reliability-patterns.md`, `references/dependency-supply-chain-patterns.md`, `references/infrastructure-deployment-patterns.md`, `references/release-promotion-patterns.md`, `references/upstream-research-playbook.md`, `references/dependency-outcome-degradation.md`, `references/cross-repo-contract-mesh.md`.
-
-**Deep systems:** `references/distributed-systems-consistency.md`, `references/database-internals-query-engineering.md`, `references/database-recovery-durability.md`, `references/linux-network-runtime-engineering.md`, `references/kernel-io-numa-runtime.md`, `references/transport-connection-engineering.md`, `references/managed-runtime-gc-engineering.md`, `references/capacity-overload-engineering.md`, `references/cache-rate-limit-admission.md`, `references/resilience-dr-multiregion.md`, `references/consensus-coordination-engineering.md`, `references/stack-messaging-workflows.md`.
-
-**Hyperscale/data platforms/value:** `references/hyperscale-partitioning-hotspots.md`, `references/data-movement-cdc-search-storage.md`, `references/stream-processing-event-sourcing.md`, `references/search-relevance-serving.md`, `references/data-platform-olap-scheduling.md`, `references/global-traffic-cell-architecture.md`, `references/saas-isolation-noisy-neighbor.md`, `references/mega-migration-zero-downtime.md`, `references/payments-ledger-integrity.md`, `references/operations-reliability-patterns.md`, `references/change-entropy-rollback-paradox.md`, `references/incident-command-uncertainty.md`.
-
-**Stack playbooks:** `references/stack-react-nextjs.md`, `references/stack-web-frameworks.md`, `references/stack-node-typescript.md`, `references/stack-python-fastapi.md`, `references/stack-jvm-spring.md`, `references/stack-dotnet-aspnet.md`, `references/stack-go-services.md`, `references/stack-legacy-web.md`, `references/stack-postgres-redis.md`, `references/stack-data-stores.md`, `references/stack-messaging-workflows.md`, `references/stack-containers-kubernetes.md`.
-
-**Desktop/embedded/remote-service:** `references/runtime-failure-patterns.md`, `references/runtime-lifecycle-patterns.md`, `references/embedded-remote-service-patterns.md`, `references/integration-onboarding-patterns.md`, `references/remote-service-compatibility-patterns.md`, `references/auth-navigation-platform-patterns.md`, `references/adapter-distribution-patterns.md`, `references/resource-lifecycle-patterns.md`, `references/host-shell-platform-patterns.md`, `references/observability-support-patterns.md`.
