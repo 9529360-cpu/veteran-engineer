@@ -32,11 +32,11 @@ test('validation uses operator capability catalog and raw validation requires se
   }
 });
 
-test('configured semantic reviewer provider executes its bounded protocol and returns normally', async () => {
+test('configured semantic reviewer receives maintainability policy through its bounded protocol', async () => {
   const { root, repo, stateRoot } = await createGitRepo();
   try {
     const reviewer = path.join(root, 'reviewer.cjs');
-    await fs.writeFile(reviewer, `let input='';process.stdin.setEncoding('utf8');process.stdin.on('data',c=>input+=c);process.stdin.on('end',()=>{const p=JSON.parse(input);if(p.protocol!=='veteran-reviewer-v1')process.exit(3);process.stdout.write(JSON.stringify({passed:true,findings:[]}));});\n`);
+    await fs.writeFile(reviewer, `let input='';process.stdin.setEncoding('utf8');process.stdin.on('data',c=>input+=c);process.stdin.on('end',()=>{const p=JSON.parse(input);if(p.protocol!=='veteran-reviewer-v1')process.exit(3);if(!Array.isArray(p.reviewPolicy)||!p.reviewPolicy.some(x=>x.includes('parallel sources of truth'))||!p.reviewPolicy.some(x=>x.includes('negative space'))||!p.reviewPolicy.some(x=>x.includes('real authorization, concurrency, durability')))process.exit(4);process.stdout.write(JSON.stringify({passed:true,findings:[]}));});\n`);
     await fs.mkdir(stateRoot, { recursive: true });
     await fs.writeFile(path.join(stateRoot, 'operator.json'), `${JSON.stringify({ defaults: { reviewerProvider: { command: process.execPath, args: [reviewer] }, requireSemanticReview: true } }, null, 2)}\n`);
     const app = await createVeteranApp({ stateRoot });
