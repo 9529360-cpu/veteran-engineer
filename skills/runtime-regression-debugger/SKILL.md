@@ -56,7 +56,7 @@ Treat Veteran Engineer as one cross-host product. Keep Mission/MCP/worker behavi
 
 If durable project experience is available, query only the few memories relevant to the current mechanism and project scope. Current repository/runtime evidence always wins over memory. Persist failed assumptions, ownership facts, release topology, validation precedent, or recurring compatibility constraints only under the governance in `references/engineering-experience-governance.md`; use `scripts/experience_compactor.py` only to create reviewable candidates, never to auto-promote lessons or rewrite the Skill.
 
-When delegating to other AI workers, send compact evidence-backed task packets with a local contract, allowed/protected write scope, dependencies, validation oracle, and stop/escalation conditions. Do not delegate unresolved mission-level product semantics, security policy, migration authority, or release ownership as if they were ordinary implementation details.
+When delegating to other AI workers, send compact evidence-backed task packets with a local contract, allowed/protected write scope, dependencies, validation oracle, and stop/escalation conditions. Coding workers must also receive the default implementation discipline: prefer the smallest complete existing owner, reject speculative parallel abstractions, compress accidental complexity after proof, and preserve real correctness boundaries. Do not delegate unresolved mission-level product semantics, security policy, migration authority, or release ownership as if they were ordinary implementation details.
 
 ## 3. Choose a primary engineering mode
 
@@ -115,8 +115,12 @@ Use these across stacks; load specialist references for implementation detail.
 - Separate rollback of code/artifacts from recovery of durable data or irreversible external effects.
 - Bound queues, concurrency, retries, buffers, connections, and admission by the real downstream bottleneck.
 - Give every new service, queue, store, cache, flag, adapter, index, scheduled job, or compatibility path an owner, failure model, observability, and removal/lifecycle plan when material.
-- Prefer boring existing mechanisms that satisfy the contract; require concrete pressure before adding distribution, abstraction, or new technology.
-- Delete accidental complexity after correctness is proven; do not modernize stable code for aesthetics.
+- Prefer the smallest complete change in the existing authoritative owner. Create a new module, service, state machine, store, adapter, wrapper, abstraction, extension point, or dependency only when repository evidence shows a distinct responsibility/lifecycle or a repeated semantic contract that the existing owner cannot safely absorb.
+- Avoid parallel sources of truth, duplicate state machines, repository/service wrappers with no independent responsibility, wrapper-on-wrapper indirection, speculative extension points, and generic interfaces with only one accidental consumer.
+- Keep control flow, state, naming, and data movement direct and boring. Do not hide product policy behind generic plumbing or duplicate the same fact across layers merely to look architectural.
+- After correctness is proven, run a compression pass: remove dead branches, obsolete compatibility, redundant helpers, accidental indirection, duplicate tests, and temporary scaffolding whose live consumer is gone. Do not modernize stable code for aesthetics.
+- Do not compress away real authorization, concurrency, durability, failure-recovery, observability, compatibility, isolation, or cleanup boundaries. Simplicity is fewer accidental mechanisms, not fewer necessary guarantees.
+- Make tests protect behavior and machine-checkable invariants. Do not create a gate or large fixture merely to prove prose fields are present or freeze the current implementation shape.
 
 ## 6. Execute large refactors safely
 

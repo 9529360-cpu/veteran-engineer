@@ -19,11 +19,37 @@ async function configureWorker(stateRoot, script, extra = {}) {
   }, null, 2)}\n`);
 }
 
+test('dispatched worker packet carries maintainability policy before any worker runs', async () => {
+  const { root, repo, stateRoot } = await createGitRepo({ files: { 'src/a.txt': 'before\n' } });
+  try {
+    const worker = path.join(root, 'worker.cjs');
+    await fs.writeFile(worker, 'process.exit(0);\n');
+    await configureWorker(stateRoot, worker);
+    const app = await createVeteranApp({ stateRoot });
+    const project = await app.services.projectService.open({ repoPath: repo });
+    const planned = await app.services.missionService.plan({ projectId: project.id, goal: 'maintainable change', doneDefinition: 'bounded implementation', tasks: [{ id: 'T1', contract: 'change src/a.txt', owner: 'src', dependencies: [], writeSet: ['src'], risk: 'low' }] });
+    const result = await app.services.workerOrchestrator.execute({ missionId: planned.mission.id, runWorkers: false });
+    const dispatch = result.dispatched[0];
+    assert.ok(dispatch);
+    const policy = dispatch.packet.implementationPolicy;
+    assert.ok(Array.isArray(policy));
+    assert.ok(policy.some((item) => item.includes('smallest complete change')));
+    assert.ok(policy.some((item) => item.includes('parallel one')));
+    assert.ok(policy.some((item) => item.includes('compression pass')));
+    assert.ok(policy.some((item) => item.includes('Do not simplify away real correctness boundaries')));
+    assert.ok(policy.some((item) => item.includes('machine-checkable invariants')));
+    const persisted = JSON.parse(await fs.readFile(dispatch.packetPath, 'utf8'));
+    assert.deepEqual(persisted.implementationPolicy, policy);
+  } finally {
+    await cleanup(root);
+  }
+});
+
 test('configured worker mutates only isolated task worktree and runtime owns commit/integration', async () => {
   const { root, repo, head, stateRoot } = await createGitRepo({ files: { 'src/a.txt': 'before\n' } });
   try {
     const worker = path.join(root, 'worker.cjs');
-    await fs.writeFile(worker, `const fs=require('fs'),p=require('path');const packet=JSON.parse(fs.readFileSync(process.env.VETERAN_TASK_PACKET,'utf8'));if(packet.protocol!=='veteran-worker-v1')process.exit(3);fs.writeFileSync(p.join(process.env.VETERAN_WORKTREE,'src','a.txt'),'worker-change\\n');\n`);
+    await fs.writeFile(worker, `const fs=require('fs'),p=require('path');const packet=JSON.parse(fs.readFileSync(process.env.VETERAN_TASK_PACKET,'utf8'));if(packet.protocol!=='veteran-worker-v1')process.exit(3);if(!Array.isArray(packet.implementationPolicy)||!packet.implementationPolicy.some(x=>x.includes('compression pass')))process.exit(4);fs.writeFileSync(p.join(process.env.VETERAN_WORKTREE,'src','a.txt'),'worker-change\\n');\n`);
     await configureWorker(stateRoot, worker);
     const app = await createVeteranApp({ stateRoot });
     const project = await app.services.projectService.open({ repoPath: repo });
