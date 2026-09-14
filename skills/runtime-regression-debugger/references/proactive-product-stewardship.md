@@ -89,6 +89,8 @@ For meaningful surfaces check:
 
 Read `frontend-product-patterns.md` for implementation details and `accessibility-product-engineering.md` when accessibility is material.
 
+For first-run, onboarding, setup, activation, or time-to-first-value journeys, read `user-onboarding-activation-product-engineering.md`. Treat activation as an authoritative product outcome rather than completion of tutorial UI.
+
 ## Design initiative without over-design
 
 When the existing UI is visibly weak or inconsistent and the user has delegated broad product ownership:
