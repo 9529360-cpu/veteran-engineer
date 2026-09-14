@@ -30,6 +30,16 @@ function assertStringArrayField(scope, key, pathValue) {
   }
 }
 
+function validateRuntimeFeedbackPolicy(raw, pathValue) {
+  if (raw === undefined || raw === null) return null;
+  if (!isRecord(raw)) throw invalidOperatorConfig(pathValue, 'object', raw);
+  assertBooleanField(raw, 'autoRepair', pathValue);
+  if (raw.maxRepairAttempts !== undefined && (!Number.isInteger(raw.maxRepairAttempts) || raw.maxRepairAttempts < 0 || raw.maxRepairAttempts > 3)) {
+    throw invalidOperatorConfig(`${pathValue}.maxRepairAttempts`, 'integer from 0 through 3', raw.maxRepairAttempts);
+  }
+  return raw;
+}
+
 function validatePolicyScope(value, pathValue) {
   if (value === undefined || value === null) return {};
   if (!isRecord(value)) throw invalidOperatorConfig(pathValue, 'object', value);
@@ -37,6 +47,7 @@ function validatePolicyScope(value, pathValue) {
   assertBooleanField(value, 'requireSemanticReview', pathValue);
   assertBooleanField(value, 'requireValidation', pathValue);
   assertStringArrayField(value, 'runtimeFeedbackCapabilities', pathValue);
+  validateRuntimeFeedbackPolicy(value.runtimeFeedbackPolicy, `${pathValue}.runtimeFeedbackPolicy`);
 
   const workerPolicy = value.workerPolicy;
   if (workerPolicy !== undefined && workerPolicy !== null) {
@@ -79,6 +90,12 @@ export function projectPolicy(operatorConfig, repoPath, remoteUrl = null) {
   return {
     validationCapabilities: specific.validationCapabilities || defaults.validationCapabilities || [],
     runtimeFeedbackCapabilities: specific.runtimeFeedbackCapabilities || defaults.runtimeFeedbackCapabilities || [],
+    runtimeFeedbackPolicy: {
+      autoRepair: false,
+      maxRepairAttempts: 1,
+      ...(defaults.runtimeFeedbackPolicy || {}),
+      ...(specific.runtimeFeedbackPolicy || {})
+    },
     workerPolicy: {
       enabled: false,
       maxWorkers: 2,

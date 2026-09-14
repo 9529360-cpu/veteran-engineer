@@ -85,6 +85,7 @@ export class ProjectService {
           bootstrapPlan,
           validationCapabilities: policy.validationCapabilities,
           runtimeFeedbackCapabilities: policy.runtimeFeedbackCapabilities,
+          runtimeFeedbackPolicy: policy.runtimeFeedbackPolicy,
           workerPolicy: policy.workerPolicy,
           plannerProvider: policy.plannerProvider,
           reviewerProvider: policy.reviewerProvider,
@@ -104,6 +105,7 @@ export class ProjectService {
         project.managedCheckout = sourceKind === 'managed-remote';
         project.validationCapabilities = policy.validationCapabilities;
         project.runtimeFeedbackCapabilities = policy.runtimeFeedbackCapabilities;
+        project.runtimeFeedbackPolicy = policy.runtimeFeedbackPolicy;
         project.workerPolicy = policy.workerPolicy;
         project.plannerProvider = policy.plannerProvider;
         project.reviewerProvider = policy.reviewerProvider;
