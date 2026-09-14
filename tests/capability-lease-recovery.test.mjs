@@ -37,6 +37,8 @@ test('mission resume releases orphan pre-dispatch leases but retains outstanding
     await app.store.transaction('test_capability_lease_recovery_seed', (state) => {
       const a = state.tasks[`${planned.mission.id}:A`];
       const b = state.tasks[`${planned.mission.id}:B`];
+      a.status = 'admitted';
+      a.admission = { id: 'admission-A', runWorkers: true, reservedAt: new Date().toISOString() };
       a.capabilityLease = lease(a, planned.mission, project, 'database:orphan');
       b.status = 'dispatched';
       b.capabilityLease = lease(b, planned.mission, project, 'database:live');
@@ -49,9 +51,14 @@ test('mission resume releases orphan pre-dispatch leases but retains outstanding
     const status = await app.services.missionService.status({ missionId: planned.mission.id });
     const byId = new Map(status.tasks.map((task) => [task.id, task]));
     assert.equal(byId.get('A').status, 'planned');
+    assert.equal(byId.get('A').admission, null);
     assert.equal(byId.get('A').capabilityLease, null);
     assert.equal(byId.get('B').status, 'dispatched');
     assert.ok(byId.get('B').capabilityLease);
+    const timeline = await app.services.missionService.timeline({ missionId: planned.mission.id });
+    const resumeEvent = timeline.find((event) => event.type === 'mission_resume_checked');
+    assert.deepEqual(resumeEvent?.recoveredAdmissionTaskIds, ['A']);
+    assert.deepEqual(resumeEvent?.uncertainTaskIds, []);
   } finally {
     await cleanup(fixture.root);
   }
