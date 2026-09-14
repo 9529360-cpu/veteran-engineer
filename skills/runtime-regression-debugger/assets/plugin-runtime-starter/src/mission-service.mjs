@@ -284,6 +284,8 @@ export class MissionService {
       blockers.push({ code: 'RECONCILIATION_REQUIRED', taskIds: interruptedTaskIds.length ? interruptedTaskIds : (mission.interruption?.taskIds || []) });
     }
     if (mission.phase === 'execution') {
+      const outstanding = tasks.filter((task) => ['admitted', 'dispatched', 'executing', 'cancelling'].includes(task.status));
+      if (outstanding.length) blockers.push({ code: 'OUTSTANDING_TASKS', taskIds: outstanding.map((task) => task.id) });
       const failed = tasks.filter((task) => task.status === 'failed');
       if (failed.length) blockers.push({ code: 'FAILED_TASKS', taskIds: failed.map((task) => task.id) });
       if (mission.status !== 'cancelled') {
