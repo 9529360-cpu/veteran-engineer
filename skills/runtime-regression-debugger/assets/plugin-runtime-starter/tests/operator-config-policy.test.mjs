@@ -70,17 +70,18 @@ test('operator config file fails closed before malformed policy reaches project 
   }
 });
 
-test('valid operator safety controls preserve extensible worker configuration', () => {
-  const validationCapability = { name: 'lint', command: ['node', '--version'] };
+test('valid operator safety controls preserve extensible worker configuration and canonicalize capability identities', () => {
+  const validationCapability = { name: ' lint ', command: ['node', '--version'] };
   const policy = projectPolicy({
     defaults: {
       requireValidation: true,
       validationCapabilities: [validationCapability],
-      requiredValidationCapabilities: ['lint'],
+      requiredValidationCapabilities: [' lint ', 'lint'],
+      runtimeFeedbackCapabilities: [' lint ', 'lint'],
       workerPolicy: {
         enabled: true,
         maxWorkers: 4,
-        capabilities: ['custom-tooling'],
+        capabilities: [' custom-tooling ', 'custom-tooling'],
         allowUnconfinedCustomWorkers: false,
         allowRawValidation: false,
         defaultWorker: 'codex',
@@ -100,8 +101,9 @@ test('valid operator safety controls preserve extensible worker configuration', 
 
   assert.equal(policy.requireValidation, true);
   assert.equal(policy.requireSemanticReview, true);
-  assert.deepEqual(policy.validationCapabilities, [validationCapability]);
+  assert.deepEqual(policy.validationCapabilities, [{ name: 'lint', command: ['node', '--version'] }]);
   assert.deepEqual(policy.requiredValidationCapabilities, ['lint']);
+  assert.deepEqual(policy.runtimeFeedbackCapabilities, ['lint']);
   assert.equal(policy.workerPolicy.enabled, true);
   assert.equal(policy.workerPolicy.maxWorkers, 1);
   assert.deepEqual(policy.workerPolicy.capabilities, ['custom-tooling']);
@@ -114,4 +116,5 @@ test('valid operator safety controls preserve extensible worker configuration', 
   assert.deepEqual(policy.workerPolicy.codex, {
     model: 'example-model', extraArgs: ['--quiet']
   });
+  assert.equal(validationCapability.name, ' lint ');
 });
