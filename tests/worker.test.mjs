@@ -63,6 +63,40 @@ test('dispatch-only worker packet lives outside task worktree, cannot be re-disp
   }
 });
 
+test('local worker receives a dispatch runtime namespace and disposable isolated temp directory', async () => {
+  const root = await tempDir('veteran-worker-runtime-');
+  try {
+    const worktreePath = path.join(root, 'worktree');
+    const workerPath = path.join(root, 'worker.mjs');
+    await fs.mkdir(worktreePath, { recursive: true });
+    await fs.writeFile(workerPath, [
+      "import fs from 'node:fs/promises';",
+      "import path from 'node:path';",
+      "const tmp = process.env.TMPDIR || process.env.TMP || process.env.TEMP;",
+      "await fs.writeFile(path.join(tmp, 'probe.txt'), 'owned\\n');",
+      "process.stdout.write(JSON.stringify({ runtimeNamespace: process.env.VETERAN_RUNTIME_NAMESPACE, tmp }));"
+    ].join('\n'));
+    const adapter = new WorkerAdapter();
+    const result = await adapter.run({
+      project: { workerPolicy: { enabled: true, allowUnconfinedCustomWorkers: false } },
+      mission: { id: 'M1' },
+      task: { id: 'T1', key: 'M1:T1', risk: 'low', writeSet: ['src'] },
+      worktreePath,
+      packet: { protocol: 'veteran-worker-v1' },
+      packetPath: path.join(root, 'dispatch-123.json'),
+      config: { type: 'custom', command: process.execPath, args: [workerPath] }
+    });
+    assert.equal(result.code, 0);
+    const observed = JSON.parse(result.stdout);
+    assert.equal(observed.runtimeNamespace, 'M1:T1:dispatch-123');
+    assert.equal(result.runtimeNamespace, observed.runtimeNamespace);
+    assert.match(observed.tmp.replaceAll('\\', '/'), /\/veteran-engineer\//);
+    await assert.rejects(fs.stat(observed.tmp), (error) => error.code === 'ENOENT', 'task-owned temp directory must be cleaned after worker exit');
+  } finally {
+    await cleanup(root);
+  }
+});
+
 test('broad write scope still rejects symlink traversal outside repository', async () => {
   const { root, repo } = await createGitRepo();
   try {
