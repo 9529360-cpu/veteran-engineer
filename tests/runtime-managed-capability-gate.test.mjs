@@ -51,3 +51,51 @@ test('runtime-managed execution rejects spoofed structural capability before spa
     await cleanup(fixture.root);
   }
 });
+
+test('capability snapshot distinguishes dispatch-only declarations from runtime-managed structural proof', async () => {
+  const fixture = await createGitRepo();
+  try {
+    const digest = 'a'.repeat(64);
+    const app = await appWithWorker(fixture.stateRoot, {
+      enabled: true,
+      maxWorkers: 1,
+      capabilities: [],
+      worker: {
+        type: 'container',
+        engine: 'docker',
+        image: `example.invalid/worker@sha256:${digest}`,
+        containerCommand: ['node', '/worker.mjs']
+      }
+    });
+    const project = await app.services.projectService.open({ repoPath: fixture.repo });
+    const planned = await app.services.missionService.plan({
+      projectId: project.id,
+      goal: 'report execution truth by mode',
+      doneDefinition: 'runtime-managed readiness reflects structural worker proof',
+      tasks: [{
+        id: 'A',
+        contract: 'bounded task',
+        owner: 'src',
+        writeSet: ['src'],
+        risk: 'low',
+        executionCapabilities: ['container-worker', 'network-isolated', 'read-only-rootfs']
+      }]
+    });
+
+    const readiness = await app.handlers.mission_readiness({ missionId: planned.mission.id });
+    const wave = readiness.capabilitySnapshot.wave[0];
+    assert.equal(wave.capabilityReady, false);
+    assert.equal(wave.dispatchOnlyCapabilityReady, false);
+    assert.equal(wave.runtimeManagedCapabilityReady, true);
+    assert.deepEqual(wave.runtimeManagedMissingSensing, []);
+    assert.deepEqual(wave.runtimeManagedMissingExecution, []);
+    assert.deepEqual(wave.runtimeManagedExecutionBlockers, []);
+    assert.equal(wave.runtimeManagedExecution.workerType, 'container');
+    assert.equal(wave.runtimeManagedExecution.policyValid, true);
+    for (const capability of ['container-worker', 'network-isolated', 'read-only-rootfs']) {
+      assert.ok(wave.runtimeManagedExecution.derivedCapabilities.includes(capability));
+    }
+  } finally {
+    await cleanup(fixture.root);
+  }
+});
