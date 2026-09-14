@@ -7,6 +7,7 @@
 - OAuth/OIDC
 - Authorization
 - Multi-tenant isolation
+- Organization and membership lifecycle
 - Secrets and credentials
 - Files, object storage, URLs, parsers, and SSRF
 - Audit and sensitive operations
@@ -96,6 +97,12 @@ OWASP's Multi-Tenant Security Cheat Sheet is a strong current reference and expl
 https://cheatsheetseries.owasp.org/cheatsheets/Multi_Tenant_Security_Cheat_Sheet.html
 
 Test isolation using two tenants over reused process/DB/cache connections so stale request context cannot bleed across requests.
+
+## Organization and membership lifecycle
+
+When the product owns organizations/workspaces, invitations, membership states, roles, guests, owner transfer, SCIM/group provisioning, or member offboarding, read `organization-membership-product-engineering.md`.
+
+Keep identity, tenant membership, role/policy, directory provisioning, and resource ownership under explicit owners. Treat membership/role changes as revocation events that may need to converge across sessions, caches, realtime subscriptions, and asynchronous jobs; updating one membership row is not sufficient proof that stale access is gone.
 
 ## Secrets and credentials
 
