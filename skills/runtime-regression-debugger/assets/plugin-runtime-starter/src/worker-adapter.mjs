@@ -559,7 +559,22 @@ export class WorkerAdapter {
             settleReject(spawnErrorFromSupervisor(supervisorSpawnError));
             return;
           }
-          settleResolve(workerOutcome || { code, signal });
+          if (!workerOutcome) {
+            this.#terminateRunning(running, 'supervisor-lost');
+            const error = new Error('Worker supervisor exited before reporting the worker outcome');
+            error.code = 'WORKER_SUPERVISOR_LOST';
+            error.details = {
+              runtimeNamespace,
+              pid: running.workerPid,
+              supervisorPid: child.pid,
+              supervisorExitCode: code ?? null,
+              supervisorSignal: signal ?? null,
+              termination: running.termination ? { ...running.termination } : null
+            };
+            settleReject(error);
+            return;
+          }
+          settleResolve(workerOutcome);
         });
         try {
           child.send({
