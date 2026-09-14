@@ -30,6 +30,23 @@ function assertStringArrayField(scope, key, pathValue) {
   }
 }
 
+function validateProcessProviderField(scope, key, pathValue) {
+  if (scope[key] === undefined || scope[key] === null) return;
+  const provider = scope[key];
+  const providerPath = `${pathValue}.${key}`;
+  if (!isRecord(provider)) throw invalidOperatorConfig(providerPath, 'provider object', provider);
+  if (typeof provider.command !== 'string' || !provider.command.trim()) {
+    throw invalidOperatorConfig(`${providerPath}.command`, 'non-empty string', provider.command);
+  }
+  if (provider.args !== undefined && (!Array.isArray(provider.args) || provider.args.some((value) => typeof value !== 'string'))) {
+    throw invalidOperatorConfig(`${providerPath}.args`, 'array of strings', provider.args);
+  }
+  assertStringArrayField(provider, 'envAllowlist', providerPath);
+  if (provider.timeoutMs !== undefined && (!Number.isInteger(provider.timeoutMs) || provider.timeoutMs < 1)) {
+    throw invalidOperatorConfig(`${providerPath}.timeoutMs`, 'positive integer', provider.timeoutMs);
+  }
+}
+
 function assertValidationCapabilitiesField(scope, key, pathValue) {
   if (scope[key] === undefined) return;
   const capabilities = scope[key];
@@ -85,6 +102,8 @@ function validatePolicyScope(value, pathValue) {
   assertStringArrayField(value, 'requiredValidationCapabilities', pathValue);
   assertStringArrayField(value, 'runtimeFeedbackCapabilities', pathValue);
   validateRuntimeFeedbackPolicy(value.runtimeFeedbackPolicy, `${pathValue}.runtimeFeedbackPolicy`);
+  validateProcessProviderField(value, 'plannerProvider', pathValue);
+  validateProcessProviderField(value, 'reviewerProvider', pathValue);
 
   const workerPolicy = value.workerPolicy;
   if (workerPolicy !== undefined && workerPolicy !== null) {
