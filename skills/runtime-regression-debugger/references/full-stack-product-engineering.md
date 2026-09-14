@@ -185,7 +185,7 @@ Use the lowest-cost test that can falsify the changed owner, then cross the real
 9. durable changes have rollback or forward-repair semantics;
 10. temporary compatibility/diagnostic code has a removal condition.
 
-Use `scripts/delivery_slice_gate.py` only when a structured closure record reduces omissions.
+Use `scripts/delivery_slice_gate.py` only when a structured closure record reduces omissions. Within a delivery slice, `transition`, `companion`, and `consumer` names are trace-link identities: names must be unique inside each kind so a requirements-to-delivery link cannot ambiguously target multiple rows. The same text may appear in different kinds because the trace identity is the pair `(kind, name)`.
 
 ## Finish at the visible boundary
 
