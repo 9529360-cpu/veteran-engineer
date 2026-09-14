@@ -190,20 +190,20 @@ Read `references/autonomous-repository-engineering.md` and use `scripts/action_g
 
 Keep active context small. Prefer three to seven relevant references over a broad dump; re-route after contrary evidence or a boundary crossing. Use `scripts/engineering_context_router.py --signals <csv>` when several mechanisms compete. Treat that router as the specialist catalog authority for references not named here; do not preload or maintain a second static index.
 
-Common routes:
+Fallback primary owners when the router is unavailable; use the router for stack/platform/companion references:
 
-- **Frontend/UI**: `references/frontend-product-patterns.md`, `references/stack-react-nextjs.md`, `references/stack-web-frameworks.md`.
-- **API/backend/real-time**: `references/api-backend-patterns.md`, `references/stack-node-typescript.md`, `references/stack-python-fastapi.md`, `references/stack-jvm-spring.md`, `references/stack-dotnet-aspnet.md`, `references/stack-go-services.md`, `references/stack-legacy-web.md`.
-- **Data/cache/migrations**: `references/data-consistency-migration-patterns.md`, `references/database-internals-query-engineering.md`, `references/database-recovery-durability.md`, `references/stack-postgres-redis.md`, `references/stack-data-stores.md`, `references/cache-rate-limit-admission.md`.
-- **Auth/security/tenancy**: `references/security-multitenancy-patterns.md`, `references/saas-isolation-noisy-neighbor.md`.
-- **Async/workflows/brokers**: `references/async-edge-job-patterns.md`, `references/stack-messaging-workflows.md`, `references/stream-processing-event-sourcing.md`.
-- **Runtime/desktop/remote services**: `references/runtime-failure-patterns.md`, `references/runtime-lifecycle-patterns.md`, `references/embedded-remote-service-patterns.md`, `references/integration-onboarding-patterns.md`, `references/remote-service-compatibility-patterns.md`, `references/auth-navigation-platform-patterns.md`, `references/adapter-distribution-patterns.md`, `references/resource-lifecycle-patterns.md`, `references/host-shell-platform-patterns.md`, `references/observability-support-patterns.md`.
-- **Performance/runtime internals**: `references/performance-scale-patterns.md`, `references/linux-network-runtime-engineering.md`, `references/kernel-io-numa-runtime.md`, `references/transport-connection-engineering.md`, `references/managed-runtime-gc-engineering.md`, `references/capacity-overload-engineering.md`.
-- **Distributed correctness**: `references/distributed-systems-consistency.md`, `references/consensus-coordination-engineering.md`, `references/database-internals-query-engineering.md`, `references/dependency-outcome-degradation.md`.
-- **Scale/global/data movement**: `references/hyperscale-partitioning-hotspots.md`, `references/global-traffic-cell-architecture.md`, `references/resilience-dr-multiregion.md`, `references/data-movement-cdc-search-storage.md`, `references/search-relevance-serving.md`, `references/data-platform-olap-scheduling.md`, `references/mega-migration-zero-downtime.md`.
+- **Frontend/UI**: `references/frontend-product-patterns.md`.
+- **API/backend/real-time**: `references/api-backend-patterns.md`.
+- **Data/cache/migrations**: `references/data-consistency-migration-patterns.md`.
+- **Auth/security/tenancy**: `references/security-multitenancy-patterns.md`.
+- **Async/workflows/brokers**: `references/async-edge-job-patterns.md`.
+- **Runtime/desktop/remote services**: `references/runtime-lifecycle-patterns.md`, `references/host-shell-platform-patterns.md`.
+- **Performance/runtime internals**: `references/performance-scale-patterns.md`.
+- **Distributed correctness**: `references/distributed-systems-consistency.md`.
+- **Scale/global/data movement**: `references/hyperscale-partitioning-hotspots.md`, `references/data-movement-cdc-search-storage.md`.
 - **Payments/value**: `references/payments-ledger-integrity.md`.
-- **Architecture/lifecycle/simplification**: `references/architecture-refactoring-patterns.md`, `references/architecture-fitness-assumption-decay.md`, `references/lifecycle-closure-design-to-deletion.md`, `references/project-takeover-engineering.md`.
-- **Reliability/release/SRE**: `references/operations-reliability-patterns.md`, `references/incident-command-uncertainty.md`, `references/change-entropy-rollback-paradox.md`, `references/infrastructure-deployment-patterns.md`, `references/release-promotion-patterns.md`, `references/stack-containers-kubernetes.md`.
+- **Architecture/lifecycle/simplification**: `references/architecture-refactoring-patterns.md`, `references/lifecycle-closure-design-to-deletion.md`.
+- **Reliability/release/SRE**: `references/operations-reliability-patterns.md`, `references/release-promotion-patterns.md`.
 
 ## 11. Use deterministic aids only when they improve a decision
 
