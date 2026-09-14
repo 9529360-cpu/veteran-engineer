@@ -2,11 +2,15 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { HOST_ADAPTER_API_VERSION } from '../../constants.mjs';
 import { pathExists } from '../../util.mjs';
-import { writeJsonAtomic, readJson } from '../util.mjs';
+import { writeJsonAtomic, readJson, stableObjectHash } from '../util.mjs';
 import { requireSurfaceCapability, resolveSurfaceProfile } from '../../surface-capabilities.mjs';
 
+function recordedBinding(context) {
+  return context.previousBinding?.binding || context.previousBinding || null;
+}
+
 function selectedSurfaceProfile(context) {
-  const recorded = context.previousBinding?.binding?.surfaceProfile || context.previousBinding?.surfaceProfile || null;
+  const recorded = recordedBinding(context)?.surfaceProfile || null;
   const profile = resolveSurfaceProfile(context.options.surfaceProfile || recorded || 'local-stdio');
   return requireSurfaceCapability(
     profile,
@@ -30,7 +34,21 @@ function descriptorFor(context) {
 }
 
 function descriptorPath(context) {
-  return path.resolve(context.options.descriptorPath || path.join(context.installerRoot, 'veteran-engineer.mcp.json'));
+  const recorded = recordedBinding(context)?.descriptorPath || null;
+  return path.resolve(context.options.descriptorPath || recorded || path.join(context.installerRoot, 'veteran-engineer.mcp.json'));
+}
+
+function bindingOwnsPath(context, file) {
+  const recorded = recordedBinding(context)?.descriptorPath;
+  return Boolean(recorded && path.resolve(recorded) === path.resolve(file));
+}
+
+async function readDescriptorForOwnership(file) {
+  try {
+    return await readJson(file, null);
+  } catch {
+    return null;
+  }
 }
 
 export default {
@@ -41,8 +59,21 @@ export default {
   capabilities: { mcp: true, skill: false, portableDescriptor: true },
   async install(context) {
     const file = descriptorPath(context);
-    await writeJsonAtomic(file, descriptorFor(context));
-    return { installed: true, descriptorPath: file, surfaceProfile: selectedSurfaceProfile(context) };
+    const descriptor = descriptorFor(context);
+    if (await pathExists(file)) {
+      if (!bindingOwnsPath(context, file)) {
+        const error = new Error(`Generic MCP descriptor already exists and is not recorded as Veteran-owned: ${file}`);
+        error.code = 'HOST_BINDING_CONFLICT';
+        throw error;
+      }
+    }
+    await writeJsonAtomic(file, descriptor);
+    return {
+      installed: true,
+      descriptorPath: file,
+      descriptorDigest: stableObjectHash(descriptor),
+      surfaceProfile: selectedSurfaceProfile(context)
+    };
   },
   async status(context) {
     const file = descriptorPath(context);
@@ -50,7 +81,16 @@ export default {
     const server = config?.mcpServers?.['veteran-engineer'];
     const expected = descriptorFor(context).mcpServers['veteran-engineer'];
     const healthy = Boolean(server && server.command === expected.command && Array.isArray(server.args) && server.args[0] === expected.args[0] && server.env?.VETERAN_ENGINEER_STATE_DIR === expected.env.VETERAN_ENGINEER_STATE_DIR && server.env?.VETERAN_ENGINEER_SURFACE_PROFILE === expected.env.VETERAN_ENGINEER_SURFACE_PROFILE);
-    return { installed: healthy, descriptorPath: file, exists: await pathExists(file), drift: Boolean(config && !healthy), surfaceProfile: selectedSurfaceProfile(context) };
+    const currentDigest = config ? stableObjectHash(config) : null;
+    const recordedDigest = recordedBinding(context)?.descriptorDigest || null;
+    return {
+      installed: healthy,
+      descriptorPath: file,
+      exists: await pathExists(file),
+      drift: Boolean(config && !healthy),
+      descriptorDigestCurrent: recordedDigest ? currentDigest === recordedDigest : null,
+      surfaceProfile: selectedSurfaceProfile(context)
+    };
   },
   async doctor(context) {
     const status = await this.status(context);
@@ -58,7 +98,30 @@ export default {
   },
   async uninstall(context) {
     const file = descriptorPath(context);
-    if (await pathExists(file)) await fs.rm(file, { force: true });
-    return { removed: true, descriptorPath: file };
+    if (!(await pathExists(file))) {
+      return { removed: true, descriptorPath: file, descriptorRemoved: false, reason: 'descriptor-missing' };
+    }
+
+    const current = await readDescriptorForOwnership(file);
+    const recorded = recordedBinding(context);
+    const recordedDigest = recorded?.descriptorDigest || null;
+    const currentDigest = current ? stableObjectHash(current) : null;
+    const legacyExpectedDigest = current ? stableObjectHash(descriptorFor(context)) : null;
+    const owned = recordedDigest
+      ? currentDigest === recordedDigest
+      : Boolean(bindingOwnsPath(context, file) && currentDigest && currentDigest === legacyExpectedDigest);
+
+    if (!owned) {
+      return {
+        removed: true,
+        descriptorPath: file,
+        descriptorRemoved: false,
+        preserved: true,
+        reason: current ? 'descriptor-drift' : 'descriptor-unreadable'
+      };
+    }
+
+    await fs.rm(file, { force: true });
+    return { removed: true, descriptorPath: file, descriptorRemoved: true };
   }
 };
