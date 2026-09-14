@@ -1,9 +1,8 @@
-import fs from 'node:fs/promises';
 import path from 'node:path';
 import { assertPathsWithinScope, changedPaths, git, sourceIdentity } from './git.mjs';
 import { MissionService } from './mission-service.mjs';
 import { nowIso, randomId } from './util.mjs';
-import { resolveWorkerConfig } from './worker-adapter.mjs';
+import { resolveWorkerConfig, writeWorkerPacket } from './worker-adapter.mjs';
 import { ProjectBootstrapExecutor, normalizeBootstrapAuthorization } from './bootstrap-executor.mjs';
 
 function runtimeFeedbackForPacket(mission, waveBase) {
@@ -102,14 +101,18 @@ export class WorkerOrchestrator {
     }
     const waveIds = mission.waves[mission.nextWaveIndex] || [];
     if (!waveIds.length) {
-      await this.store.transaction('mission_execution_complete', (state) => {
+      const completed = await this.store.transaction('mission_execution_complete', (state) => {
         const target = state.missions[missionId];
+        if (!target || target.status === 'cancelled') return false;
         target.phase = 'validation';
         target.status = 'ready';
         target.updatedAt = nowIso();
         state.runtime.timeline.push({ type: 'mission_execution_complete', missionId, at: nowIso() });
+        return true;
       }, { missionId });
-      return { missionId, phase: 'validation', completed: true };
+      return completed
+        ? { missionId, phase: 'validation', completed: true }
+        : { missionId, phase: 'execution', completed: false, reason: 'mission-cancelled' };
     }
     const waveTasks = tasks.filter((task) => waveIds.includes(task.id));
     const outstanding = waveTasks.filter((task) => ['admitted', 'dispatched', 'executing', 'cancelling', 'interrupted'].includes(task.status));
@@ -190,10 +193,21 @@ export class WorkerOrchestrator {
         }
         const packet = packetFor(project, refreshed.mission, task, waveBase, experience);
         const packetPath = path.join(this.store.artifactsDir, 'worker-packets', `${dispatchId}.json`);
-        await fs.mkdir(path.dirname(packetPath), { recursive: true });
-        await fs.writeFile(packetPath, `${JSON.stringify(packet, null, 2)}\n`, { mode: 0o600 });
+        if (!runWorkers) {
+          await writeWorkerPacket({
+            worktreePath: worktree.path,
+            packetPath,
+            taskId: task.id,
+            packet,
+            packetRoot: this.store.artifactsDir
+          });
+        }
         await this.store.transaction('worker_dispatched', (state) => {
           const target = state.tasks[task.key];
+          const liveMission = state.missions[missionId];
+          if (liveMission?.status === 'cancelled') {
+            throw Object.assign(new Error('Mission was cancelled before worker dispatch'), { code: 'MISSION_CANCELLED' });
+          }
           if (target.status !== 'admitted' || target.admission?.id !== admission.id) {
             throw Object.assign(new Error(`Worker admission was lost for ${task.id}`), { code: 'WORKER_ADMISSION_LOST' });
           }
@@ -202,7 +216,7 @@ export class WorkerOrchestrator {
           target.updatedAt = nowIso();
           target.admission = null;
           target.dispatches.push({ id: dispatchId, waveBase, worktreePath: worktree.path, packetPath, packet, bootstrapEvidenceId, status: runWorkers ? 'executing' : 'ready', createdAt: nowIso() });
-          state.missions[missionId].status = runWorkers ? 'executing' : 'ready';
+          liveMission.status = runWorkers ? 'executing' : 'ready';
           state.runtime.timeline.push({ type: 'worker_dispatched', missionId, taskId: task.id, dispatchId, runWorkers, at: nowIso() });
         }, { missionId, taskId: task.id, dispatchId, runWorkers, admissionId: admission.id });
         prepared.push({ task: { ...task, attempts: task.attempts + 1 }, packet, packetPath, worktree, dispatchId, bootstrap, bootstrapEvidenceId });
@@ -220,13 +234,42 @@ export class WorkerOrchestrator {
       try {
         const before = await sourceIdentity(item.worktree.path);
         if (before.head !== waveBase) throw Object.assign(new Error('Task worktree HEAD drifted before worker start'), { code: 'TASK_HEAD_OWNERSHIP_VIOLATION' });
-        const run = await this.workerAdapter.run({ project, mission, task: { ...item.task, key: `${mission.id}:${item.task.id}` }, worktreePath: item.worktree.path, packet: item.packet, packetPath: item.packetPath, config });
+        const run = await this.workerAdapter.run({
+          project,
+          mission,
+          task: { ...item.task, key: `${mission.id}:${item.task.id}` },
+          worktreePath: item.worktree.path,
+          packet: item.packet,
+          packetPath: item.packetPath,
+          packetRoot: this.store.artifactsDir,
+          config
+        });
         const after = await sourceIdentity(item.worktree.path);
         if (after.head !== waveBase) throw Object.assign(new Error('Worker changed task HEAD; runtime owns commits'), { code: 'TASK_HEAD_OWNERSHIP_VIOLATION', details: { before: waveBase, after: after.head } });
+        if (run.termination?.reason === 'operator-cancel') {
+          throw Object.assign(new Error('Worker execution was cancelled by the operator'), { code: 'WORKER_CANCELLED', details: run });
+        }
+        if (run.termination?.reason === 'timeout') {
+          throw Object.assign(new Error('Worker execution exceeded its runtime timeout'), { code: 'WORKER_TIMEOUT', details: run });
+        }
         if (run.code !== 0) throw Object.assign(new Error(`Worker exited with code ${run.code}`), { code: 'WORKER_FAILED', details: run });
         const paths = await changedPaths(item.worktree.path, waveBase);
         await assertPathsWithinScope(item.worktree.path, paths, item.task.writeSet);
-        const evidence = await this.evidenceService.record({ projectId: project.id, missionId, taskId: item.task.id, type: 'worker', summary: { exitCode: run.code, changedPaths: paths }, sourceIdentity: { head: waveBase }, artifact: `${run.stdout}\n--- stderr ---\n${run.stderr}` });
+        const evidence = await this.evidenceService.record({
+          projectId: project.id,
+          missionId,
+          taskId: item.task.id,
+          type: 'worker',
+          summary: {
+            exitCode: run.code,
+            changedPaths: paths,
+            runtimeNamespace: run.runtimeNamespace || null,
+            durationMs: run.durationMs ?? null,
+            outputCapture: run.outputCapture || null
+          },
+          sourceIdentity: { head: waveBase },
+          artifact: `${run.stdout}\n--- stderr ---\n${run.stderr}`
+        });
         let commitSha = null;
         if (paths.length) {
           await git(item.worktree.path, ['add', '-A']);
@@ -234,19 +277,38 @@ export class WorkerOrchestrator {
           commitSha = (await git(item.worktree.path, ['rev-parse', 'HEAD'])).stdout.trim();
           await this.#validateTaskCommit(item.worktree.path, waveBase, commitSha, item.task.writeSet);
         }
-        return { ...item, ok: true, commitSha, evidenceId: evidence.id, changedPaths: paths };
+        return { ...item, ok: true, commitSha, evidenceId: evidence.id, changedPaths: paths, run };
       } catch (error) {
-        const evidence = await this.evidenceService.record({ projectId: project.id, missionId, taskId: item.task.id, type: 'worker-failure', summary: { code: error.code || 'ERROR', message: error.message }, sourceIdentity: { head: waveBase }, artifact: error.details || null });
-        if (this.experienceService) {
+        const failureCode = error.code || 'ERROR';
+        const evidenceType = failureCode === 'WORKER_CANCELLED'
+          ? 'worker-cancelled'
+          : (failureCode === 'WORKER_TIMEOUT' ? 'worker-timeout' : 'worker-failure');
+        const evidence = await this.evidenceService.record({
+          projectId: project.id,
+          missionId,
+          taskId: item.task.id,
+          type: evidenceType,
+          summary: {
+            code: failureCode,
+            message: error.message,
+            runtimeNamespace: error.details?.runtimeNamespace || null,
+            durationMs: error.details?.durationMs ?? null,
+            termination: error.details?.termination || null,
+            outputCapture: error.details?.outputCapture || null
+          },
+          sourceIdentity: { head: waveBase },
+          artifact: error.details || null
+        });
+        if (this.experienceService && !['WORKER_CANCELLED', 'WORKER_TIMEOUT'].includes(failureCode)) {
           await this.experienceService.commit({
             projectId: project.id,
             mechanism: 'worker-execution',
-            statement: `Worker failure ${error.code || 'ERROR'} occurred at owner ${item.task.owner}; treat this only as a reviewable project-scoped failed-attempt candidate.`,
+            statement: `Worker failure ${failureCode} occurred at owner ${item.task.owner}; treat this only as a reviewable project-scoped failed-attempt candidate.`,
             kind: 'failed-assumption',
-            equivalenceClass: `${item.task.owner}:${error.code || 'ERROR'}`,
+            equivalenceClass: `${item.task.owner}:${failureCode}`,
             evidenceIds: [evidence.id],
             sourceIdentity: { head: waveBase },
-            appliesWhen: `Task owner is ${item.task.owner} and failure class is ${error.code || 'ERROR'}`,
+            appliesWhen: `Task owner is ${item.task.owner} and failure class is ${failureCode}`,
             doesNotApplyWhen: 'Current repository/runtime evidence contradicts this candidate or scope differs.'
           }).catch(() => {});
         }
@@ -256,49 +318,158 @@ export class WorkerOrchestrator {
 
     for (const result of results.sort((a, b) => a.task.id.localeCompare(b.task.id))) {
       if (!result.ok) {
-        await this.store.transaction('worker_failed', (state) => {
+        const code = result.error.code || 'ERROR';
+        const cancelled = code === 'WORKER_CANCELLED';
+        const timedOut = code === 'WORKER_TIMEOUT';
+        const operation = cancelled ? 'worker_cancelled' : (timedOut ? 'worker_timed_out' : 'worker_failed');
+        const eventType = operation;
+        await this.store.transaction(operation, (state) => {
           const task = state.tasks[`${missionId}:${result.task.id}`];
-          task.status = 'failed';
+          const liveMission = state.missions[missionId];
+          const missionCancelled = liveMission?.status === 'cancelled';
+          task.status = missionCancelled ? 'cancelled' : (cancelled ? 'cancelled' : 'failed');
           task.updatedAt = nowIso();
           const dispatch = task.dispatches.find((entry) => entry.id === result.dispatchId);
-          if (dispatch) Object.assign(dispatch, { status: 'failed', endedAt: nowIso(), error: { code: result.error.code || 'ERROR', message: result.error.message } });
-          state.missions[missionId].status = 'blocked';
-          state.runtime.timeline.push({ type: 'worker_failed', missionId, taskId: result.task.id, at: nowIso(), code: result.error.code || 'ERROR' });
-        }, { missionId, taskId: result.task.id, code: result.error.code || 'ERROR' });
+          if (dispatch) {
+            Object.assign(dispatch, {
+              status: missionCancelled ? 'cancelled' : (cancelled ? 'cancelled' : 'failed'),
+              endedAt: nowIso(),
+              error: { code, message: result.error.message },
+              runtimeNamespace: result.error.details?.runtimeNamespace || null,
+              durationMs: result.error.details?.durationMs ?? null,
+              termination: result.error.details?.termination || null,
+              outputCapture: result.error.details?.outputCapture || null
+            });
+          }
+          if (liveMission && !missionCancelled) liveMission.status = 'blocked';
+          state.runtime.timeline.push({ type: eventType, missionId, taskId: result.task.id, at: nowIso(), code, missionCancelled });
+        }, { missionId, taskId: result.task.id, code });
         continue;
       }
-      let integrationSha = (await git(missionWt.path, ['rev-parse', 'HEAD'])).stdout.trim();
+
+      const integrationBefore = (await git(missionWt.path, ['rev-parse', 'HEAD'])).stdout.trim();
+      let integrationSha = integrationBefore;
       if (result.commitSha) {
         const cherry = await git(missionWt.path, ['cherry-pick', result.commitSha], { allowFailure: true });
         if (cherry.code !== 0) {
           await git(missionWt.path, ['cherry-pick', '--abort'], { allowFailure: true });
           await this.store.transaction('task_integration_failed', (state) => {
             const task = state.tasks[`${missionId}:${result.task.id}`];
-            task.status = 'failed';
+            const liveMission = state.missions[missionId];
+            const missionCancelled = liveMission?.status === 'cancelled';
+            task.status = missionCancelled ? 'cancelled' : 'failed';
             task.commitSha = result.commitSha;
             task.updatedAt = nowIso();
-            state.missions[missionId].status = 'blocked';
-            state.runtime.timeline.push({ type: 'task_integration_failed', missionId, taskId: result.task.id, at: nowIso() });
+            if (liveMission && !missionCancelled) liveMission.status = 'blocked';
+            state.runtime.timeline.push({ type: 'task_integration_failed', missionId, taskId: result.task.id, at: nowIso(), missionCancelled });
           }, { missionId, taskId: result.task.id });
           continue;
         }
         integrationSha = (await git(missionWt.path, ['rev-parse', 'HEAD'])).stdout.trim();
       }
-      await this.store.transaction('task_integrated', (state) => {
+      const integrated = await this.store.transaction('task_integrated', (state) => {
+        const liveMission = state.missions[missionId];
+        if (!liveMission || liveMission.status === 'cancelled') return false;
         const task = state.tasks[`${missionId}:${result.task.id}`];
         task.status = 'done';
         task.commitSha = result.commitSha;
         task.integrationSha = integrationSha;
         task.updatedAt = nowIso();
         const dispatch = task.dispatches.find((entry) => entry.id === result.dispatchId);
-        if (dispatch) Object.assign(dispatch, { status: 'integrated', endedAt: nowIso(), commitSha: result.commitSha, integrationSha });
+        if (dispatch) {
+          Object.assign(dispatch, {
+            status: 'integrated',
+            endedAt: nowIso(),
+            commitSha: result.commitSha,
+            integrationSha,
+            runtimeNamespace: result.run?.runtimeNamespace || null,
+            durationMs: result.run?.durationMs ?? null,
+            termination: result.run?.termination || null,
+            outputCapture: result.run?.outputCapture || null
+          });
+        }
         state.runtime.timeline.push({ type: 'task_integrated', missionId, taskId: result.task.id, integrationSha, at: nowIso() });
+        return true;
       }, { missionId, taskId: result.task.id, integrationSha });
+      if (!integrated) {
+        const discardedCommitSha = result.commitSha || null;
+        if (discardedCommitSha) await git(missionWt.path, ['reset', '--hard', integrationBefore]);
+        await this.#recordDiscardedWorkerResult({ missionId, result });
+        result.ok = false;
+        result.discardedCommitSha = discardedCommitSha;
+        result.commitSha = null;
+        result.error = Object.assign(new Error('Worker result was discarded because the mission was cancelled before integration'), {
+          code: 'MISSION_CANCELLED',
+          details: result.run
+        });
+        continue;
+      }
       await this.worktreeManager.removeTaskWorktree(project, mission, result.task);
     }
 
     await this.#advanceWaveIfComplete(missionId, mission.nextWaveIndex);
-    return { missionId, waveIndex: mission.nextWaveIndex, waveBase, results: results.map((result) => ({ taskId: result.task.id, ok: result.ok, commitSha: result.commitSha || null, bootstrap: result.bootstrap || null, bootstrapEvidenceId: result.bootstrapEvidenceId || null, error: result.ok ? null : { code: result.error.code || 'ERROR', message: result.error.message } })), preparationFailures };
+    return {
+      missionId,
+      waveIndex: mission.nextWaveIndex,
+      waveBase,
+      results: results.map((result) => ({
+        taskId: result.task.id,
+        ok: result.ok,
+        commitSha: result.commitSha || null,
+        discardedCommitSha: result.discardedCommitSha || null,
+        bootstrap: result.bootstrap || null,
+        bootstrapEvidenceId: result.bootstrapEvidenceId || null,
+        runtime: result.ok
+          ? {
+              namespace: result.run?.runtimeNamespace || null,
+              durationMs: result.run?.durationMs ?? null,
+              termination: result.run?.termination || null,
+              outputCapture: result.run?.outputCapture || null
+            }
+          : {
+              namespace: result.error.details?.runtimeNamespace || null,
+              durationMs: result.error.details?.durationMs ?? null,
+              termination: result.error.details?.termination || null,
+              outputCapture: result.error.details?.outputCapture || null
+            },
+        error: result.ok ? null : { code: result.error.code || 'ERROR', message: result.error.message }
+      })),
+      preparationFailures
+    };
+  }
+
+  async #recordDiscardedWorkerResult({ missionId, result }) {
+    return this.store.transaction('worker_result_discarded_after_mission_cancel', (state) => {
+      const mission = state.missions[missionId];
+      if (!mission || mission.status !== 'cancelled') return false;
+      const task = state.tasks[`${missionId}:${result.task.id}`];
+      if (!task) return false;
+      task.status = 'cancelled';
+      task.updatedAt = nowIso();
+      const dispatch = task.dispatches.find((entry) => entry.id === result.dispatchId);
+      if (dispatch) {
+        Object.assign(dispatch, {
+          status: 'cancelled',
+          endedAt: nowIso(),
+          error: { code: 'MISSION_CANCELLED', message: 'Worker result was discarded because the mission was cancelled before integration' },
+          discardedCommitSha: result.commitSha || null,
+          discardedChangedPaths: result.changedPaths || [],
+          runtimeNamespace: result.run?.runtimeNamespace || null,
+          durationMs: result.run?.durationMs ?? null,
+          termination: result.run?.termination || null,
+          outputCapture: result.run?.outputCapture || null
+        });
+      }
+      state.runtime.timeline.push({
+        type: 'worker_result_discarded_after_mission_cancel',
+        missionId,
+        taskId: result.task.id,
+        dispatchId: result.dispatchId,
+        discardedCommitSha: result.commitSha || null,
+        at: nowIso()
+      });
+      return true;
+    }, { missionId, taskId: result.task.id, dispatchId: result.dispatchId, discardedCommitSha: result.commitSha || null });
   }
 
   async #reserveAdmissions({ missionId, projectId, waveIndex, runWorkers }) {
@@ -306,7 +477,7 @@ export class WorkerOrchestrator {
     return this.store.transaction('worker_admission_reserved', (state) => {
       const mission = state.missions[missionId];
       const project = state.projects[projectId];
-      if (!mission || !project || mission.phase !== 'execution' || mission.nextWaveIndex !== waveIndex) {
+      if (!mission || !project || mission.status === 'cancelled' || mission.phase !== 'execution' || mission.nextWaveIndex !== waveIndex) {
         return { id: admissionId, missionId, taskIds: [], reason: 'mission-state-changed' };
       }
       const waveIds = mission.waves[waveIndex] || [];
@@ -348,6 +519,7 @@ export class WorkerOrchestrator {
 
   async commitExternalTaskResult({ missionId, taskId }) {
     const { mission, tasks } = await this.missionService.status({ missionId });
+    if (mission.status === 'cancelled') throw Object.assign(new Error('Mission is cancelled'), { code: 'MISSION_CANCELLED' });
     const task = tasks.find((item) => item.id === taskId);
     if (!task) throw Object.assign(new Error(`Unknown task ${taskId}`), { code: 'TASK_NOT_FOUND' });
     if (!['dispatched', 'interrupted'].includes(task.status)) {
@@ -369,12 +541,15 @@ export class WorkerOrchestrator {
       await this.#validateTaskCommit(dispatch.worktreePath, beforeHead, commitSha, task.writeSet);
     }
     const missionWt = await this.worktreeManager.ensureMissionWorktree(project, mission);
-    let integrationSha = (await git(missionWt.path, ['rev-parse', 'HEAD'])).stdout.trim();
+    const integrationBefore = (await git(missionWt.path, ['rev-parse', 'HEAD'])).stdout.trim();
+    let integrationSha = integrationBefore;
     if (commitSha) {
       await git(missionWt.path, ['cherry-pick', commitSha]);
       integrationSha = (await git(missionWt.path, ['rev-parse', 'HEAD'])).stdout.trim();
     }
-    await this.store.transaction('external_task_result_integrated', (state) => {
+    const integrated = await this.store.transaction('external_task_result_integrated', (state) => {
+      const liveMission = state.missions[missionId];
+      if (!liveMission || liveMission.status === 'cancelled') return false;
       const target = state.tasks[`${missionId}:${taskId}`];
       target.status = 'done';
       target.commitSha = commitSha;
@@ -383,7 +558,12 @@ export class WorkerOrchestrator {
       const d = target.dispatches.at(-1);
       if (d) Object.assign(d, { status: 'integrated', endedAt: nowIso(), commitSha, integrationSha });
       state.runtime.timeline.push({ type: 'external_task_result_integrated', missionId, taskId, integrationSha, at: nowIso() });
+      return true;
     }, { missionId, taskId, integrationSha });
+    if (!integrated) {
+      if (commitSha) await git(missionWt.path, ['reset', '--hard', integrationBefore]);
+      throw Object.assign(new Error('Mission was cancelled before the external task result could be integrated'), { code: 'MISSION_CANCELLED' });
+    }
     const waveAdvanced = await this.#advanceWaveIfComplete(missionId, mission.nextWaveIndex);
     await this.worktreeManager.removeTaskWorktree(project, mission, task);
     return { taskId, commitSha, integrationSha, changedPaths: paths, waveAdvanced };
@@ -435,6 +615,17 @@ export class WorkerOrchestrator {
     }
     const paths = await changedPaths(dispatch.worktreePath, dispatch.waveBase);
     await assertPathsWithinScope(dispatch.worktreePath, paths, task.writeSet);
+    if (paths.length && ['executing', 'cancelling'].includes(dispatch.status)) {
+      throw Object.assign(new Error('Interrupted runtime-managed worker left partial changes with an unknown completion boundary; explicit retry or reconciliation is required'), {
+        code: 'WORKER_RECONCILIATION_REQUIRED',
+        details: {
+          dispatchId: dispatch.id || null,
+          dispatchStatus: dispatch.status,
+          changedPaths: paths,
+          reason: 'runtime-managed-outcome-unknown'
+        }
+      });
+    }
     if (paths.length) return this.commitExternalTaskResult({ missionId, taskId });
     return this.retryWorker({ missionId, taskId });
   }
@@ -442,14 +633,14 @@ export class WorkerOrchestrator {
   async #advanceWaveIfComplete(missionId, expectedWaveIndex) {
     const snapshot = await this.store.read();
     const mission = snapshot.missions[missionId];
-    if (!mission || mission.nextWaveIndex !== expectedWaveIndex) return false;
+    if (!mission || mission.status === 'cancelled' || mission.nextWaveIndex !== expectedWaveIndex) return false;
     const waveIds = mission.waves[expectedWaveIndex] || [];
     if (!waveIds.length) return false;
     const allDone = waveIds.every((id) => snapshot.tasks[`${missionId}:${id}`]?.status === 'done');
     if (!allDone) return false;
     return this.store.transaction('mission_wave_completed', (state) => {
       const target = state.missions[missionId];
-      if (!target || target.nextWaveIndex !== expectedWaveIndex) return false;
+      if (!target || target.status === 'cancelled' || target.nextWaveIndex !== expectedWaveIndex) return false;
       const ids = target.waves[expectedWaveIndex] || [];
       if (!ids.every((id) => state.tasks[`${missionId}:${id}`]?.status === 'done')) return false;
       target.nextWaveIndex += 1;
@@ -459,6 +650,7 @@ export class WorkerOrchestrator {
       return true;
     }, { missionId, waveIndex: expectedWaveIndex });
   }
+
   async #validateTaskCommit(repo, baseHead, commitSha, writeSet) {
     const parents = (await git(repo, ['rev-list', '--parents', '-n', '1', commitSha])).stdout.trim().split(/\s+/);
     if (parents[1] !== baseHead) throw Object.assign(new Error('Task commit parent does not equal wave base'), { code: 'TASK_COMMIT_STRUCTURE_INVALID', details: parents });

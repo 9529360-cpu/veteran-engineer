@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,6 +8,7 @@ import { WorkerAdapter, buildWorkerInvocation } from '../src/worker-adapter.mjs'
 
 const execFileAsync = promisify(execFile);
 const image = process.env.VETERAN_CONTAINER_SMOKE_IMAGE;
+const workerAdapterUrl = new URL('../src/worker-adapter.mjs', import.meta.url).href;
 
 if (!image) {
   throw new Error('VETERAN_CONTAINER_SMOKE_IMAGE is required and must be a digest-pinned image already present in the local Docker engine');
@@ -92,6 +93,14 @@ function project() {
   return { workerPolicy: { enabled: true, allowUnconfinedCustomWorkers: false } };
 }
 
+async function waitForChildClose(child, timeoutMs = 5_000) {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  await Promise.race([
+    new Promise((resolve) => child.once('close', resolve)),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('Runtime crash harness did not exit after SIGKILL')), timeoutMs))
+  ]);
+}
+
 async function main() {
   await docker(['version']);
   await docker(['image', 'inspect', image]);
@@ -106,6 +115,8 @@ async function main() {
 
   const adapter = new WorkerAdapter();
   const mission = { id: 'smoke-mission' };
+  let crashHarness = null;
+  let crashContainerName = null;
 
   try {
     const probeTask = { id: 'probe', key: 'smoke:probe', risk: 'high', writeSet: ['smoke'] };
@@ -149,14 +160,38 @@ async function main() {
     assert.notEqual(timeoutResult.code, 0, 'timeout worker must not report success');
     await waitFor(timeoutInvocation.container.name, false);
 
+    const crashTask = { id: 'runtime-crash', key: 'smoke:runtime-crash', risk: 'high', writeSet: ['smoke'] };
+    const crashPacketPath = path.join(artifacts, 'runtime-crash-dispatch.json');
+    const crashConfig = config(60_000);
+    const crashInvocation = buildWorkerInvocation({ config: crashConfig, worktreePath, packetPath: crashPacketPath, task: crashTask, mission });
+    crashContainerName = crashInvocation.container.name;
+    const crashHarnessPath = path.join(root, 'container-runtime-crash-harness.mjs');
+    await fs.writeFile(crashHarnessPath, [
+      `import { WorkerAdapter } from ${JSON.stringify(workerAdapterUrl)};`,
+      `const adapter = new WorkerAdapter();`,
+      `const project = ${JSON.stringify(project())};`,
+      `const mission = ${JSON.stringify(mission)};`,
+      `const task = ${JSON.stringify(crashTask)};`,
+      `const config = ${JSON.stringify(crashConfig)};`,
+      `await adapter.run({ project, mission, task, worktreePath: ${JSON.stringify(worktreePath)}, packet: { mode: 'sleep' }, packetPath: ${JSON.stringify(crashPacketPath)}, config });`
+    ].join('\n'));
+    crashHarness = spawn(process.execPath, [crashHarnessPath], { stdio: 'ignore', windowsHide: true });
+    await waitFor(crashContainerName, true);
+    crashHarness.kill('SIGKILL');
+    await waitForChildClose(crashHarness);
+    await waitFor(crashContainerName, false);
+
     console.log(JSON.stringify({
       ok: true,
       image,
       isolation: result,
       cancelCleanup: true,
-      timeoutCleanup: true
+      timeoutCleanup: true,
+      runtimeCrashCleanup: true
     }));
   } finally {
+    try { crashHarness?.kill('SIGKILL'); } catch {}
+    if (crashContainerName) await docker(['rm', '-f', crashContainerName]).catch(() => {});
     await fs.rm(root, { recursive: true, force: true });
   }
 }

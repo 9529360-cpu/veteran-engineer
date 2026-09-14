@@ -77,7 +77,7 @@ export function validateContainerWorkerConfig(config) {
   return { ...config, engine };
 }
 
-export function buildContainerInvocation({ config, worktreePath, packetPath, task, mission }) {
+export function buildContainerInvocation({ config, worktreePath, packetPath, task, mission, runtimeNamespace = null }) {
   const validated = validateContainerWorkerConfig(config);
   const pidsLimit = validated.pidsLimit === undefined ? 256 : positiveNumber(validated.pidsLimit, 'pidsLimit', { integer: true });
   const memoryMb = validated.memoryMb === undefined ? 1024 : positiveNumber(validated.memoryMb, 'memoryMb', { integer: true });
@@ -104,6 +104,7 @@ export function buildContainerInvocation({ config, worktreePath, packetPath, tas
     '--env', `VETERAN_TASK_ID=${task.id}`,
     '--env', `VETERAN_MISSION_ID=${mission.id}`
   ];
+  if (runtimeNamespace) args.push('--env', `VETERAN_RUNTIME_NAMESPACE=${runtimeNamespace}`);
   for (const key of validated.envAllowlist || []) args.push('--env', key);
   if (user) args.push('--user', user);
   if (validated.stdin !== undefined) args.push('--interactive');

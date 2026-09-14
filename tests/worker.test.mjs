@@ -24,6 +24,12 @@ async function buildRuntime(repo, stateRoot) {
   return { store, projectService, missionService, evidenceService, worktreeManager, workerAdapter, orchestrator, project };
 }
 
+const localProject = { workerPolicy: { enabled: true, allowUnconfinedCustomWorkers: false } };
+
+function localTask(id = 'T1') {
+  return { id, key: `M1:${id}`, risk: 'low', writeSet: ['src'] };
+}
+
 test('dispatch-only worker packet lives outside task worktree, cannot be re-dispatched, and external result advances wave', async () => {
   const { root, repo, head, stateRoot } = await createGitRepo({ files: { 'src/a.txt': 'before\n' } });
   try {
@@ -58,6 +64,278 @@ test('dispatch-only worker packet lives outside task worktree, cannot be re-disp
 
     const transition = await rt.orchestrator.execute({ missionId, runWorkers: false });
     assert.equal(transition.phase, 'validation');
+  } finally {
+    await cleanup(root);
+  }
+});
+
+test('WorkerAdapter refuses packet paths inside the writable task worktree before spawn', async () => {
+  const root = await tempDir('veteran-worker-packet-scope-');
+  try {
+    const worktreePath = path.join(root, 'worktree');
+    const packetPath = path.join(worktreePath, 'packet.json');
+    const marker = path.join(root, 'spawned.txt');
+    await fs.mkdir(worktreePath, { recursive: true });
+    const adapter = new WorkerAdapter();
+    await assert.rejects(
+      adapter.run({
+        project: localProject,
+        mission: { id: 'M1' },
+        task: localTask(),
+        worktreePath,
+        packet: { protocol: 'veteran-worker-v1' },
+        packetPath,
+        config: { type: 'custom', command: process.execPath, args: ['-e', `require('node:fs').writeFileSync(${JSON.stringify(marker)},'spawned')`] }
+      }),
+      (error) => error.code === 'WORKER_PACKET_PATH_INVALID'
+    );
+    await assert.rejects(fs.access(packetPath), (error) => error.code === 'ENOENT');
+    await assert.rejects(fs.access(marker), (error) => error.code === 'ENOENT');
+    assert.deepEqual(adapter.snapshot(), []);
+  } finally {
+    await cleanup(root);
+  }
+});
+
+test('WorkerAdapter rejects symlink-routed packet parents before creating directories in the worktree', async (t) => {
+  const root = await tempDir('veteran-worker-packet-symlink-');
+  try {
+    const worktreePath = path.join(root, 'worktree');
+    const redirect = path.join(root, 'redirect');
+    const nestedInWorktree = path.join(worktreePath, 'nested');
+    await fs.mkdir(worktreePath, { recursive: true });
+    try {
+      await fs.symlink(worktreePath, redirect, process.platform === 'win32' ? 'junction' : 'dir');
+    } catch (error) {
+      if (process.platform === 'win32' && ['EPERM', 'EACCES'].includes(error?.code)) {
+        t.skip('symlink/junction creation is unavailable in this Windows environment');
+        return;
+      }
+      throw error;
+    }
+    const adapter = new WorkerAdapter();
+    await assert.rejects(
+      adapter.run({
+        project: localProject,
+        mission: { id: 'M1' },
+        task: localTask('T2'),
+        worktreePath,
+        packet: { protocol: 'veteran-worker-v1' },
+        packetPath: path.join(redirect, 'nested', 'packet.json'),
+        config: { type: 'custom', command: process.execPath, args: ['-e', 'process.exit(0)'] }
+      }),
+      (error) => error.code === 'WORKER_PACKET_PATH_INVALID'
+    );
+    await assert.rejects(fs.access(nestedInWorktree), (error) => error.code === 'ENOENT', 'packet validation must not create directories through a symlink into the worktree');
+  } finally {
+    await cleanup(root);
+  }
+});
+
+test('WorkerAdapter atomically claims a task and cancellation fences execution before spawn', async () => {
+  const root = await tempDir('veteran-worker-claim-');
+  try {
+    const worktreePath = path.join(root, 'worktree');
+    const artifactsPath = path.join(root, 'artifacts');
+    const marker = path.join(root, 'spawned.txt');
+    await fs.mkdir(worktreePath, { recursive: true });
+    await fs.mkdir(artifactsPath, { recursive: true });
+    const adapter = new WorkerAdapter();
+    const task = localTask('CLAIM');
+    const config = {
+      type: 'custom',
+      command: process.execPath,
+      args: ['-e', `require('node:fs').writeFileSync(${JSON.stringify(marker)},'spawned')`]
+    };
+
+    const first = adapter.run({
+      project: localProject,
+      mission: { id: 'M1' },
+      task,
+      worktreePath,
+      packet: { protocol: 'veteran-worker-v1' },
+      packetPath: path.join(artifactsPath, 'first.json'),
+      config
+    });
+
+    const preparing = adapter.snapshot();
+    assert.equal(preparing.length, 1);
+    assert.equal(preparing[0].taskKey, task.key);
+    assert.equal(preparing[0].phase, 'preparing');
+    assert.equal(preparing[0].pid, null);
+
+    await assert.rejects(
+      adapter.run({
+        project: localProject,
+        mission: { id: 'M1' },
+        task,
+        worktreePath,
+        packet: { protocol: 'veteran-worker-v1' },
+        packetPath: path.join(artifactsPath, 'second.json'),
+        config
+      }),
+      (error) => error.code === 'WORKER_ALREADY_RUNNING'
+    );
+
+    assert.equal(adapter.cancel(task.key), true);
+    const cancelling = adapter.snapshot();
+    assert.equal(cancelling[0].phase, 'cancelling');
+    assert.equal(cancelling[0].termination?.reason, 'operator-cancel');
+
+    const result = await first;
+    assert.equal(result.pid, null, 'pre-spawn cancellation must not create a worker process');
+    assert.equal(result.termination?.reason, 'operator-cancel');
+    await assert.rejects(fs.access(marker), (error) => error.code === 'ENOENT');
+    assert.deepEqual(adapter.snapshot(), []);
+  } finally {
+    await cleanup(root);
+  }
+});
+
+test('WorkerAdapter sanitizes and cleans adapter-owned fallback packet files', async () => {
+  const root = await tempDir('veteran-worker-packet-name-');
+  try {
+    const worktreePath = path.join(root, 'worktree');
+    await fs.mkdir(worktreePath, { recursive: true });
+    const task = localTask('../escape/../../task');
+    const adapter = new WorkerAdapter();
+    const result = await adapter.run({
+      project: localProject,
+      mission: { id: 'M1' },
+      task,
+      worktreePath,
+      packet: { protocol: 'veteran-worker-v1' },
+      config: { type: 'custom', command: process.execPath, args: ['-e', 'process.exit(0)'] }
+    });
+    assert.equal(result.code, 0);
+    assert.equal(path.dirname(path.resolve(result.packetPath)), path.resolve(root));
+    assert.equal(path.basename(result.packetPath).includes(path.sep), false);
+    assert.match(path.basename(result.packetPath), /^\.veteran-task-[a-z0-9._-]+-\d+\.json$/);
+    await assert.rejects(fs.access(result.packetPath), (error) => error.code === 'ENOENT', 'adapter-owned fallback packet must be removed after execution');
+  } finally {
+    await cleanup(root);
+  }
+});
+
+test('custom local worker receives an isolated disposable runtime profile that overrides host state paths', async () => {
+  const root = await tempDir('veteran-worker-runtime-');
+  try {
+    const worktreePath = path.join(root, 'worktree');
+    const workerPath = path.join(root, 'worker.mjs');
+    const hostHome = path.join(root, 'host-home');
+    const hostConfig = path.join(root, 'host-config');
+    const hostCache = path.join(root, 'host-cache');
+    const hostData = path.join(root, 'host-data');
+    const hostState = path.join(root, 'host-state');
+    await Promise.all([worktreePath, hostHome, hostConfig, hostCache, hostData, hostState].map((dir) => fs.mkdir(dir, { recursive: true })));
+    await fs.writeFile(workerPath, [
+      "import fs from 'node:fs/promises';",
+      "import path from 'node:path';",
+      "const observed = {",
+      "  runtimeNamespace: process.env.VETERAN_RUNTIME_NAMESPACE,",
+      "  tmp: process.env.TMPDIR || process.env.TMP || process.env.TEMP,",
+      "  home: process.env.HOME,",
+      "  userProfile: process.env.USERPROFILE,",
+      "  config: process.env.XDG_CONFIG_HOME,",
+      "  cache: process.env.XDG_CACHE_HOME,",
+      "  data: process.env.XDG_DATA_HOME,",
+      "  state: process.env.XDG_STATE_HOME,",
+      "  appData: process.env.APPDATA,",
+      "  localAppData: process.env.LOCALAPPDATA",
+      "};",
+      "for (const [key, dir] of Object.entries(observed)) {",
+      "  if (key === 'runtimeNamespace' || !dir) continue;",
+      "  await fs.writeFile(path.join(dir, `${key}.probe`), 'owned\\n');",
+      "}",
+      "process.stdout.write(JSON.stringify(observed));"
+    ].join('\n'));
+    const adapter = new WorkerAdapter();
+    const result = await adapter.run({
+      project: localProject,
+      mission: { id: 'M1' },
+      task: localTask(),
+      worktreePath,
+      packet: { protocol: 'veteran-worker-v1' },
+      packetPath: path.join(root, 'dispatch-123.json'),
+      config: {
+        type: 'custom',
+        command: process.execPath,
+        args: [workerPath],
+        env: {
+          HOME: hostHome,
+          USERPROFILE: hostHome,
+          XDG_CONFIG_HOME: hostConfig,
+          XDG_CACHE_HOME: hostCache,
+          XDG_DATA_HOME: hostData,
+          XDG_STATE_HOME: hostState,
+          APPDATA: hostConfig,
+          LOCALAPPDATA: hostCache
+        }
+      }
+    });
+    assert.equal(result.code, 0);
+    assert.equal(result.termination, null);
+    assert.ok(result.durationMs >= 0);
+    const observed = JSON.parse(result.stdout);
+    assert.equal(observed.runtimeNamespace, 'M1:T1:dispatch-123');
+    assert.equal(result.runtimeNamespace, observed.runtimeNamespace);
+
+    const profileRoot = path.dirname(observed.tmp);
+    assert.ok(path.basename(profileRoot).startsWith('veteran-engineer-m1-t1-dispatch-123-'));
+    assert.equal(path.dirname(observed.home), profileRoot);
+    assert.equal(observed.userProfile, observed.home);
+    assert.equal(path.dirname(observed.config), profileRoot);
+    assert.equal(path.dirname(observed.cache), profileRoot);
+    assert.equal(path.dirname(observed.data), profileRoot);
+    assert.equal(path.dirname(observed.state), profileRoot);
+    assert.equal(observed.appData, observed.config);
+    assert.equal(observed.localAppData, observed.cache);
+    assert.notEqual(observed.home, hostHome);
+    assert.notEqual(observed.config, hostConfig);
+    assert.notEqual(observed.cache, hostCache);
+
+    await assert.rejects(fs.stat(profileRoot), (error) => error.code === 'ENOENT', 'task-owned runtime profile must be cleaned after worker exit');
+    for (const target of [
+      path.join(hostHome, 'home.probe'),
+      path.join(hostHome, 'userProfile.probe'),
+      path.join(hostConfig, 'config.probe'),
+      path.join(hostConfig, 'appData.probe'),
+      path.join(hostCache, 'cache.probe'),
+      path.join(hostCache, 'localAppData.probe'),
+      path.join(hostData, 'data.probe'),
+      path.join(hostState, 'state.probe')
+    ]) {
+      await assert.rejects(fs.access(target), (error) => error.code === 'ENOENT', `worker must not write host state path ${target}`);
+    }
+  } finally {
+    await cleanup(root);
+  }
+});
+
+test('worker output capture reports truncation instead of silently discarding evidence', async () => {
+  const root = await tempDir('veteran-worker-output-');
+  try {
+    const worktreePath = path.join(root, 'worktree');
+    await fs.mkdir(worktreePath, { recursive: true });
+    const adapter = new WorkerAdapter();
+    const result = await adapter.run({
+      project: localProject,
+      mission: { id: 'M1' },
+      task: localTask('OUTPUT'),
+      worktreePath,
+      packet: { protocol: 'veteran-worker-v1' },
+      packetPath: path.join(root, 'output-packet.json'),
+      config: {
+        type: 'custom',
+        command: process.execPath,
+        args: ['-e', "process.stdout.write('x'.repeat(2000123));process.stderr.write('err');"]
+      }
+    });
+    assert.equal(result.code, 0);
+    assert.equal(result.stdout.length, 2_000_000);
+    assert.deepEqual(result.outputCapture.stdout, { capturedChars: 2_000_000, totalChars: 2_000_123, truncated: true });
+    assert.equal(result.stderr, 'err');
+    assert.deepEqual(result.outputCapture.stderr, { capturedChars: 3, totalChars: 3, truncated: false });
   } finally {
     await cleanup(root);
   }
