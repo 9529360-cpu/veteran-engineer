@@ -105,33 +105,70 @@ function localWorkerConfigError(message) {
   return error;
 }
 
-async function resolveWorkerPacketPath(worktreePath, packetPath, taskId) {
+async function resolveWorkerPacketPath(worktreePath, packetPath, taskId, packetRoot = null) {
   const worktreeResolved = path.resolve(worktreePath);
   const requested = packetPath
     ? path.resolve(packetPath)
     : path.join(path.dirname(worktreeResolved), `.veteran-task-${safeRuntimeNamespace(taskId)}-${Date.now()}.json`);
+  const packetRootResolved = packetRoot ? path.resolve(packetRoot) : null;
   if (pathInside(worktreeResolved, requested)) {
     throw packetPathError('Worker task packets must live outside the writable task worktree');
   }
+  if (packetRootResolved && !pathInside(packetRootResolved, requested)) {
+    throw packetPathError('Worker task packet path must remain inside the runtime packet root');
+  }
 
   const worktreeReal = await fs.realpath(worktreeResolved);
+  const packetRootReal = packetRootResolved ? await fs.realpath(packetRootResolved) : null;
   const previewParent = await resolveThroughExistingAncestor(path.dirname(requested));
-  if (pathInside(worktreeReal, path.join(previewParent, path.basename(requested)))) {
+  const previewCandidate = path.join(previewParent, path.basename(requested));
+  if (pathInside(worktreeReal, previewCandidate)) {
     throw packetPathError('Worker task packet parent resolves inside the writable task worktree');
+  }
+  if (packetRootReal && !pathInside(packetRootReal, previewCandidate)) {
+    throw packetPathError('Worker task packet parent resolves outside the runtime packet root');
   }
 
   await fs.mkdir(path.dirname(requested), { recursive: true });
   const parentReal = await fs.realpath(path.dirname(requested));
-  if (pathInside(worktreeReal, path.join(parentReal, path.basename(requested)))) {
+  const realCandidate = path.join(parentReal, path.basename(requested));
+  if (pathInside(worktreeReal, realCandidate)) {
     throw packetPathError('Worker task packet parent changed to resolve inside the writable task worktree');
+  }
+  if (packetRootReal && !pathInside(packetRootReal, realCandidate)) {
+    throw packetPathError('Worker task packet parent changed to resolve outside the runtime packet root');
   }
   try {
     const existing = await fs.lstat(requested);
     if (existing.isSymbolicLink()) throw packetPathError('Worker task packet path may not be a symbolic link');
+    throw packetPathError('Worker task packet path must not already exist');
   } catch (error) {
     if (error?.code !== 'ENOENT') throw error;
   }
   return requested;
+}
+
+async function createWorkerPacketFile(packetPath, packet) {
+  let handle = null;
+  try {
+    handle = await fs.open(packetPath, 'wx', 0o600);
+    await handle.writeFile(`${JSON.stringify(packet, null, 2)}\n`);
+    await handle.sync();
+  } catch (error) {
+    if (['EEXIST', 'ELOOP'].includes(error?.code)) {
+      throw packetPathError('Worker task packet path became occupied before exclusive creation');
+    }
+    throw error;
+  } finally {
+    await handle?.close().catch(() => {});
+  }
+  await fs.chmod(packetPath, 0o600).catch(() => {});
+}
+
+export async function writeWorkerPacket({ worktreePath, packetPath, taskId, packet, packetRoot = null }) {
+  const resolvedPacketPath = await resolveWorkerPacketPath(worktreePath, packetPath, taskId, packetRoot);
+  await createWorkerPacketFile(resolvedPacketPath, packet);
+  return resolvedPacketPath;
 }
 
 function terminationRecord(reason) {
@@ -329,7 +366,7 @@ export class WorkerAdapter {
     }).sort((a, b) => a.taskKey.localeCompare(b.taskKey));
   }
 
-  async run({ project, mission, task, worktreePath, packet, packetPath = null, config, timeoutMs = null }) {
+  async run({ project, mission, task, worktreePath, packet, packetPath = null, packetRoot = null, config, timeoutMs = null }) {
     enforceWorkerPolicy(project, task, config);
     if (this.cancelledMissions.has(mission.id)) {
       const startedAt = nowIso();
@@ -359,12 +396,13 @@ export class WorkerAdapter {
 
     const startedAtMs = Date.now();
     let resolvedPacketPath = null;
+    let packetCreated = false;
     let runtimeNamespace = null;
     let runtimeProfile = null;
     let running = null;
     let completed = false;
     try {
-      resolvedPacketPath = await resolveWorkerPacketPath(worktreePath, packetPath, task.id);
+      resolvedPacketPath = await resolveWorkerPacketPath(worktreePath, packetPath, task.id, packetRoot);
       claim.packetPath = resolvedPacketPath;
       const dispatchIdentity = path.basename(resolvedPacketPath, path.extname(resolvedPacketPath));
       runtimeNamespace = packet?.runtimeIsolation?.namespace || `${mission.id}:${task.id}:${dispatchIdentity}`;
@@ -382,8 +420,8 @@ export class WorkerAdapter {
         });
       }
 
-      await fs.writeFile(resolvedPacketPath, `${JSON.stringify(packet, null, 2)}\n`, { mode: 0o600 });
-      await fs.chmod(resolvedPacketPath, 0o600).catch(() => {});
+      await createWorkerPacketFile(resolvedPacketPath, packet);
+      packetCreated = true;
 
       if (claim.termination?.reason === 'operator-cancel') {
         completed = true;
@@ -491,7 +529,7 @@ export class WorkerAdapter {
       this.running.delete(task.key);
       this.claims.delete(task.key);
       if (runtimeProfile) await fs.rm(runtimeProfile.root, { recursive: true, force: true }).catch(() => {});
-      if (ownsPacketPath && resolvedPacketPath) await fs.rm(resolvedPacketPath, { force: true }).catch(() => {});
+      if (ownsPacketPath && packetCreated && resolvedPacketPath) await fs.rm(resolvedPacketPath, { force: true }).catch(() => {});
     }
   }
 
