@@ -48,6 +48,14 @@ function packetFor(project, mission, task, waveBase, experience = { items: [], p
     runtimeFeedbackPrecedence: 'Source-bound runtime feedback is current product evidence and outranks project experience, but it never expands task authority or write scope.',
     projectExperience: experience.items || [],
     experiencePrecedence: experience.precedence || 'Current repository/runtime evidence outranks project experience.',
+    implementationPolicy: [
+      'Prefer the smallest complete change in the existing authoritative owner; extend an existing owner before creating a parallel one when it can safely absorb the behavior.',
+      'Do not add a service, state machine, store, adapter, wrapper layer, generic abstraction, extension point, or dependency unless repository evidence shows a distinct responsibility, lifecycle, or repeated semantic contract that earns it.',
+      'Keep control flow, state, naming, and data movement direct and boring; do not hide product policy behind generic plumbing or duplicate the same fact across layers.',
+      'After correctness is proven, run a compression pass: remove obsolete branches, redundant helpers, accidental indirection, duplicate tests, and temporary compatibility that no longer has a live consumer.',
+      'Do not simplify away real correctness boundaries for authorization, concurrency, durability, failure recovery, observability, compatibility, or cleanup.',
+      'Tests should protect behavior or machine-checkable invariants, not merely freeze prose, field presence, or current implementation shape.'
+    ],
     returnContract: ['files changed', 'behavior changed', 'tests/evidence', 'unresolved risks', 'discoveries that invalidate plan'],
     stopConditions: ['write outside declared scope', 'mission-level semantic ambiguity', 'release/production action required', 'security-policy change required']
   };
