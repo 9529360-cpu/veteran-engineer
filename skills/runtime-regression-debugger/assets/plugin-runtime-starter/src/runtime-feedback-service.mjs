@@ -176,6 +176,19 @@ function completedWaveTasks(mission, tasks, waveIndex) {
   return { ready: true, reason: null, tasks: waveTasks };
 }
 
+function integratedCheckpointTasks(mission, tasks, waveIndex) {
+  const ids = mission.waves?.[waveIndex] || [];
+  if (!ids.length) return { ready: false, reason: 'wave-not-found', tasks: [], remaining: [] };
+  const byId = new Map(tasks.map((task) => [task.id, task]));
+  const waveTasks = ids.map((id) => byId.get(id)).filter(Boolean);
+  if (waveTasks.length !== ids.length) return { ready: false, reason: 'wave-task-missing', tasks: [], remaining: [] };
+  const done = waveTasks.filter((task) => task.status === 'done' && task.integrationSha);
+  const remaining = waveTasks.filter((task) => task.status !== 'done');
+  if (!done.length) return { ready: false, reason: 'no-integrated-checkpoint', tasks: [], remaining };
+  if (!remaining.length) return { ready: false, reason: 'wave-already-complete', tasks: done, remaining: [] };
+  return { ready: true, reason: null, tasks: done, remaining };
+}
+
 function deriveWaveCommit(waveTasks) {
   const ordered = [...waveTasks].sort((a, b) => a.id.localeCompare(b.id));
   const integrationSha = ordered.at(-1)?.integrationSha || null;
@@ -187,9 +200,11 @@ function deriveWaveCommit(waveTasks) {
   return integrationSha;
 }
 
-function reusedRound(mission, waveIndex, commitSha) {
+function reusedRound(mission, waveIndex, commitSha, scope = 'wave') {
   return (mission.runtimeFeedback?.rounds || []).find((round) =>
-    round.waveIndex === waveIndex && round.commitSha === commitSha
+    round.waveIndex === waveIndex
+    && round.commitSha === commitSha
+    && (round.scope || 'wave') === scope
   ) || null;
 }
 
@@ -257,7 +272,7 @@ export class RuntimeFeedbackService {
     if (!commitSha) {
       throw Object.assign(new Error('runtime feedback requires an exact integrated source identity'), { code: 'RUNTIME_FEEDBACK_SOURCE_IDENTITY_MISSING' });
     }
-    const existing = reusedRound(mission, waveIndex, commitSha);
+    const existing = reusedRound(mission, waveIndex, commitSha, 'wave');
     if (existing) return { contract: RUNTIME_FEEDBACK_CONTRACT, configured: true, recorded: true, reused: true, ...existing };
 
     const results = [];
@@ -303,7 +318,7 @@ export class RuntimeFeedbackService {
         latestRound: null,
         rounds: []
       };
-      const duplicate = reusedRound(target, waveIndex, commitSha);
+      const duplicate = reusedRound(target, waveIndex, commitSha, 'wave');
       if (duplicate) return { contract: RUNTIME_FEEDBACK_CONTRACT, configured: true, recorded: true, reused: true, ...duplicate };
       target.runtimeFeedback.status = passed ? 'passed' : 'failed';
       target.runtimeFeedback.latestRound = round;
@@ -323,12 +338,142 @@ export class RuntimeFeedbackService {
     }, { missionId, waveIndex, commitSha, passed, evidenceId: aggregateEvidence.id });
   }
 
+  async runCheckpoint({ missionId, waveIndex, targetCommitSha, triggerTaskId = null }) {
+    if (!Number.isInteger(waveIndex) || waveIndex < 0) {
+      throw Object.assign(new Error('runtime feedback checkpoint waveIndex must be a non-negative integer'), { code: 'RUNTIME_FEEDBACK_WAVE_INVALID' });
+    }
+    const { mission, tasks } = await this.missionService.status({ missionId });
+    if (mission.phase !== 'execution' || mission.nextWaveIndex !== waveIndex) {
+      return {
+        contract: RUNTIME_FEEDBACK_CONTRACT,
+        configured: true,
+        recorded: false,
+        reason: 'checkpoint-wave-not-current',
+        missionId,
+        waveIndex
+      };
+    }
+    const wave = integratedCheckpointTasks(mission, tasks, waveIndex);
+    if (!wave.ready) {
+      return {
+        contract: RUNTIME_FEEDBACK_CONTRACT,
+        configured: true,
+        recorded: false,
+        reason: wave.reason,
+        missionId,
+        waveIndex
+      };
+    }
+    const commitSha = String(targetCommitSha || '').trim();
+    const allowed = new Set(wave.tasks.map((task) => task.integrationSha).filter(Boolean));
+    if (!commitSha || !allowed.has(commitSha)) {
+      throw Object.assign(new Error('runtime feedback checkpoint must target a completed task integration in the current wave'), {
+        code: 'RUNTIME_FEEDBACK_CHECKPOINT_SOURCE_INVALID'
+      });
+    }
+    const project = await this.projectService.get(mission.projectId);
+    const capabilities = uniqueCapabilityNames(project, wave.tasks);
+    if (!capabilities.length) {
+      return {
+        contract: RUNTIME_FEEDBACK_CONTRACT,
+        configured: false,
+        recorded: false,
+        reason: 'no-runtime-feedback-capabilities',
+        missionId,
+        waveIndex,
+        scope: 'checkpoint'
+      };
+    }
+    const existing = reusedRound(mission, waveIndex, commitSha, 'checkpoint');
+    if (existing) return { contract: RUNTIME_FEEDBACK_CONTRACT, configured: true, recorded: true, reused: true, ...existing };
+
+    const results = [];
+    for (const capability of capabilities) {
+      try {
+        const result = await this.validationService.run({
+          projectId: project.id,
+          missionId,
+          capability,
+          purpose: 'runtime-feedback',
+          targetCommitSha: commitSha
+        });
+        results.push(compactCapabilityResult(capability, result));
+      } catch (error) {
+        results.push(compactCapabilityError(capability, error));
+      }
+    }
+    const passed = results.every((item) => item.passed);
+    const createdAt = nowIso();
+    const summary = {
+      contract: RUNTIME_FEEDBACK_CONTRACT,
+      scope: 'checkpoint',
+      completeWave: false,
+      advisory: true,
+      missionId,
+      waveIndex,
+      triggerTaskId: triggerTaskId ? String(triggerTaskId).slice(0, 240) : null,
+      commitSha,
+      passed,
+      capabilities: results
+    };
+    const aggregateEvidence = await this.evidenceService.record({
+      projectId: project.id,
+      missionId,
+      type: 'runtime-feedback-checkpoint',
+      summary,
+      sourceIdentity: { head: commitSha }
+    });
+    const round = { ...summary, aggregateEvidenceId: aggregateEvidence.id, createdAt };
+
+    return this.store.transaction('mission_runtime_feedback_checkpoint_recorded', (state) => {
+      const target = state.missions[missionId];
+      if (!target) throw Object.assign(new Error(`Unknown mission: ${missionId}`), { code: 'MISSION_NOT_FOUND' });
+      if (target.phase !== 'execution' || target.nextWaveIndex !== waveIndex) {
+        return {
+          contract: RUNTIME_FEEDBACK_CONTRACT,
+          configured: true,
+          recorded: false,
+          reason: 'checkpoint-stale-after-observation',
+          missionId,
+          waveIndex,
+          scope: 'checkpoint'
+        };
+      }
+      target.runtimeFeedback ||= {
+        contract: RUNTIME_FEEDBACK_CONTRACT,
+        status: 'pending',
+        latestRound: null,
+        rounds: []
+      };
+      const duplicate = reusedRound(target, waveIndex, commitSha, 'checkpoint');
+      if (duplicate) return { contract: RUNTIME_FEEDBACK_CONTRACT, configured: true, recorded: true, reused: true, ...duplicate };
+      target.runtimeFeedback.latestRound = round;
+      target.runtimeFeedback.rounds.push(round);
+      if (target.runtimeFeedback.rounds.length > 65) target.runtimeFeedback.rounds = target.runtimeFeedback.rounds.slice(-65);
+      target.updatedAt = nowIso();
+      state.runtime.timeline.push({
+        type: 'mission_runtime_feedback_checkpoint_recorded',
+        missionId,
+        waveIndex,
+        triggerTaskId: round.triggerTaskId,
+        commitSha,
+        passed,
+        evidenceId: aggregateEvidence.id,
+        at: createdAt
+      });
+      return { contract: RUNTIME_FEEDBACK_CONTRACT, configured: true, recorded: true, reused: false, ...round };
+    }, { missionId, waveIndex, triggerTaskId: round.triggerTaskId, commitSha, passed, evidenceId: aggregateEvidence.id });
+  }
+
   async scheduleRepairWave({ missionId, feedbackRound }) {
     const { mission, tasks } = await this.missionService.status({ missionId });
     const project = await this.projectService.get(mission.projectId);
     const policy = repairPolicy(project);
     if (!policy.autoRepair) {
       return { configured: false, scheduled: false, reason: 'auto-repair-disabled', maxRepairAttempts: policy.maxRepairAttempts };
+    }
+    if (feedbackRound?.scope === 'checkpoint') {
+      return { configured: true, scheduled: false, reason: 'checkpoint-feedback-is-advisory', maxRepairAttempts: policy.maxRepairAttempts };
     }
     if (!feedbackRound?.recorded || feedbackRound.passed !== false) {
       return { configured: true, scheduled: false, reason: 'feedback-does-not-require-repair', maxRepairAttempts: policy.maxRepairAttempts };
@@ -500,6 +645,26 @@ export class RuntimeFeedbackService {
         waveIndex: Number.isInteger(args?.waveIndex) ? args.waveIndex : null,
         error: {
           code: error?.code || 'RUNTIME_FEEDBACK_UNAVAILABLE',
+          message: String(error?.message || error).slice(0, 500)
+        }
+      };
+    }
+  }
+
+  async runCheckpointSafe(args) {
+    try {
+      return await this.runCheckpoint(args);
+    } catch (error) {
+      return {
+        contract: RUNTIME_FEEDBACK_CONTRACT,
+        configured: true,
+        recorded: false,
+        reason: 'runtime-feedback-checkpoint-unavailable',
+        scope: 'checkpoint',
+        missionId: args?.missionId || null,
+        waveIndex: Number.isInteger(args?.waveIndex) ? args.waveIndex : null,
+        error: {
+          code: error?.code || 'RUNTIME_FEEDBACK_CHECKPOINT_UNAVAILABLE',
           message: String(error?.message || error).slice(0, 500)
         }
       };
