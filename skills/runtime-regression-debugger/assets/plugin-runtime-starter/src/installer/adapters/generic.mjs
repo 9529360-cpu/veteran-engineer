@@ -80,7 +80,9 @@ export default {
     const config = await readJson(file, null);
     const server = config?.mcpServers?.['veteran-engineer'];
     const expected = descriptorFor(context).mcpServers['veteran-engineer'];
-    const healthy = Boolean(server && server.command === expected.command && Array.isArray(server.args) && server.args[0] === expected.args[0] && server.env?.VETERAN_ENGINEER_STATE_DIR === expected.env.VETERAN_ENGINEER_STATE_DIR && server.env?.VETERAN_ENGINEER_SURFACE_PROFILE === expected.env.VETERAN_ENGINEER_SURFACE_PROFILE);
+    const serverDigest = server && typeof server === 'object' && !Array.isArray(server) ? stableObjectHash(server) : null;
+    const expectedServerDigest = stableObjectHash(expected);
+    const healthy = Boolean(serverDigest && serverDigest === expectedServerDigest);
     const currentDigest = config ? stableObjectHash(config) : null;
     const recordedDigest = recordedBinding(context)?.descriptorDigest || null;
     return {
