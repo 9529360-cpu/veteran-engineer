@@ -59,13 +59,13 @@ async function cleanupGrandchild(pidFile) {
   } catch {}
 }
 
-test('worker timeout terminates descendant processes in the owned process group', { skip: process.platform === 'win32' }, async () => {
+test('worker timeout terminates descendant processes and reports timeout ownership', { skip: process.platform === 'win32' }, async () => {
   const root = await tempDir('veteran-worker-tree-timeout-');
   const task = { id: 'T1', key: 'M1:T1', risk: 'low', writeSet: ['src'] };
   const fixture = await createProcessTreeFixture(root, 'timeout');
   try {
     const adapter = new WorkerAdapter();
-    await adapter.run({
+    const result = await adapter.run({
       project,
       mission,
       task,
@@ -74,6 +74,11 @@ test('worker timeout terminates descendant processes in the owned process group'
       packetPath: path.join(root, 'timeout-packet.json'),
       config: { type: 'custom', command: process.execPath, args: [fixture.parent], timeoutMs: 300 }
     });
+    assert.equal(result.termination?.reason, 'timeout');
+    assert.equal(result.termination?.signal, 'SIGTERM');
+    assert.equal(typeof result.termination?.requestedAt, 'string');
+    assert.ok(result.durationMs >= 250);
+    assert.deepEqual(adapter.snapshot(), []);
     await waitForFile(fixture.pidFile);
     await waitForFile(fixture.heartbeat);
     await assertHeartbeatStopped(fixture.heartbeat);
@@ -85,7 +90,7 @@ test('worker timeout terminates descendant processes in the owned process group'
   }
 });
 
-test('worker cancel terminates descendant processes in the owned process group', { skip: process.platform === 'win32' }, async () => {
+test('worker cancel terminates descendant processes and exposes live/cancel lifecycle state', { skip: process.platform === 'win32' }, async () => {
   const root = await tempDir('veteran-worker-tree-cancel-');
   const task = { id: 'T2', key: 'M1:T2', risk: 'low', writeSet: ['src'] };
   const fixture = await createProcessTreeFixture(root, 'cancel');
@@ -102,8 +107,18 @@ test('worker cancel terminates descendant processes in the owned process group',
     });
     await waitForFile(fixture.pidFile);
     await waitForFile(fixture.heartbeat);
+    const active = adapter.snapshot();
+    assert.equal(active.length, 1);
+    assert.equal(active[0].taskKey, task.key);
+    assert.equal(active[0].runtimeNamespace, 'M1:T2:cancel-packet');
+    assert.equal(active[0].termination, null);
     assert.equal(adapter.cancel(task.key), true);
-    await run;
+    const terminating = adapter.snapshot();
+    assert.equal(terminating[0].termination?.reason, 'operator-cancel');
+    const result = await run;
+    assert.equal(result.termination?.reason, 'operator-cancel');
+    assert.equal(result.termination?.signal, 'SIGTERM');
+    assert.deepEqual(adapter.snapshot(), []);
     await assertHeartbeatStopped(fixture.heartbeat);
     const pid = Number(await fs.readFile(fixture.pidFile, 'utf8'));
     assert.equal(processAlive(pid), false, 'cancel must not leave the worker grandchild alive');
