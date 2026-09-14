@@ -128,12 +128,22 @@ export function activeRuntimeResourceConflicts({ state, task, mission, project }
   return conflicts;
 }
 
+function leaseVisibleToSnapshot(task, project, mission) {
+  if (task.missionId === mission.id) return true;
+  const projectPrefix = `project:${project.id}:`;
+  return (task.capabilityLease?.resources || []).some((resource) => {
+    const identity = typeof resource.identity === 'string' ? resource.identity : '';
+    return identity.startsWith('global:') || identity.startsWith(projectPrefix);
+  });
+}
+
 export function buildCapabilitySnapshot({ project, mission, tasks, liveSourceIdentity, state }) {
   const waveIds = mission.waves?.[mission.nextWaveIndex] || [];
   const waveTasks = tasks.filter((task) => waveIds.includes(task.id));
   const latestFeedback = mission.runtimeFeedback?.latestRound || null;
   const activeLeases = Object.values(state.tasks || {})
     .filter((task) => task.capabilityLease && !TERMINAL_TASK_STATUSES.has(task.status))
+    .filter((task) => leaseVisibleToSnapshot(task, project, mission))
     .map((task) => ({
       missionId: task.missionId,
       taskId: task.id,
