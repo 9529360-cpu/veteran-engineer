@@ -14,10 +14,20 @@ function sleep(ms) {
 async function waitFor(predicate, timeoutMs = 3000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (predicate()) return;
+    if (await predicate()) return;
     await sleep(20);
   }
   throw new Error('Timed out waiting for worker lifecycle state');
+}
+
+async function fileExists(file) {
+  try {
+    await fs.access(file);
+    return true;
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false;
+    throw error;
+  }
 }
 
 function task(missionId, taskId) {
@@ -127,7 +137,7 @@ test('mission-scoped drain terminates running workers while leaving another miss
       const snapshot = adapter.snapshot();
       return snapshot.length === 3 && snapshot.every((item) => item.phase === 'running' && Number.isInteger(item.pid));
     });
-    await Promise.all(cases.map((item) => fs.access(item.marker)));
+    await waitFor(async () => (await Promise.all(cases.map((item) => fileExists(item.marker)))).every(Boolean));
 
     const drained = adapter.cancelMission('M1');
     assert.equal(drained.requested, 2);
@@ -148,7 +158,7 @@ test('mission-scoped drain terminates running workers while leaving another miss
     assert.equal(survivor.length, 1);
     assert.equal(survivor[0].taskKey, 'M2:C');
     assert.equal(survivor[0].phase, 'running');
-    await fs.access(cases[2].marker);
+    assert.equal(await fileExists(cases[2].marker), true);
 
     assert.equal(adapter.cancel('M2:C'), true);
     const m2Result = await runs[2];

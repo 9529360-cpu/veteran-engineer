@@ -267,6 +267,7 @@ export class WorkerAdapter {
   constructor() {
     this.running = new Map();
     this.claims = new Map();
+    this.cancelledMissions = new Set();
   }
 
   snapshot() {
@@ -291,6 +292,17 @@ export class WorkerAdapter {
 
   async run({ project, mission, task, worktreePath, packet, packetPath = null, config, timeoutMs = null }) {
     enforceWorkerPolicy(project, task, config);
+    if (this.cancelledMissions.has(mission.id)) {
+      const startedAt = nowIso();
+      const startedAtMs = Date.now();
+      return preSpawnCancellationResult({
+        startedAt,
+        startedAtMs,
+        packetPath: packetPath ? path.resolve(packetPath) : null,
+        runtimeNamespace: null,
+        termination: terminationRecord('operator-cancel')
+      });
+    }
     if (this.claims.has(task.key)) throw alreadyRunningError(task.key);
 
     const ownsPacketPath = !packetPath;
@@ -471,11 +483,13 @@ export class WorkerAdapter {
   }
 
   cancelMission(missionId) {
+    this.cancelledMissions.add(missionId);
     const tasks = [...this.claims.entries()]
       .filter(([, claim]) => claim.missionId === missionId)
       .map(([taskKey, claim]) => ({ taskKey, taskId: claim.taskId, accepted: this.cancel(taskKey) }));
     return {
       missionId,
+      fenced: true,
       requested: tasks.length,
       accepted: tasks.filter((item) => item.accepted).length,
       tasks
