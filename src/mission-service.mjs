@@ -142,7 +142,7 @@ export class MissionService {
       const payload = {
         protocol: 'veteran-planner-v1',
         project: { id: project.id, repoPath: project.repoPath, sourceIdentity: live },
-        mission: { goal: String(goal).trim(), doneDefinition: String(doneDefinition).trim(), nonGoals: nonGoals.map(String), riskEnvelope },
+        mission: { goal: String(goal).trim(), doneDefinition: String(doneDefinition).trim(), nonGoals: nonGoals.map(String), riskEnvelope, riskEnvelopeSource },
         projectAwareness: plannerProjectAwareness(project, continuity),
         projectExperience: experience.items,
         experiencePrecedence: experience.precedence,
