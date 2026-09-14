@@ -8,6 +8,7 @@ import {
   taskCapabilityReadiness,
   taskRuntimeContext
 } from './capability-plane.mjs';
+import { runtimeManagedExecutionReadiness, workerCapabilityProfile } from './worker-capability-profile.mjs';
 
 const ACTIVE_EXECUTION_STATUSES = new Set(['admitted', 'executing', 'cancelling', 'interrupted']);
 const OUTSTANDING_LEASE_STATUSES = new Set(['admitted', 'dispatched', 'executing', 'cancelling', 'interrupted']);
@@ -64,7 +65,13 @@ export class CapabilityAwareWorkerOrchestrator {
     const project = await this.projectService.get(mission.projectId);
     const live = await sourceIdentity(project.repoPath);
     const state = await this.store.read();
-    return buildCapabilitySnapshot({ project, mission, tasks, liveSourceIdentity: live, state });
+    const snapshot = buildCapabilitySnapshot({ project, mission, tasks, liveSourceIdentity: live, state });
+    const byId = new Map(tasks.map((task) => [task.id, task]));
+    snapshot.wave = snapshot.wave.map((item) => ({
+      ...item,
+      runtimeManagedExecution: workerCapabilityProfile(project, byId.get(item.taskId))
+    }));
+    return snapshot;
   }
 
   snapshot({ missionId }) {
@@ -98,13 +105,18 @@ export class CapabilityAwareWorkerOrchestrator {
 
       const blocked = [];
       for (const task of admission.selected) {
-        const readiness = taskCapabilityReadiness(task, project);
-        if (!readiness.ready) {
+        const policyReadiness = taskCapabilityReadiness(task, project);
+        const managedReadiness = runWorkers ? runtimeManagedExecutionReadiness(task, project) : null;
+        const missingExecution = runWorkers ? managedReadiness.missingExecution : policyReadiness.missingExecution;
+        const executionBlockers = runWorkers ? managedReadiness.blockers : [];
+        if (policyReadiness.missingSensing.length || missingExecution.length || executionBlockers.length) {
           blocked.push({
             taskId: task.id,
             reason: 'capability-missing',
-            missingSensing: readiness.missingSensing,
-            missingExecution: readiness.missingExecution
+            missingSensing: policyReadiness.missingSensing,
+            missingExecution,
+            executionBlockers,
+            runtimeManagedExecution: managedReadiness?.profile || null
           });
           continue;
         }
@@ -122,6 +134,7 @@ export class CapabilityAwareWorkerOrchestrator {
       }
 
       const leases = admission.selected.map((task) => {
+        const executionProfile = runWorkers ? workerCapabilityProfile(project, task) : null;
         const lease = {
           id: randomId('lease'),
           reservationId,
@@ -131,6 +144,7 @@ export class CapabilityAwareWorkerOrchestrator {
           resources: bindRuntimeResources(task.runtimeResources || [], taskRuntimeContext(task, mission, project)),
           sensingCapabilities: task.sensingCapabilities || [],
           executionCapabilities: task.executionCapabilities || [],
+          executionProfile,
           runWorkers: runWorkers === true,
           reservedAt: nowIso()
         };
