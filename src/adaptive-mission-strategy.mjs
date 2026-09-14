@@ -197,7 +197,11 @@ export function compileMissionExecutionStrategy({
 } = {}) {
   const maxWaveWidth = waves.reduce((largest, wave) => Math.max(largest, wave.length), 0);
   const taskRisk = maxRisk(tasks);
-  const envelopeRisk = riskEnvelopeSource === 'explicit' && RISK_LEVELS.includes(riskEnvelope) ? riskEnvelope : 'low';
+  const elevatedEnvelope = riskEnvelopeSource === 'explicit' || ['high', 'critical'].includes(riskEnvelope);
+  const envelopeRisk = elevatedEnvelope && RISK_LEVELS.includes(riskEnvelope) ? riskEnvelope : 'low';
+  const resolvedRiskEnvelopeSource = riskEnvelopeSource === 'explicit'
+    ? 'explicit'
+    : (['high', 'critical'].includes(riskEnvelope) ? 'elevated' : 'baseline');
   const effectiveRisk = higherRisk(taskRisk, envelopeRisk);
   const inferredRiskTasks = tasks.filter((task) => task.riskAssessment?.source === 'inferred').map((task) => task.id);
   const projectWriteConflicts = plannedProjectWriteConflicts(tasks, continuity);
@@ -231,7 +235,7 @@ export function compileMissionExecutionStrategy({
   if (tasks.length > 1) reasons.push('multi-task');
   if (maxWaveWidth > 1) reasons.push('safe-parallel-wave');
   if (taskRisk !== 'low') reasons.push(`max-task-risk:${taskRisk}`);
-  if (riskEnvelopeSource === 'explicit') reasons.push(`explicit-risk-envelope:${riskEnvelope}`);
+  if (resolvedRiskEnvelopeSource !== 'baseline') reasons.push(`${resolvedRiskEnvelopeSource}-risk-envelope:${riskEnvelope}`);
   if (inferredRiskTasks.length) reasons.push('runtime-inferred-task-risk');
   if (projectWriteConflicts.length) reasons.push('same-project-write-overlap');
   if (maxConcurrentWorkers < structuralParallelism) reasons.push('risk-shaped-concurrency');
@@ -244,7 +248,7 @@ export function compileMissionExecutionStrategy({
     executionMode,
     maxWaveWidth,
     riskEnvelope,
-    riskEnvelopeSource,
+    riskEnvelopeSource: resolvedRiskEnvelopeSource,
     maxTaskRisk: taskRisk,
     effectiveRisk,
     inferredRiskTasks,
