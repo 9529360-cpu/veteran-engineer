@@ -194,3 +194,75 @@ test('persistent sessions fail closed on invalid policy and degrade to ephemeral
     await cleanup(root);
   }
 });
+
+test('different missions cannot own the same persistent loopback endpoint at the same time', async () => {
+  const port = await freePort();
+  const serverSource = `const http=require('http');const port=Number(process.argv[2]);http.createServer((req,res)=>{res.statusCode=200;res.end('ok');}).listen(port,'127.0.0.1');`;
+  const { root, repo, head, stateRoot } = await createGitRepo({ files: { 'src/a.txt': 'a\n', 'server.cjs': serverSource } });
+  let app = null;
+  try {
+    const worker = path.join(root, 'worker.cjs');
+    await fs.writeFile(worker, 'process.exit(0);\n');
+    const capability = {
+      name: 'live-product',
+      service: {
+        command: [process.execPath, 'server.cjs', String(port)],
+        readiness: { url: `http://127.0.0.1:${port}/health`, timeoutMs: 5_000, intervalMs: 50 }
+      },
+      command: [process.execPath, '-e', 'process.exit(0)']
+    };
+    await configure(stateRoot, worker, capability);
+    app = await createVeteranApp({ stateRoot });
+    const project = await app.services.projectService.open({ repoPath: repo });
+    const normalized = (await app.services.validationService.capabilities({ projectId: project.id }))[0];
+
+    const first = await app.services.liveSessionManager.acquire({
+      project,
+      mission: { id: 'mission-a' },
+      capability: 'live-product',
+      commitSha: head,
+      service: normalized.service
+    });
+    assert.equal(first.active, true);
+    assert.equal(app.services.liveSessionManager.snapshot().length, 1);
+
+    const samePortDifferentPath = {
+      ...normalized.service,
+      readiness: {
+        ...normalized.service.readiness,
+        url: `http://127.0.0.1:${port}/other-health`
+      }
+    };
+    await assert.rejects(
+      app.services.liveSessionManager.acquire({
+        project,
+        mission: { id: 'mission-b' },
+        capability: 'live-product',
+        commitSha: head,
+        service: samePortDifferentPath
+      }),
+      (error) => error.code === 'LIVE_VALIDATION_ENDPOINT_IN_USE'
+        && error.details?.ownerMissionId === 'mission-a'
+        && String(error.details?.port) === String(port)
+    );
+    assert.equal(app.services.liveSessionManager.snapshot().length, 1, 'conflicting mission must not create a second session or worktree');
+
+    const released = await app.services.liveSessionManager.releaseMission({ missionId: 'mission-a', reason: 'lease-handoff-test' });
+    assert.equal(released.length, 1);
+    assert.equal(app.services.liveSessionManager.snapshot().length, 0);
+
+    const second = await app.services.liveSessionManager.acquire({
+      project,
+      mission: { id: 'mission-b' },
+      capability: 'live-product',
+      commitSha: head,
+      service: samePortDifferentPath
+    });
+    assert.equal(second.active, true, 'endpoint lease must be reusable after the prior owner releases it');
+    assert.equal(app.services.liveSessionManager.snapshot().length, 1);
+    assert.equal((await git(repo, ['rev-parse', 'HEAD'])).stdout.trim(), head);
+  } finally {
+    await app?.services.liveSessionManager.releaseAll({ reason: 'test-cleanup' }).catch(() => {});
+    await cleanup(root);
+  }
+});
