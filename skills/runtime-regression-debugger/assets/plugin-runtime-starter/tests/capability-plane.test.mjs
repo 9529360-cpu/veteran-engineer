@@ -127,3 +127,30 @@ test('capability snapshot binds source freshness, wave requirements, and active 
   assert.equal(snapshot.wave[0].capabilityReady, true);
   assert.equal(snapshot.runtimeFeedback.sourceBoundToLiveHead, false);
 });
+
+test('capability snapshot exposes only current-mission, current-project, or global active leases', () => {
+  const project = { id: 'p1', validationCapabilities: [], runtimeFeedbackCapabilities: [], workerPolicy: { capabilities: [] } };
+  const mission = { id: 'm1', phase: 'execution', status: 'ready', nextWaveIndex: 0, waves: [['A']] };
+  const tasks = [task('A')];
+  const leaseTask = (id, missionId, resource, context) => ({
+    id,
+    missionId,
+    status: 'executing',
+    capabilityLease: {
+      id: `lease-${id}`,
+      resources: bindRuntimeResources([resource], context)
+    }
+  });
+  const state = {
+    tasks: {
+      own: leaseTask('OWN', 'm1', { key: 'port', scope: 'task', mode: 'exclusive' }, { projectId: 'p1', missionId: 'm1', taskId: 'OWN' }),
+      sameProject: leaseTask('PROJECT', 'm2', { key: 'database', scope: 'project', mode: 'exclusive' }, { projectId: 'p1', missionId: 'm2', taskId: 'PROJECT' }),
+      sameProjectPrivate: leaseTask('MISSION', 'm2', { key: 'profile', scope: 'mission', mode: 'exclusive' }, { projectId: 'p1', missionId: 'm2', taskId: 'MISSION' }),
+      foreignProject: leaseTask('FOREIGN', 'm3', { key: 'database', scope: 'project', mode: 'exclusive' }, { projectId: 'p2', missionId: 'm3', taskId: 'FOREIGN' }),
+      global: leaseTask('GLOBAL', 'm4', { key: 'release-lane', scope: 'global', mode: 'exclusive' }, { projectId: 'p2', missionId: 'm4', taskId: 'GLOBAL' })
+    }
+  };
+  const snapshot = buildCapabilitySnapshot({ project, mission, tasks, liveSourceIdentity: { head: 'h', dirty: false }, state });
+  const visible = snapshot.activeLeases.map((lease) => `${lease.missionId}:${lease.taskId}`).sort();
+  assert.deepEqual(visible, ['m1:OWN', 'm2:PROJECT', 'm4:GLOBAL']);
+});
