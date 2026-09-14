@@ -60,6 +60,7 @@ def validate_bundle(data: dict, *, now: dt.datetime | None = None) -> dict:
 
     ev_by_id: dict[str, dict] = {}
     ev_problems: dict[str, list[str]] = {}
+    ev_levels: dict[str, str] = {}
     seen_evidence_ids: set[str] = set()
     for i, ev in enumerate(evidence, 1):
         if not isinstance(ev, dict):
@@ -102,6 +103,7 @@ def validate_bundle(data: dict, *, now: dt.datetime | None = None) -> dict:
                 except (ValueError, TypeError):
                     problems.append("invalid_freshness")
         ev_by_id[eid] = ev
+        ev_levels[eid] = level
         ev_problems[eid] = problems
 
     rows, blockers = [], []
@@ -136,7 +138,7 @@ def validate_bundle(data: dict, *, now: dt.datetime | None = None) -> dict:
             if ev_problems.get(ref):
                 problems.append(f"unusable_evidence:{ref}")
                 continue
-            usable_levels.append(LEVELS[str(ev_by_id[ref].get("level", "")).lower()])
+            usable_levels.append(LEVELS[ev_levels[ref]])
         if usable_levels and max(usable_levels) < required_value:
             problems.append("insufficient_evidence_level")
         if not usable_levels and refs:
