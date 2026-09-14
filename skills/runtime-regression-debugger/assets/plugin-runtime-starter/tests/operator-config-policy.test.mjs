@@ -59,6 +59,57 @@ test('operator policy rejects ambiguous safety-sensitive scalar types', () => {
   );
 });
 
+test('operator policy validates executable planner and reviewer provider contracts before runtime use', () => {
+  rejectsConfig(
+    { defaults: { plannerProvider: 'node' } },
+    'defaults.plannerProvider'
+  );
+  rejectsConfig(
+    { defaults: { plannerProvider: { command: '' } } },
+    'defaults.plannerProvider.command'
+  );
+  rejectsConfig(
+    { defaults: { plannerProvider: { args: ['planner.mjs'] } } },
+    'defaults.plannerProvider.command'
+  );
+  rejectsConfig(
+    { defaults: { plannerProvider: { command: 'node', args: '--planner' } } },
+    'defaults.plannerProvider.args'
+  );
+  rejectsConfig(
+    { defaults: { plannerProvider: { command: 'node', args: ['planner.mjs', 42] } } },
+    'defaults.plannerProvider.args'
+  );
+  rejectsConfig(
+    { defaults: { plannerProvider: { command: 'node', envAllowlist: 'PLANNER_TOKEN' } } },
+    'defaults.plannerProvider.envAllowlist'
+  );
+  rejectsConfig(
+    { defaults: { reviewerProvider: { command: 'node', envAllowlist: [''] } } },
+    'defaults.reviewerProvider.envAllowlist'
+  );
+  rejectsConfig(
+    { defaults: { reviewerProvider: { command: 'node', timeoutMs: '1000' } } },
+    'defaults.reviewerProvider.timeoutMs'
+  );
+  rejectsConfig(
+    { projects: { '/repo': { reviewerProvider: { command: 'node', timeoutMs: 0 } } } },
+    'projects./repo.reviewerProvider.timeoutMs'
+  );
+});
+
+test('inert provider objects without execution fields remain backward compatible', () => {
+  const policy = projectPolicy({
+    defaults: {
+      plannerProvider: {},
+      reviewerProvider: { futureOption: { mode: 'disabled' } }
+    }
+  }, '/repo');
+
+  assert.deepEqual(policy.plannerProvider, {});
+  assert.deepEqual(policy.reviewerProvider, { futureOption: { mode: 'disabled' } });
+});
+
 test('operator config file fails closed before malformed policy reaches project services', async () => {
   const root = await tempDir('veteran-operator-policy-');
   try {
@@ -74,14 +125,28 @@ test('operator config file fails closed before malformed policy reaches project 
   }
 });
 
-test('valid operator safety controls preserve extensible worker configuration and canonicalize capability identities', () => {
+test('valid operator safety controls preserve extensible worker and provider configuration and canonicalize capability identities', () => {
   const validationCapability = { name: ' lint ', command: ['node', '--version'] };
+  const plannerProvider = {
+    command: 'node',
+    args: ['planner.mjs', ''],
+    envAllowlist: [' PLANNER_TOKEN '],
+    timeoutMs: 45_000,
+    futureOption: { mode: 'bounded' }
+  };
+  const reviewerProvider = {
+    command: 'reviewer-wrapper',
+    args: [],
+    envAllowlist: ['REVIEWER_TOKEN'],
+    timeoutMs: 60_000
+  };
   const policy = projectPolicy({
     defaults: {
       requireValidation: true,
       validationCapabilities: [validationCapability],
       requiredValidationCapabilities: [' lint ', 'lint'],
       runtimeFeedbackCapabilities: [' lint ', 'lint'],
+      plannerProvider,
       workerPolicy: {
         enabled: true,
         maxWorkers: 4,
@@ -98,6 +163,7 @@ test('valid operator safety controls preserve extensible worker configuration an
     projects: {
       '/repo': {
         requireSemanticReview: true,
+        reviewerProvider,
         workerPolicy: { maxWorkers: 1 }
       }
     }
@@ -120,5 +186,7 @@ test('valid operator safety controls preserve extensible worker configuration an
   assert.deepEqual(policy.workerPolicy.codex, {
     model: 'example-model', extraArgs: ['--quiet']
   });
+  assert.deepEqual(policy.plannerProvider, plannerProvider);
+  assert.deepEqual(policy.reviewerProvider, reviewerProvider);
   assert.equal(validationCapability.name, ' lint ');
 });
