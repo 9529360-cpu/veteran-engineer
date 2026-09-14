@@ -36,6 +36,7 @@ function assertValidationCapabilitiesField(scope, key, pathValue) {
   if (!Array.isArray(capabilities)) {
     throw invalidOperatorConfig(`${pathValue}.${key}`, 'array of validation capability objects', capabilities);
   }
+  const seenNames = new Set();
   for (let index = 0; index < capabilities.length; index += 1) {
     const capability = capabilities[index];
     if (!isRecord(capability)) {
@@ -44,6 +45,11 @@ function assertValidationCapabilitiesField(scope, key, pathValue) {
     if (typeof capability.name !== 'string' || !capability.name.trim()) {
       throw invalidOperatorConfig(`${pathValue}.${key}[${index}].name`, 'non-empty string', capability.name);
     }
+    const normalizedName = capability.name.trim();
+    if (seenNames.has(normalizedName)) {
+      throw invalidOperatorConfig(`${pathValue}.${key}[${index}].name`, 'unique non-empty string', capability.name);
+    }
+    seenNames.add(normalizedName);
   }
 }
 
