@@ -53,19 +53,28 @@ function sameReservationConflicts(tasks, mission, project) {
 }
 
 export class CapabilityAwareWorkerOrchestrator {
-  constructor({ delegate, store, projectService, missionService }) {
+  constructor({ delegate, store, projectService, missionService, worktreeManager = null }) {
     this.delegate = delegate;
     this.store = store;
     this.projectService = projectService;
     this.missionService = missionService;
+    this.worktreeManager = worktreeManager;
   }
 
   async #snapshot(missionId) {
     const { mission, tasks } = await this.missionService.status({ missionId });
     const project = await this.projectService.get(mission.projectId);
-    const live = await sourceIdentity(project.repoPath);
+    const projectSourceIdentity = await sourceIdentity(project.repoPath);
+    let missionSourceIdentity = null;
+    if (this.worktreeManager) {
+      const missionPath = this.worktreeManager.missionPath(mission);
+      missionSourceIdentity = await sourceIdentity(missionPath).catch(() => null);
+    }
+    const currentSourceIdentity = missionSourceIdentity || projectSourceIdentity;
     const state = await this.store.read();
-    const snapshot = buildCapabilitySnapshot({ project, mission, tasks, liveSourceIdentity: live, state });
+    const snapshot = buildCapabilitySnapshot({ project, mission, tasks, liveSourceIdentity: currentSourceIdentity, state });
+    snapshot.sourceScope = missionSourceIdentity ? 'mission-worktree' : 'project-checkout';
+    snapshot.projectSourceIdentity = projectSourceIdentity;
     const byId = new Map(tasks.map((task) => [task.id, task]));
     snapshot.wave = snapshot.wave.map((item) => {
       const task = byId.get(item.taskId);
