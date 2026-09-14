@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { assertPathsWithinScope, changedPaths, git, sourceIdentity } from './git.mjs';
-import { MissionService, runtimeResourcesConflict } from './mission-service.mjs';
+import { MissionService } from './mission-service.mjs';
 import { nowIso, randomId } from './util.mjs';
 import { resolveWorkerConfig } from './worker-adapter.mjs';
 import { ProjectBootstrapExecutor, normalizeBootstrapAuthorization } from './bootstrap-executor.mjs';
@@ -47,7 +47,6 @@ function packetFor(project, mission, task, waveBase, experience = { items: [], p
       dependencies: task.dependencies,
       writeSet: task.writeSet,
       protectedPaths: task.protectedPaths,
-      runtimeResources: task.runtimeResources || [],
       risk: task.risk,
       validationCapability: task.validationCapability
     },
@@ -67,11 +66,6 @@ function packetFor(project, mission, task, waveBase, experience = { items: [], p
     returnContract: ['files changed', 'behavior changed', 'tests/evidence', 'unresolved risks', 'discoveries that invalidate plan'],
     stopConditions: ['write outside declared scope', 'mission-level semantic ambiguity', 'release/production action required', 'security-policy change required']
   };
-}
-
-function sharedRuntimeResources(left = [], right = []) {
-  const rightSet = new Set(right || []);
-  return [...new Set((left || []).filter((resource) => rightSet.has(resource)))].sort();
 }
 
 export class WorkerOrchestrator {
@@ -147,9 +141,7 @@ export class WorkerOrchestrator {
       }
     }
     const admission = await this.#reserveAdmissions({ missionId, projectId: project.id, waveIndex: mission.nextWaveIndex, runWorkers });
-    if (!admission.taskIds.length) {
-      return { missionId, admitted: [], reason: admission.reason || 'global-worker-admission-full', resourceConflicts: admission.resourceConflicts || [] };
-    }
+    if (!admission.taskIds.length) return { missionId, admitted: [], reason: admission.reason || 'global-worker-admission-full' };
 
     let missionWt;
     let waveBase;
@@ -211,7 +203,7 @@ export class WorkerOrchestrator {
           target.admission = null;
           target.dispatches.push({ id: dispatchId, waveBase, worktreePath: worktree.path, packetPath, packet, bootstrapEvidenceId, status: runWorkers ? 'executing' : 'ready', createdAt: nowIso() });
           state.missions[missionId].status = runWorkers ? 'executing' : 'ready';
-          state.runtime.timeline.push({ type: 'worker_dispatched', missionId, taskId: task.id, dispatchId, runWorkers, runtimeResources: task.runtimeResources || [], at: nowIso() });
+          state.runtime.timeline.push({ type: 'worker_dispatched', missionId, taskId: task.id, dispatchId, runWorkers, at: nowIso() });
         }, { missionId, taskId: task.id, dispatchId, runWorkers, admissionId: admission.id });
         prepared.push({ task: { ...task, attempts: task.attempts + 1 }, packet, packetPath, worktree, dispatchId, bootstrap, bootstrapEvidenceId });
       } catch (error) {
@@ -220,17 +212,8 @@ export class WorkerOrchestrator {
         preparationFailures.push({ taskId: task.id, code: error.code || 'ERROR', message: error.message, bootstrapEvidenceId: error.bootstrapEvidenceId || null });
       }
     }
-    if (!runWorkers) {
-      return {
-        missionId,
-        waveIndex: mission.nextWaveIndex,
-        waveBase,
-        dispatched: prepared.map(({ task, packet, packetPath, worktree, dispatchId }) => ({ taskId: task.id, dispatchId, worktreePath: worktree.path, packetPath, packet })),
-        preparationFailures,
-        resourceConflicts: admission.resourceConflicts || []
-      };
-    }
-    if (!prepared.length) return { missionId, waveIndex: mission.nextWaveIndex, waveBase, results: [], preparationFailures, resourceConflicts: admission.resourceConflicts || [] };
+    if (!runWorkers) return { missionId, waveIndex: mission.nextWaveIndex, waveBase, dispatched: prepared.map(({ task, packet, packetPath, worktree, dispatchId }) => ({ taskId: task.id, dispatchId, worktreePath: worktree.path, packetPath, packet })), preparationFailures };
+    if (!prepared.length) return { missionId, waveIndex: mission.nextWaveIndex, waveBase, results: [], preparationFailures };
 
     const results = await Promise.all(prepared.map(async (item) => {
       const config = resolveWorkerConfig(project, item.task.worker);
@@ -243,7 +226,7 @@ export class WorkerOrchestrator {
         if (run.code !== 0) throw Object.assign(new Error(`Worker exited with code ${run.code}`), { code: 'WORKER_FAILED', details: run });
         const paths = await changedPaths(item.worktree.path, waveBase);
         await assertPathsWithinScope(item.worktree.path, paths, item.task.writeSet);
-        const evidence = await this.evidenceService.record({ projectId: project.id, missionId, taskId: item.task.id, type: 'worker', summary: { exitCode: run.code, changedPaths: paths, runtimeNamespace: run.runtimeNamespace || null, runtimeResources: item.task.runtimeResources || [] }, sourceIdentity: { head: waveBase }, artifact: `${run.stdout}\n--- stderr ---\n${run.stderr}` });
+        const evidence = await this.evidenceService.record({ projectId: project.id, missionId, taskId: item.task.id, type: 'worker', summary: { exitCode: run.code, changedPaths: paths }, sourceIdentity: { head: waveBase }, artifact: `${run.stdout}\n--- stderr ---\n${run.stderr}` });
         let commitSha = null;
         if (paths.length) {
           await git(item.worktree.path, ['add', '-A']);
@@ -315,7 +298,7 @@ export class WorkerOrchestrator {
     }
 
     await this.#advanceWaveIfComplete(missionId, mission.nextWaveIndex);
-    return { missionId, waveIndex: mission.nextWaveIndex, waveBase, results: results.map((result) => ({ taskId: result.task.id, ok: result.ok, commitSha: result.commitSha || null, bootstrap: result.bootstrap || null, bootstrapEvidenceId: result.bootstrapEvidenceId || null, error: result.ok ? null : { code: result.error.code || 'ERROR', message: result.error.message } })), preparationFailures, resourceConflicts: admission.resourceConflicts || [] };
+    return { missionId, waveIndex: mission.nextWaveIndex, waveBase, results: results.map((result) => ({ taskId: result.task.id, ok: result.ok, commitSha: result.commitSha || null, bootstrap: result.bootstrap || null, bootstrapEvidenceId: result.bootstrapEvidenceId || null, error: result.ok ? null : { code: result.error.code || 'ERROR', message: result.error.message } })), preparationFailures };
   }
 
   async #reserveAdmissions({ missionId, projectId, waveIndex, runWorkers }) {
@@ -324,50 +307,26 @@ export class WorkerOrchestrator {
       const mission = state.missions[missionId];
       const project = state.projects[projectId];
       if (!mission || !project || mission.phase !== 'execution' || mission.nextWaveIndex !== waveIndex) {
-        return { id: admissionId, missionId, taskIds: [], reason: 'mission-state-changed', resourceConflicts: [] };
+        return { id: admissionId, missionId, taskIds: [], reason: 'mission-state-changed' };
       }
       const waveIds = mission.waves[waveIndex] || [];
       const candidates = waveIds.map((id) => state.tasks[`${missionId}:${id}`]).filter((task) => task?.status === 'planned');
-      const allTasks = Object.values(state.tasks);
-      const byId = new Map(allTasks.filter((task) => task.missionId === missionId).map((task) => [task.id, task]));
+      const byId = new Map(Object.values(state.tasks).filter((task) => task.missionId === missionId).map((task) => [task.id, task]));
       const ready = candidates.filter((task) => task.dependencies.every((dep) => byId.get(dep)?.status === 'done'));
       const maxWorkers = Math.max(1, Number(project.workerPolicy?.maxWorkers || 2));
-      const workerActiveStatuses = new Set(['admitted', 'executing', 'cancelling', 'interrupted']);
-      const resourceActiveStatuses = new Set(['admitted', 'dispatched', 'executing', 'cancelling', 'interrupted']);
-      const globalActive = runWorkers ? allTasks.filter((task) => workerActiveStatuses.has(task.status)).length : 0;
+      const activeStatuses = new Set(['admitted', 'executing', 'cancelling', 'interrupted']);
+      const globalActive = runWorkers ? Object.values(state.tasks).filter((task) => activeStatuses.has(task.status)).length : 0;
       const capacity = runWorkers ? Math.max(0, maxWorkers - globalActive) : maxWorkers;
-      const activeResourceOwners = allTasks.filter((task) => resourceActiveStatuses.has(task.status) && (task.runtimeResources || []).length > 0);
-      const selected = [];
-      const resourceConflicts = [];
-      for (const task of ready) {
-        if (selected.length >= capacity) break;
-        const conflict = [...activeResourceOwners, ...selected].find((owner) => owner.key !== task.key && runtimeResourcesConflict(owner.runtimeResources, task.runtimeResources));
-        if (conflict) {
-          resourceConflicts.push({
-            taskId: task.id,
-            conflictingTaskId: conflict.id,
-            conflictingMissionId: conflict.missionId,
-            resources: sharedRuntimeResources(task.runtimeResources, conflict.runtimeResources)
-          });
-          continue;
-        }
-        selected.push(task);
-      }
+      const selected = ready.slice(0, capacity);
       for (const task of selected) {
         task.status = 'admitted';
-        task.admission = { id: admissionId, runWorkers, reservedAt: nowIso(), runtimeResources: task.runtimeResources || [] };
+        task.admission = { id: admissionId, runWorkers, reservedAt: nowIso() };
         task.updatedAt = nowIso();
       }
       if (selected.length) {
-        state.runtime.timeline.push({ type: 'worker_admission_reserved', missionId, admissionId, taskIds: selected.map((task) => task.id), runWorkers, runtimeResources: selected.flatMap((task) => task.runtimeResources || []), at: nowIso() });
+        state.runtime.timeline.push({ type: 'worker_admission_reserved', missionId, admissionId, taskIds: selected.map((task) => task.id), runWorkers, at: nowIso() });
       }
-      if (resourceConflicts.length) {
-        state.runtime.timeline.push({ type: 'worker_admission_resource_blocked', missionId, admissionId, conflicts: resourceConflicts, at: nowIso() });
-      }
-      const reason = selected.length
-        ? null
-        : (capacity === 0 ? 'global-worker-admission-full' : (resourceConflicts.length ? 'runtime-resource-conflict' : 'no-ready-planned-tasks'));
-      return { id: admissionId, missionId, taskIds: selected.map((task) => task.id), reason, resourceConflicts };
+      return { id: admissionId, missionId, taskIds: selected.map((task) => task.id), reason: selected.length ? null : (capacity === 0 ? 'global-worker-admission-full' : 'no-ready-planned-tasks') };
     }, { missionId, projectId, waveIndex, runWorkers, admissionId });
   }
 
