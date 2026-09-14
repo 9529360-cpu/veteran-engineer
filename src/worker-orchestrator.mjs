@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { assertPathsWithinScope, changedPaths, git, sourceIdentity } from './git.mjs';
 import { MissionService } from './mission-service.mjs';
+import { missionExecutionCapacity } from './adaptive-mission-strategy.mjs';
 import { nowIso, randomId } from './util.mjs';
 import { resolveWorkerConfig, writeWorkerPacket } from './worker-adapter.mjs';
 import { ProjectBootstrapExecutor, normalizeBootstrapAuthorization } from './bootstrap-executor.mjs';
@@ -484,11 +485,8 @@ export class WorkerOrchestrator {
       const candidates = waveIds.map((id) => state.tasks[`${missionId}:${id}`]).filter((task) => task?.status === 'planned');
       const byId = new Map(Object.values(state.tasks).filter((task) => task.missionId === missionId).map((task) => [task.id, task]));
       const ready = candidates.filter((task) => task.dependencies.every((dep) => byId.get(dep)?.status === 'done'));
-      const maxWorkers = Math.max(1, Number(project.workerPolicy?.maxWorkers || 2));
-      const activeStatuses = new Set(['admitted', 'executing', 'cancelling', 'interrupted']);
-      const globalActive = runWorkers ? Object.values(state.tasks).filter((task) => activeStatuses.has(task.status)).length : 0;
-      const capacity = runWorkers ? Math.max(0, maxWorkers - globalActive) : maxWorkers;
-      const selected = ready.slice(0, capacity);
+      const budget = missionExecutionCapacity({ state, mission, project, runWorkers });
+      const selected = ready.slice(0, budget.capacity);
       for (const task of selected) {
         task.status = 'admitted';
         task.admission = { id: admissionId, runWorkers, reservedAt: nowIso() };
@@ -497,7 +495,7 @@ export class WorkerOrchestrator {
       if (selected.length) {
         state.runtime.timeline.push({ type: 'worker_admission_reserved', missionId, admissionId, taskIds: selected.map((task) => task.id), runWorkers, at: nowIso() });
       }
-      return { id: admissionId, missionId, taskIds: selected.map((task) => task.id), reason: selected.length ? null : (capacity === 0 ? 'global-worker-admission-full' : 'no-ready-planned-tasks') };
+      return { id: admissionId, missionId, taskIds: selected.map((task) => task.id), reason: selected.length ? null : (budget.capacity === 0 ? (budget.reason || 'global-worker-admission-full') : 'no-ready-planned-tasks') };
     }, { missionId, projectId, waveIndex, runWorkers, admissionId });
   }
 
