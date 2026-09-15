@@ -116,18 +116,33 @@ function suggestionFor(sourceTool, index, args, result) {
   });
 }
 
-export function toolWorkflowSuggestions(sourceTool, args = {}, result = {}) {
+function normalizeOutcome(sourceOutcome, sourceErrorCode) {
+  if (!['success', 'error'].includes(sourceOutcome)) throw new Error(`Unknown workflow suggestion source outcome: ${sourceOutcome}`);
+  if (sourceErrorCode !== null && sourceErrorCode !== undefined && (typeof sourceErrorCode !== 'string' || sourceErrorCode.length === 0)) {
+    throw new Error('Workflow suggestion sourceErrorCode must be a non-empty string when provided');
+  }
+  return { sourceOutcome, sourceErrorCode: sourceErrorCode || null };
+}
+
+export function toolWorkflowSuggestions(sourceTool, args = {}, result = {}, { sourceOutcome = 'success', sourceErrorCode = null } = {}) {
   const workflow = TOOL_WORKFLOW_RELATIONS[sourceTool];
   const bindings = TOOL_WORKFLOW_BINDINGS[sourceTool];
   if (!workflow || !bindings) throw new Error(`Unknown public tool workflow suggestion source: ${sourceTool}`);
+  const outcome = normalizeOutcome(sourceOutcome, sourceErrorCode);
   return Object.freeze({
     schema: TOOL_WORKFLOW_SUGGESTIONS_SCHEMA,
     sourceTool,
-    invocationPolicy: 'Suggestions are partial call arguments only. Apply the relation condition before use, supply every missing required input, explicitly choose any declared selection, create a fresh requestId for mutating calls, and never treat a suggestion as authorization to invoke a tool.',
+    sourceOutcome: outcome.sourceOutcome,
+    ...(outcome.sourceErrorCode ? { sourceErrorCode: outcome.sourceErrorCode } : {}),
+    invocationPolicy: 'Suggestions are partial call arguments only. Apply the relation condition before use, supply every missing required input, explicitly choose any declared selection, create a fresh requestId for mutating calls, and never treat a suggestion as authorization to invoke a tool. Error outcomes have no authoritative structured result, so result-derived bindings or selections may be absent.',
     suggestions: Object.freeze(workflow.relations.map((_edge, index) => suggestionFor(sourceTool, index, args || {}, result)))
   });
 }
 
-export function toolWorkflowSuggestionsMeta(sourceTool, args = {}, result = {}) {
-  return Object.freeze({ [TOOL_WORKFLOW_SUGGESTIONS_META_KEY]: toolWorkflowSuggestions(sourceTool, args, result) });
+export function toolWorkflowSuggestionsMeta(sourceTool, args = {}, result = {}, options = {}) {
+  return Object.freeze({ [TOOL_WORKFLOW_SUGGESTIONS_META_KEY]: toolWorkflowSuggestions(sourceTool, args, result, options) });
+}
+
+export function toolWorkflowErrorSuggestionsMeta(sourceTool, args = {}, sourceErrorCode = 'ERROR') {
+  return toolWorkflowSuggestionsMeta(sourceTool, args, {}, { sourceOutcome: 'error', sourceErrorCode });
 }

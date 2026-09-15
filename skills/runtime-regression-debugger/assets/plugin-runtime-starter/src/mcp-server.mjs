@@ -4,12 +4,12 @@ import { fileURLToPath } from 'node:url';
 import { createVeteranApp } from './app.mjs';
 import { RUNTIME_NAME, RUNTIME_VERSION, LEGACY_PROTOCOL_VERSION } from './constants.mjs';
 import { MCP_TRANSPORT_MODES } from './mcp-protocol-capability.mjs';
-import { TOOL_DEFINITIONS, toolInputJsonSchema, toolInputZodSchema } from './tool-catalog.mjs';
+import { TOOL_DEFINITIONS, TOOL_NAMES, toolInputJsonSchema, toolInputZodSchema } from './tool-catalog.mjs';
 import { toolOutputJsonSchema, toolOutputStructuredContent, toolOutputZodSchema } from './tool-output-contracts.mjs';
 import { toolAnnotations } from './tool-annotations.mjs';
 import { toolWorkflowMeta } from './tool-workflow-relations.mjs';
 import { toolWorkflowBindingsMeta } from './tool-workflow-bindings.mjs';
-import { toolWorkflowSuggestionsMeta } from './tool-workflow-suggestions.mjs';
+import { toolWorkflowSuggestionsMeta, toolWorkflowErrorSuggestionsMeta } from './tool-workflow-suggestions.mjs';
 import { inspectMcpSdkIntegrity, assertMcpSdkIntegrity } from './mcp-sdk-integrity.mjs';
 
 const runtimeRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -32,6 +32,15 @@ function errorPayload(error) {
 
 function toolMeta(name) {
   return { ...toolWorkflowMeta(name), ...toolWorkflowBindingsMeta(name) };
+}
+
+function toolErrorResult(name, args, error) {
+  const payload = errorPayload(error);
+  return {
+    isError: true,
+    content: [{ type: 'text', text: jsonSafe(payload) }],
+    ...(TOOL_NAMES.includes(name) ? { _meta: toolWorkflowErrorSuggestionsMeta(name, args || {}, payload.code) } : {})
+  };
 }
 
 async function createOfficialSdkServerFactory({ stateRoot, configPath }) {
@@ -61,7 +70,7 @@ async function createOfficialSdkServerFactory({ stateRoot, configPath }) {
             _meta: toolWorkflowSuggestionsMeta(tool.name, args || {}, result)
           };
         } catch (error) {
-          return { isError: true, content: [{ type: 'text', text: jsonSafe(errorPayload(error)) }] };
+          return toolErrorResult(tool.name, args || {}, error);
         }
       });
     }
@@ -116,7 +125,7 @@ async function startFallback({ stateRoot, configPath }) {
               _meta: toolWorkflowSuggestionsMeta(name, args, result)
             });
           } catch (error) {
-            success(message.id, { isError: true, content: [{ type: 'text', text: jsonSafe(errorPayload(error)) }] });
+            success(message.id, toolErrorResult(name, args, error));
           }
         } else if (message.method === 'ping') {
           success(message.id, {});
