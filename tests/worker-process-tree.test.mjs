@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import { WorkerAdapter } from '../src/worker-adapter.mjs';
-import { cleanup, tempDir } from './helpers.mjs';
+import { cleanup, processRunning, tempDir, waitForProcessStopped } from './helpers.mjs';
 
 const project = { workerPolicy: { enabled: true, allowUnconfinedCustomWorkers: false } };
 const mission = { id: 'M1' };
@@ -23,16 +23,6 @@ async function waitForFile(file, timeoutMs = 2000) {
     }
   }
   throw new Error(`Timed out waiting for ${file}`);
-}
-
-function processAlive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    if (error?.code === 'ESRCH') return false;
-    throw error;
-  }
 }
 
 async function assertHeartbeatStopped(file) {
@@ -55,7 +45,7 @@ async function createProcessTreeFixture(root, name) {
 async function cleanupGrandchild(pidFile) {
   try {
     const pid = Number(await fs.readFile(pidFile, 'utf8'));
-    if (Number.isInteger(pid) && pid > 0 && processAlive(pid)) process.kill(pid, 'SIGKILL');
+    if (await processRunning(pid)) process.kill(pid, 'SIGKILL');
   } catch {}
 }
 
@@ -92,7 +82,7 @@ test('worker timeout terminates descendant processes and reports timeout ownersh
     await waitForFile(fixture.heartbeat);
     await assertHeartbeatStopped(fixture.heartbeat);
     const pid = Number(await fs.readFile(fixture.pidFile, 'utf8'));
-    assert.equal(processAlive(pid), false, 'timeout must not leave the worker grandchild alive');
+    assert.equal(await waitForProcessStopped(pid), true, 'timeout must not leave the worker grandchild running');
   } finally {
     await cleanupGrandchild(fixture.pidFile);
     await cleanup(root);
@@ -131,7 +121,7 @@ test('worker cancel terminates descendant processes and exposes live/cancel life
     assert.deepEqual(adapter.snapshot(), []);
     await assertHeartbeatStopped(fixture.heartbeat);
     const pid = Number(await fs.readFile(fixture.pidFile, 'utf8'));
-    assert.equal(processAlive(pid), false, 'cancel must not leave the worker grandchild alive');
+    assert.equal(await waitForProcessStopped(pid), true, 'cancel must not leave the worker grandchild running');
   } finally {
     await cleanupGrandchild(fixture.pidFile);
     await cleanup(root);
