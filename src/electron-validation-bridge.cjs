@@ -7,8 +7,9 @@ const { app, BrowserWindow, webContents } = require('electron');
 const CONTRACT = 'veteran-electron-bridge-v1';
 const MAX_SURFACES = 64;
 const MAX_MESSAGE_BYTES = 256 * 1024;
-const CAPTURE_ATTEMPTS = 4;
-const CAPTURE_ATTEMPT_TIMEOUT_MS = 2500;
+const CAPTURE_RETRY_WINDOW_MS = 8_000;
+const CAPTURE_ATTEMPT_TIMEOUT_MS = 2_500;
+const MAX_CAPTURE_ATTEMPTS = 16;
 
 const input = fs.createReadStream(null, { fd: 3, autoClose: false });
 const output = fs.createWriteStream(null, { fd: 4, autoClose: false });
@@ -196,6 +197,12 @@ function captureFailureCode(error) {
   return 'ELECTRON_SCREENSHOT_FAILED';
 }
 
+function retryableCaptureFailure(code) {
+  return code === 'ELECTRON_CAPTURE_SURFACE_UNAVAILABLE'
+    || code === 'ELECTRON_CAPTURE_EMPTY_BITMAP'
+    || code === 'ELECTRON_CAPTURE_FRAME_GONE';
+}
+
 async function captureWithTimeout(capture) {
   let timer = null;
   try {
@@ -215,8 +222,9 @@ async function captureWithTimeout(capture) {
 }
 
 async function captureSurface(surface) {
+  const deadline = Date.now() + CAPTURE_RETRY_WINDOW_MS;
   let failureCode = 'ELECTRON_SCREENSHOT_FAILED';
-  for (let attempt = 0; attempt < CAPTURE_ATTEMPTS; attempt += 1) {
+  for (let attempt = 0; attempt < MAX_CAPTURE_ATTEMPTS; attempt += 1) {
     try {
       focusSurface(surface);
       const options = { stayHidden: true, stayAwake: true };
@@ -238,7 +246,11 @@ async function captureSurface(surface) {
         ? 'ELECTRON_CAPTURE_TIMEOUT'
         : captureFailureCode(error);
     }
-    if (attempt + 1 < CAPTURE_ATTEMPTS) await delay(100 * (attempt + 1));
+
+    if (!retryableCaptureFailure(failureCode) || Date.now() >= deadline) break;
+    const remaining = deadline - Date.now();
+    const retryDelay = Math.min(500, 100 + attempt * 50, remaining);
+    if (retryDelay > 0) await delay(retryDelay);
   }
   return { ok: false, code: failureCode };
 }
