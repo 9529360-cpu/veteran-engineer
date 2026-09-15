@@ -20,6 +20,8 @@ export {
   normalizeElectronValidation
 } from './electron-validation-contract.mjs';
 
+const MAX_DIAGNOSTIC_COUNT = 1_000_000;
+
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -44,6 +46,34 @@ function sanitizeSurfaces(raw) {
     hostId: Number.isInteger(item?.hostId) ? item.hostId : null
   }));
   return { windows: clean(raw?.windows, 'window'), webviews: clean(raw?.webviews, 'webview') };
+}
+
+function boundedDiagnosticCount(value) {
+  const numeric = Number(value);
+  return Number.isInteger(numeric) && numeric >= 0 ? Math.min(numeric, MAX_DIAGNOSTIC_COUNT) : 0;
+}
+
+function sanitizeRuntimeDiagnostics(raw) {
+  return {
+    consoleMessages: boundedDiagnosticCount(raw?.consoleMessages),
+    pageErrors: boundedDiagnosticCount(raw?.pageErrors),
+    crashes: boundedDiagnosticCount(raw?.crashes),
+    unresponsiveEvents: boundedDiagnosticCount(raw?.unresponsiveEvents),
+    responsiveEvents: boundedDiagnosticCount(raw?.responsiveEvents),
+    activeUnresponsive: boundedDiagnosticCount(raw?.activeUnresponsive),
+    webContentsObserved: boundedDiagnosticCount(raw?.webContentsObserved)
+  };
+}
+
+async function readRuntimeDiagnostics(session, timeoutMs) {
+  if (!session || typeof session.command !== 'function') return null;
+  try {
+    const response = await session.command(null, 'diagnostics', {}, timeoutMs);
+    if (!response?.ok) return null;
+    return sanitizeRuntimeDiagnostics(response.diagnostics);
+  } catch {
+    return null;
+  }
 }
 
 function targetMatches(surface, target) {
@@ -212,7 +242,19 @@ export async function runElectronValidation(electron, {
   const driver = automation || nativeElectronAutomation();
   const assertions = [];
   const attachments = [];
-  const diagnostics = { consoleMessages: 0, pageErrors: 0, crashes: 0, windowsObserved: 0, webviewsObserved: 0, stepsCompleted: 0, durationMs: 0 };
+  const diagnostics = {
+    consoleMessages: 0,
+    pageErrors: 0,
+    crashes: 0,
+    unresponsiveEvents: 0,
+    responsiveEvents: 0,
+    activeUnresponsive: 0,
+    webContentsObserved: 0,
+    windowsObserved: 0,
+    webviewsObserved: 0,
+    stepsCompleted: 0,
+    durationMs: 0
+  };
   let session = null;
   let failureCode = null;
   let failureMessage = null;
@@ -246,6 +288,18 @@ export async function runElectronValidation(electron, {
     try { finalSurfaces = sanitizeSurfaces(await session.listSurfaces(Math.min(1000, Math.max(1, deadline - Date.now())))); } catch {}
     diagnostics.windowsObserved = finalSurfaces.windows.length;
     diagnostics.webviewsObserved = finalSurfaces.webviews.length;
+
+    const runtimeDiagnostics = await readRuntimeDiagnostics(session, Math.min(1000, Math.max(1, deadline - Date.now())));
+    if (runtimeDiagnostics) Object.assign(diagnostics, runtimeDiagnostics);
+    if (diagnostics.crashes > 0) {
+      const priorFailure = failureCode;
+      failureCode = 'ELECTRON_RENDERER_CRASHED';
+      failureMessage = `Electron observed ${diagnostics.crashes} renderer crash event(s)${priorFailure ? `; prior step failure was ${priorFailure}` : ''}.`;
+    } else if (!failureCode && diagnostics.activeUnresponsive > 0) {
+      failureCode = 'ELECTRON_RENDERER_UNRESPONSIVE';
+      failureMessage = `Electron ended validation with ${diagnostics.activeUnresponsive} unresponsive renderer surface(s).`;
+    }
+
     if (!failureCode && attachments.length === 0 && finalSurfaces.windows.length > 0) {
       try {
         const result = await session.command({ type: 'window', index: 0 }, 'screenshot', {}, Math.min(1000, Math.max(1, deadline - Date.now())));
