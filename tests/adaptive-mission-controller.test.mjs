@@ -42,6 +42,19 @@ test('adaptive task risk preserves explicit authority and infers meaningful engi
   assert.equal(light.riskEnvelopeSource, 'baseline');
   assert.equal(light.concurrency.maxConcurrentWorkers, 1);
 
+  const highRisk = compileMissionExecutionStrategy({
+    tasks: ['T1', 'T2', 'T3', 'T4'].map((id) => ({ id, risk: 'high', riskAssessment: { source: 'explicit' } })),
+    waves: [['T1', 'T2', 'T3', 'T4']],
+    project: { workerPolicy: { maxWorkers: 4 } },
+    riskEnvelope: 'medium'
+  });
+  assert.equal(highRisk.taskClass, 'heavy');
+  assert.equal(highRisk.effectiveRisk, 'high');
+  assert.equal(highRisk.concurrency.structuralParallelism, 4);
+  assert.equal(highRisk.concurrency.maxConcurrentWorkers, 2);
+  assert.equal(highRisk.concurrency.riskShaped, true);
+  assert.ok(highRisk.reasons.includes('risk-shaped-concurrency'));
+
   const consequential = compileMissionExecutionStrategy({
     tasks: [
       { id: 'T1', risk: 'low', riskAssessment: { source: 'inferred' } },
@@ -128,7 +141,7 @@ test('mission planning refreshes project context and records adaptive parallel s
   }
 });
 
-test('heavy missions shape the real dispatch budget instead of only describing it', async () => {
+test('size-heavy missions use the full safe structural dispatch budget', async () => {
   const fixture = await createGitRepo({
     files: Object.fromEntries(['a', 'b', 'c', 'd', 'e'].map((name) => [`src/${name}.txt`, `${name}\n`]))
   });
@@ -145,19 +158,21 @@ test('heavy missions shape the real dispatch budget instead of only describing i
     const planned = await app.services.missionService.plan({
       projectId: project.id,
       goal: 'change five independent owners',
-      doneDefinition: 'all independent changes are dispatched safely',
+      doneDefinition: 'all independent changes are dispatched safely at available structural parallelism',
       tasks: ['a', 'b', 'c', 'd', 'e'].map((name, index) => task(`T${index + 1}`, [`src/${name}.txt`]))
     });
 
     assert.equal(planned.mission.executionStrategy.taskClass, 'heavy');
+    assert.equal(planned.mission.executionStrategy.effectiveRisk, 'low');
     assert.equal(planned.mission.executionStrategy.concurrency.configuredMaxWorkers, 4);
     assert.equal(planned.mission.executionStrategy.concurrency.structuralParallelism, 4);
-    assert.equal(planned.mission.executionStrategy.concurrency.maxConcurrentWorkers, 2);
-    assert.equal(planned.mission.executionStrategy.concurrency.riskShaped, true);
+    assert.equal(planned.mission.executionStrategy.concurrency.maxConcurrentWorkers, 4);
+    assert.equal(planned.mission.executionStrategy.concurrency.riskShaped, false);
+    assert.ok(planned.mission.executionStrategy.reasons.includes('size-heavy-full-parallelism'));
 
     const dispatch = await app.services.workerOrchestrator.execute({ missionId: planned.mission.id, runWorkers: false });
-    assert.equal(dispatch.dispatched.length, 2);
-    assert.deepEqual(dispatch.dispatched.map((item) => item.taskId), ['T1', 'T2']);
+    assert.equal(dispatch.dispatched.length, 4);
+    assert.deepEqual(dispatch.dispatched.map((item) => item.taskId), ['T1', 'T2', 'T3', 'T4']);
   } finally {
     await cleanup(fixture.root);
   }
