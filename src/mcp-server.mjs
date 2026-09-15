@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { createVeteranApp } from './app.mjs';
 import { RUNTIME_NAME, RUNTIME_VERSION, LEGACY_PROTOCOL_VERSION } from './constants.mjs';
 import { MCP_TRANSPORT_MODES } from './mcp-protocol-capability.mjs';
-import { TOOL_DEFINITIONS, toolInputJsonSchema, toolRequiresRequestId } from './tool-catalog.mjs';
+import { TOOL_DEFINITIONS, toolInputJsonSchema, toolInputZodSchema } from './tool-catalog.mjs';
 import { inspectMcpSdkIntegrity, assertMcpSdkIntegrity } from './mcp-sdk-integrity.mjs';
 
 const runtimeRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -25,12 +25,6 @@ function errorPayload(error) {
   };
 }
 
-function sdkInputSchema(z, name) {
-  return toolRequiresRequestId(name)
-    ? z.object({ requestId: z.string().min(1) }).passthrough()
-    : z.object({}).passthrough();
-}
-
 async function createOfficialSdkServerFactory({ stateRoot, configPath }) {
   const [{ McpServer }, { serveStdio }, zod] = await Promise.all([
     import('@modelcontextprotocol/server'),
@@ -45,7 +39,7 @@ async function createOfficialSdkServerFactory({ stateRoot, configPath }) {
     for (const tool of TOOL_DEFINITIONS) {
       server.registerTool(tool.name, {
         description: tool.description,
-        inputSchema: sdkInputSchema(z, tool.name)
+        inputSchema: toolInputZodSchema(z, tool.name)
       }, async (args) => {
         try {
           const result = await app.callTool(tool.name, args || {});
