@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import { WorkerAdapter } from '../src/worker-adapter.mjs';
-import { cleanup, tempDir } from './helpers.mjs';
+import { cleanup, processRunning, tempDir, waitForProcessStopped } from './helpers.mjs';
 
 const project = { workerPolicy: { enabled: true, allowUnconfinedCustomWorkers: false } };
 const mission = { id: 'M1' };
@@ -26,22 +26,8 @@ async function waitForFile(file, timeoutMs = 4_000) {
   throw new Error(`Timed out waiting for ${file}`);
 }
 
-function processAlive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    if (error?.code === 'ESRCH') return false;
-    throw error;
-  }
-}
-
 async function waitForProcessExit(pid, timeoutMs = 4_000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (!processAlive(pid)) return;
-    await sleep(25);
-  }
+  if (await waitForProcessStopped(pid, { timeoutMs })) return;
   throw new Error(`Timed out waiting for process ${pid} to exit`);
 }
 
@@ -55,7 +41,7 @@ async function assertHeartbeatStopped(file) {
 
 async function killIfAlive(pid) {
   try {
-    if (Number.isInteger(pid) && pid > 0 && processAlive(pid)) process.kill(pid, 'SIGKILL');
+    if (await processRunning(pid)) process.kill(pid, 'SIGKILL');
   } catch {}
 }
 
@@ -100,9 +86,9 @@ test('unexpected supervisor SIGKILL fails closed and drains the real worker tree
     workerPid = active[0].pid;
     supervisorPid = active[0].supervisorPid;
     grandchildPid = Number(await fs.readFile(grandchildPidFile, 'utf8'));
-    assert.equal(processAlive(workerPid), true);
-    assert.equal(processAlive(grandchildPid), true);
-    assert.equal(processAlive(supervisorPid), true);
+    assert.equal(await processRunning(workerPid), true);
+    assert.equal(await processRunning(grandchildPid), true);
+    assert.equal(await processRunning(supervisorPid), true);
 
     process.kill(supervisorPid, 'SIGKILL');
     await assert.rejects(run, (error) => {
