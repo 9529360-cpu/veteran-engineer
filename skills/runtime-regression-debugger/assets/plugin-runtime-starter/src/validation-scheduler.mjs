@@ -63,7 +63,7 @@ function normalizeMaxParallel(value) {
   return Math.min(value, MAX_VALIDATION_MAX_PARALLEL);
 }
 
-export function planValidationBatches({ required = [], catalog = [], maxParallel = DEFAULT_VALIDATION_MAX_PARALLEL, projectId = 'project', missionId = 'mission' } = {}) {
+function validationDescriptors({ required = [], catalog = [] } = {}) {
   const byName = new Map((catalog || []).map((capability) => [String(capability?.name || '').trim(), capability]));
   const missing = required.filter((name) => !byName.has(name));
   if (missing.length) {
@@ -72,8 +72,22 @@ export function planValidationBatches({ required = [], catalog = [], maxParallel
       details: { missing }
     });
   }
+  return required.map((name, index) => validationDescriptor(byName.get(name), index));
+}
 
-  const descriptors = required.map((name, index) => validationDescriptor(byName.get(name), index));
+export function validationCapabilitiesCanRunTogether({ capabilities = [], catalog = [], projectId = 'project', missionId = 'mission' } = {}) {
+  const descriptors = validationDescriptors({ required: capabilities, catalog });
+  if (new Set(descriptors.map((item) => item.tier)).size > 1) return false;
+  for (let leftIndex = 0; leftIndex < descriptors.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < descriptors.length; rightIndex += 1) {
+      if (descriptorsConflict(descriptors[leftIndex], descriptors[rightIndex], projectId, missionId)) return false;
+    }
+  }
+  return true;
+}
+
+export function planValidationBatches({ required = [], catalog = [], maxParallel = DEFAULT_VALIDATION_MAX_PARALLEL, projectId = 'project', missionId = 'mission' } = {}) {
+  const descriptors = validationDescriptors({ required, catalog });
   const limit = normalizeMaxParallel(maxParallel);
   const batches = [];
   const tiers = [...new Set(descriptors.map((item) => item.tier))].sort((a, b) => a - b);

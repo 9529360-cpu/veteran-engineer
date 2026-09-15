@@ -1,6 +1,6 @@
 import { nowIso, randomId } from './util.mjs';
 import { git } from './git.mjs';
-import { planValidationBatches } from './validation-scheduler.mjs';
+import { planValidationBatches, validationCapabilitiesCanRunTogether } from './validation-scheduler.mjs';
 
 function proofFreshForCandidate(mission, candidate) {
   return ['passed', 'skipped'].includes(mission.validation.status)
@@ -26,6 +26,17 @@ function conciseError(error) {
     code: error?.code || 'VALIDATION_EXECUTION_ERROR',
     message: String(error?.message || error || 'Validation execution failed').slice(0, 1000)
   };
+}
+
+function validationTierQueues(plan) {
+  const tiers = new Map();
+  for (const batch of plan.batches) {
+    if (!tiers.has(batch.tier)) tiers.set(batch.tier, []);
+    tiers.get(batch.tier).push(...batch.capabilities);
+  }
+  return [...tiers.entries()]
+    .sort((left, right) => left[0] - right[0])
+    .map(([tier, capabilities]) => ({ tier, capabilities }));
 }
 
 export class MissionAdvanceService {
@@ -125,30 +136,77 @@ export class MissionAdvanceService {
   }
 
   async runValidationPlan({ project, mission, candidateId, required, commitSha }) {
+    const catalog = project.validationCapabilities || [];
     const plan = planValidationBatches({
       required,
-      catalog: project.validationCapabilities || [],
+      catalog,
       maxParallel: project.validationPolicy?.maxParallel,
       projectId: project.id,
       missionId: mission.id
     });
     const resultByCapability = new Map();
+    const requiredOrder = new Map(required.map((capability, index) => [capability, index]));
+    const batchIndexByCapability = new Map();
+    plan.batches.forEach((batch, batchIndex) => {
+      for (const capability of batch.capabilities) batchIndexByCapability.set(capability, batchIndex);
+    });
     let stoppedAfterBatch = null;
 
-    for (let batchIndex = 0; batchIndex < plan.batches.length; batchIndex += 1) {
-      const batch = plan.batches[batchIndex];
-      const batchResults = await Promise.all(batch.capabilities.map((capability) => this.runValidationCapability({
-        project,
-        missionId: mission.id,
-        candidateId,
-        capability,
-        commitSha
-      })));
-      for (const result of batchResults) resultByCapability.set(result.capability, result);
-      if (batchResults.some((result) => !result.passed)) {
-        stoppedAfterBatch = batchIndex;
-        break;
+    for (const tier of validationTierQueues(plan)) {
+      const pending = [...tier.capabilities];
+      const active = new Map();
+      const completed = [];
+      let wake = null;
+      let failed = false;
+
+      const notifyCompletion = (entry) => {
+        completed.push(entry);
+        if (wake) {
+          const resolve = wake;
+          wake = null;
+          resolve();
+        }
+      };
+      const canAdmit = (capability) => validationCapabilitiesCanRunTogether({
+        capabilities: [...active.keys(), capability],
+        catalog,
+        projectId: project.id,
+        missionId: mission.id
+      });
+      const admit = () => {
+        if (failed) return;
+        while (active.size < plan.maxParallel && pending.length) {
+          const pendingIndex = pending.findIndex((capability) => canAdmit(capability));
+          if (pendingIndex < 0) break;
+          const [capability] = pending.splice(pendingIndex, 1);
+          const execution = this.runValidationCapability({
+            project,
+            missionId: mission.id,
+            candidateId,
+            capability,
+            commitSha
+          }).then((result) => notifyCompletion({ capability, result }));
+          active.set(capability, execution);
+        }
+      };
+
+      admit();
+      while (active.size) {
+        if (!completed.length) await new Promise((resolve) => { wake = resolve; });
+        const ready = completed.splice(0)
+          .sort((left, right) => requiredOrder.get(left.capability) - requiredOrder.get(right.capability));
+        for (const { capability, result } of ready) {
+          active.delete(capability);
+          resultByCapability.set(result.capability, result);
+        }
+        const failures = ready.filter(({ result }) => !result.passed);
+        if (failures.length) {
+          failed = true;
+          stoppedAfterBatch = Math.min(...failures.map(({ capability }) => batchIndexByCapability.get(capability) ?? plan.batches.length));
+        }
+        if (!failed) admit();
       }
+      if (failed) break;
     }
 
     const results = required.filter((capability) => resultByCapability.has(capability)).map((capability) => resultByCapability.get(capability));

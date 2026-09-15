@@ -60,6 +60,18 @@ function command(name, extras = {}) {
   return { name, command: [process.execPath, '-e', 'process.exit(0)'], ...extras };
 }
 
+function passedResult(input, evidenceId = `e-${input.capability}`) {
+  return {
+    purpose: 'final-validation',
+    passed: true,
+    capability: input.capability,
+    commitSha: input.sourceCommitSha,
+    evidenceId,
+    exitCode: 0,
+    failureStage: null
+  };
+}
+
 test('mission validation overlaps safe capabilities while aggregating evidence in required order', async () => {
   let active = 0;
   let maxActive = 0;
@@ -74,15 +86,7 @@ test('mission validation overlaps safe capabilities while aggregating evidence i
       maxActive = Math.max(maxActive, active);
       await delay(input.capability === 'slow' ? 40 : 5);
       active -= 1;
-      return {
-        purpose: 'final-validation',
-        passed: true,
-        capability: input.capability,
-        commitSha: input.sourceCommitSha,
-        evidenceId: `e-${input.capability}`,
-        exitCode: 0,
-        failureStage: null
-      };
+      return passedResult(input);
     }
   });
 
@@ -119,7 +123,7 @@ test('mission validation drains a failing safe batch and does not start later ex
       if (input.capability === 'slow-pass') {
         await delay(40);
         slowPassFinished = true;
-        return { purpose: 'final-validation', passed: true, capability: input.capability, commitSha: input.sourceCommitSha, evidenceId: 'e-pass', exitCode: 0, failureStage: null };
+        return passedResult(input, 'e-pass');
       }
       if (input.capability === 'fast-fail') {
         await delay(5);
@@ -141,4 +145,82 @@ test('mission validation drains a failing safe batch and does not start later ex
   assert.equal(mission.validation.status, 'failed');
   assert.equal(mission.validation.commitSha, 'commit-abc');
   assert.deepEqual(mission.validation.evidenceIds, ['e-pass', 'e-fail']);
+});
+
+test('mission validation fills a freed slot with newly unblocked work before a long sibling completes', async () => {
+  const called = [];
+  let slowFinished = false;
+  let nextDbStartedBeforeSlowFinished = false;
+  const { service, mission } = harness({
+    required: ['slow-free', 'fast-db', 'next-db'],
+    capabilities: [
+      command('slow-free'),
+      command('fast-db', { coordinationKeys: ['integration-db'] }),
+      command('next-db', { coordinationKeys: ['integration-db'] })
+    ],
+    maxParallel: 2,
+    runValidation: async (input) => {
+      called.push(input.capability);
+      if (input.capability === 'slow-free') {
+        await delay(50);
+        slowFinished = true;
+        return passedResult(input);
+      }
+      if (input.capability === 'fast-db') {
+        await delay(5);
+        return passedResult(input);
+      }
+      nextDbStartedBeforeSlowFinished = !slowFinished;
+      await delay(5);
+      return passedResult(input);
+    }
+  });
+
+  const result = await service.advance({ missionId: mission.id });
+
+  assert.equal(nextDbStartedBeforeSlowFinished, true);
+  assert.deepEqual(called, ['slow-free', 'fast-db', 'next-db']);
+  assert.deepEqual(result.validationPlan.batches, [
+    { tier: 0, capabilities: ['slow-free', 'fast-db'] },
+    { tier: 0, capabilities: ['next-db'] }
+  ]);
+  assert.deepEqual(result.results.map((item) => item.capability), ['slow-free', 'fast-db', 'next-db']);
+  assert.equal(mission.validation.status, 'passed');
+});
+
+test('mission validation stops sliding admission after failure while draining already active work', async () => {
+  const called = [];
+  let slowFinished = false;
+  const { service, mission } = harness({
+    required: ['slow-free', 'fast-fail-db', 'next-db'],
+    capabilities: [
+      command('slow-free'),
+      command('fast-fail-db', { coordinationKeys: ['integration-db'] }),
+      command('next-db', { coordinationKeys: ['integration-db'] })
+    ],
+    maxParallel: 2,
+    runValidation: async (input) => {
+      called.push(input.capability);
+      if (input.capability === 'slow-free') {
+        await delay(40);
+        slowFinished = true;
+        return passedResult(input);
+      }
+      if (input.capability === 'fast-fail-db') {
+        await delay(5);
+        return { ...passedResult(input), passed: false, exitCode: 2, failureStage: 'validation-command' };
+      }
+      throw new Error('new validation must not start after failure is observed');
+    }
+  });
+
+  const result = await service.advance({ missionId: mission.id });
+
+  assert.equal(slowFinished, true);
+  assert.deepEqual(called, ['slow-free', 'fast-fail-db']);
+  assert.equal(result.blocked, true);
+  assert.equal(result.cancelPolicy, 'drain-in-flight');
+  assert.deepEqual(result.deferredCapabilities, ['next-db']);
+  assert.deepEqual(result.results.map((item) => item.capability), ['slow-free', 'fast-fail-db']);
+  assert.equal(mission.validation.status, 'failed');
 });
