@@ -11,6 +11,7 @@ const self = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(self), '..');
 const skillRoot = path.join(root, 'skills', 'runtime-regression-debugger');
 const exporter = path.join(skillRoot, 'scripts', 'export_plugin_bundle.py');
+const bootstrapSource = path.join(root, 'scripts', 'release-bootstrap.mjs');
 const PROFILES = ['desktop', 'codex', 'web'];
 
 function run(command, args) {
@@ -56,6 +57,16 @@ export async function buildReleaseCandidate({ output, tag = null, commit = null 
   const contract = await inspectReleaseContract({ root, tag });
   await fs.mkdir(output, { recursive: true });
   const assets = [];
+
+  const bootstrapFilename = 'veteran-engineer-bootstrap.mjs';
+  const bootstrapTarget = path.join(output, bootstrapFilename);
+  const bootstrapBytes = await fs.readFile(bootstrapSource);
+  await fs.writeFile(bootstrapTarget, bootstrapBytes);
+  const bootstrapDigest = crypto.createHash('sha256').update(bootstrapBytes).digest('hex');
+  const bootstrapChecksum = 'veteran-engineer-bootstrap.sha256';
+  await fs.writeFile(path.join(output, bootstrapChecksum), `${bootstrapDigest}  ${bootstrapFilename}\n`, 'utf8');
+  assets.push({ profile: 'bootstrap', filename: bootstrapFilename, checksumFile: bootstrapChecksum, sha256: bootstrapDigest, bytes: bootstrapBytes.length });
+
   const runtimeFilename = 'veteran-engineer-runtime.json';
   const runtimeTarget = path.join(output, runtimeFilename);
   const runtimeRebuilt = path.join(output, '.veteran-engineer-runtime-rebuilt.json');
