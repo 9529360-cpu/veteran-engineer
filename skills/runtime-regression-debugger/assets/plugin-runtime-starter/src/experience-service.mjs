@@ -99,7 +99,7 @@ export class ExperienceService {
     }, { experienceId });
   }
 
-  async query({ projectId, mechanism, sourceHead, limit = 8, recordUsage = false }) {
+  async query({ projectId, mechanism, sourceHead, limit = 8 }, { recordUsage = false } = {}) {
     const state = await this.store.read();
     const now = Date.now();
     const candidates = Object.values(state.experiences)
@@ -138,7 +138,7 @@ export class ExperienceService {
   }
 
   async route({ projectId, sourceHead, role = 'general', limit = 8 }) {
-    const result = await this.query({ projectId, sourceHead, limit, recordUsage: true });
+    const result = await this.query({ projectId, sourceHead, limit }, { recordUsage: true });
     return {
       role,
       items: result.items.map((item) => ({
