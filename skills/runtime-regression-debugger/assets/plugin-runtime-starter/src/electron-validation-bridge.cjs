@@ -7,6 +7,8 @@ const { app, BrowserWindow, webContents } = require('electron');
 const CONTRACT = 'veteran-electron-bridge-v1';
 const MAX_SURFACES = 64;
 const MAX_MESSAGE_BYTES = 256 * 1024;
+const CAPTURE_ATTEMPTS = 4;
+const CAPTURE_ATTEMPT_TIMEOUT_MS = 2500;
 
 const input = fs.createReadStream(null, { fd: 3, autoClose: false });
 const output = fs.createWriteStream(null, { fd: 4, autoClose: false });
@@ -20,6 +22,10 @@ function reply(message) {
 
 function boundedText(value, max) {
   return typeof value === 'string' ? value.slice(0, max) : '';
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function listSurfaceEntries(type) {
@@ -104,6 +110,68 @@ function focusSurface(surface) {
     }
     if (typeof contents.focus === 'function') contents.focus();
   } catch {}
+}
+
+function captureFailureCode(error) {
+  const message = String(error?.message || error || '').toLowerCase();
+  if (message.includes('frame gone')) return 'ELECTRON_CAPTURE_FRAME_GONE';
+  if (message.includes('timeout')) return 'ELECTRON_CAPTURE_TIMEOUT';
+  if (message.includes('empty bitmap') || message.includes('vizsentemptybitmap')) return 'ELECTRON_CAPTURE_EMPTY_BITMAP';
+  if (
+    message.includes('display surface') ||
+    message.includes('surface not available') ||
+    message.includes('embeddingtokenchanged') ||
+    message.includes('unknownvizerror') ||
+    message.includes('copyfromsurface')
+  ) return 'ELECTRON_CAPTURE_SURFACE_UNAVAILABLE';
+  return 'ELECTRON_SCREENSHOT_FAILED';
+}
+
+async function captureWithTimeout(capture) {
+  let timer = null;
+  try {
+    return await Promise.race([
+      capture(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          const error = new Error('Electron capture timed out');
+          error.code = 'ELECTRON_CAPTURE_TIMEOUT';
+          reject(error);
+        }, CAPTURE_ATTEMPT_TIMEOUT_MS);
+      })
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function captureSurface(surface) {
+  let failureCode = 'ELECTRON_SCREENSHOT_FAILED';
+  for (let attempt = 0; attempt < CAPTURE_ATTEMPTS; attempt += 1) {
+    try {
+      focusSurface(surface);
+      const options = { stayHidden: true, stayAwake: true };
+      let image;
+      if (surface.type === 'window') {
+        const owner = BrowserWindow.fromWebContents(surface.contents);
+        if (!owner || owner.isDestroyed()) return { ok: false, code: 'ELECTRON_SURFACE_NOT_FOUND' };
+        image = await captureWithTimeout(() => owner.capturePage(undefined, options));
+      } else {
+        image = await captureWithTimeout(() => surface.contents.capturePage(undefined, options));
+      }
+      const png = image?.toPNG?.();
+      if (Buffer.isBuffer(png) && png.length > 0 && !image?.isEmpty?.()) {
+        return { ok: true, pngBase64: png.toString('base64') };
+      }
+      failureCode = 'ELECTRON_CAPTURE_EMPTY_BITMAP';
+    } catch (error) {
+      failureCode = error?.code === 'ELECTRON_CAPTURE_TIMEOUT'
+        ? 'ELECTRON_CAPTURE_TIMEOUT'
+        : captureFailureCode(error);
+    }
+    if (attempt + 1 < CAPTURE_ATTEMPTS) await delay(100 * (attempt + 1));
+  }
+  return { ok: false, code: failureCode };
 }
 
 async function runDom(contents, operation, params) {
@@ -194,10 +262,7 @@ async function invoke(target, operation, params = {}) {
     contents.sendInputEvent({ type: 'keyUp', keyCode, modifiers });
     return { ok: true };
   }
-  if (operation === 'screenshot') {
-    const image = await contents.capturePage();
-    return { ok: true, pngBase64: image.toPNG().toString('base64') };
-  }
+  if (operation === 'screenshot') return captureSurface(surface);
   return { ok: false, code: 'ELECTRON_OPERATION_INVALID' };
 }
 
