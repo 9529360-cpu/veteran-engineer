@@ -44,9 +44,10 @@ function assertRuntimeHealthSuggestions(meta) {
   assert.deepEqual(integrity.arguments, {});
   assert.deepEqual(integrity.missingRequired, []);
   assert.equal(integrity.argumentsComplete, true);
+  assert.deepEqual(integrity.selections, []);
 }
 
-test('workflow suggestions resolve safe identity bindings into partial next-call arguments', () => {
+test('workflow suggestions resolve deterministic bindings and transforms into partial next-call arguments', () => {
   let next = suggestion('project_open', 'mission_plan', 'next', {}, { id: 'project-1' });
   assert.deepEqual(next.arguments, { projectId: 'project-1' });
   assert.deepEqual(next.missingRequired, ['requestId', 'goal', 'doneDefinition']);
@@ -64,18 +65,79 @@ test('workflow suggestions resolve safe identity bindings into partial next-call
   assert.deepEqual(next.arguments, { missionId: 'mission-current' });
   assert.deepEqual(next.missingRequired, []);
   assert.equal(next.argumentsComplete, true);
+
+  next = suggestion('validation_run', 'evidence_query', 'inspect', { projectId: 'project-1' }, {
+    passed: true, capability: 'unit', evidenceId: 'evidence-1', sourceCommitSha: 'abc', exitCode: 0
+  });
+  assert.deepEqual(next.arguments, { projectId: 'project-1', ids: ['evidence-1'] });
+
+  next = suggestion('experience_commit', 'evidence_query', 'inspect', { projectId: 'project-1' }, {
+    id: 'experience-1', projectId: 'project-1', mechanism: 'x', statement: 'y', status: 'candidate',
+    evidenceIds: ['e1', 'e2'], freshness: 'fresh'
+  });
+  assert.deepEqual(next.arguments, { projectId: 'project-1', ids: ['e1', 'e2'] });
 });
 
-test('workflow suggestions do not invent missing selected identities or request ids', () => {
-  let next = suggestion('mission_execute', 'worker_retry', 'recover', { requestId: 'old-request', missionId: 'mission-1' }, {
-    missionId: 'mission-1', phase: 'execution', status: 'blocked', results: [], deferredTaskIds: []
+test('workflow suggestions expose filtered selection candidates without auto-binding them', () => {
+  let next = suggestion('validation_capabilities', 'validation_run', 'next', { projectId: 'project-1' }, [
+    { name: 'unit', type: 'command', tier: 0 },
+    { name: 'integration', type: 'command', tier: 1 }
+  ]);
+  assert.deepEqual(next.arguments, { projectId: 'project-1' });
+  assert.deepEqual(next.missingRequired, ['requestId']);
+  assert.deepEqual(next.selections, [{
+    target: 'capability', cardinality: 'one', requiredForRelation: true,
+    candidates: ['unit', 'integration'],
+    reason: 'Select the configured validation capability to execute; rawCommand is a separate explicitly gated path.'
+  }]);
+  assert.equal(Object.hasOwn(next.arguments, 'capability'), false);
+
+  next = suggestion('mission_execute', 'worker_retry', 'recover', { requestId: 'old-request', missionId: 'mission-1' }, {
+    missionId: 'mission-1', waveIndex: 1,
+    results: [
+      { taskId: 'T1', ok: true },
+      { taskId: 'T2', ok: false }
+    ],
+    tasks: [{ taskId: 'T3', status: 'failed' }]
   });
   assert.deepEqual(next.arguments, { missionId: 'mission-1' });
   assert.deepEqual(next.missingRequired, ['requestId', 'taskId']);
+  assert.deepEqual(next.selections[0].candidates, ['T2', 'T3']);
   assert.equal(Object.hasOwn(next.arguments, 'requestId'), false);
   assert.equal(Object.hasOwn(next.arguments, 'taskId'), false);
 
-  next = suggestion('candidate_preflight', 'candidate_status', 'inspect', { missionId: 'mission-1' }, {
+  next = suggestion('mission_execute', 'worker_cancel', 'recover', { missionId: 'mission-1' }, {
+    missionId: 'mission-1', waveIndex: 1,
+    pending: [
+      { taskId: 'T1', status: 'dispatched', dispatchId: 'D1' },
+      { taskId: 'T2', status: 'executing', dispatchId: 'D2' },
+      { taskId: 'T3', status: 'cancelling', dispatchId: 'D3' },
+      { taskId: 'T4', status: 'interrupted', dispatchId: 'D4' }
+    ]
+  });
+  assert.deepEqual(next.selections[0].candidates, ['T2', 'T3']);
+
+  next = suggestion('evidence_query', 'experience_commit', 'next', { projectId: 'project-1' }, [
+    { id: 'e1', projectId: 'project-1', type: 'validation' },
+    { id: 'e2', projectId: 'project-1', type: 'review' }
+  ]);
+  assert.deepEqual(next.selections[0].candidates, ['e1', 'e2']);
+  assert.equal(next.selections[0].cardinality, 'many');
+
+  next = suggestion('experience_audit', 'experience_review', 'next', { projectId: 'project-1' }, [
+    { id: 'exp-1', status: 'candidate' },
+    { id: 'exp-2', status: 'retired' }
+  ]);
+  assert.deepEqual(next.selections[0].candidates, ['exp-1', 'exp-2']);
+
+  next = suggestion('experience_compact', 'experience_review', 'next', { projectId: 'project-1' }, {
+    removed: ['exp-old'], kept: ['exp-keep-1', 'exp-keep-2']
+  });
+  assert.deepEqual(next.selections[0].candidates, ['exp-keep-1', 'exp-keep-2']);
+});
+
+test('workflow suggestions omit null identities and preserve explicit lifecycle inputs', () => {
+  let next = suggestion('candidate_preflight', 'candidate_status', 'inspect', { missionId: 'mission-1' }, {
     missionId: 'mission-1', candidateId: null, ready: false, sourceDrift: true
   });
   assert.deepEqual(next.arguments, { missionId: 'mission-1' });

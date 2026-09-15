@@ -29,11 +29,64 @@ function resolvePointer(root, pointer) {
   return { found: true, value: current };
 }
 
+function applyTransform(transform, value) {
+  if (transform === undefined || transform === 'identity') return value;
+  if (transform === 'singleton-array') return [value];
+  throw new Error(`Unknown workflow suggestion binding transform: ${transform}`);
+}
+
 function bindingValue(binding, args, result) {
   const root = binding.source === 'arguments' ? args : result;
   const resolved = resolvePointer(root, binding.pointer);
   if (!resolved.found || resolved.value === null || resolved.value === undefined) return { found: false, value: undefined };
-  return resolved;
+  return { found: true, value: applyTransform(binding.transform, resolved.value) };
+}
+
+function matchesFilter(item, filter) {
+  if (!filter) return true;
+  const resolved = resolvePointer(item, filter.pointer);
+  if (!resolved.found) return false;
+  if (filter.operator === 'equals') return Object.is(resolved.value, filter.value);
+  if (filter.operator === 'in') return Array.isArray(filter.value) && filter.value.some((candidate) => Object.is(candidate, resolved.value));
+  throw new Error(`Unknown workflow suggestion selection filter operator: ${filter.operator}`);
+}
+
+function uniqueValues(values) {
+  const seen = new Set();
+  const output = [];
+  for (const value of values) {
+    const key = `${typeof value}:${JSON.stringify(value)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(value);
+  }
+  return output;
+}
+
+function selectionCandidates(selection, result) {
+  const values = [];
+  for (const source of selection.sources || []) {
+    if (source.source !== 'structuredContent') throw new Error(`Unsupported workflow suggestion selection source: ${source.source}`);
+    const collection = resolvePointer(result, source.collectionPointer);
+    if (!collection.found || !Array.isArray(collection.value)) continue;
+    for (const item of collection.value) {
+      if (!matchesFilter(item, source.filter)) continue;
+      const selected = resolvePointer(item, source.itemPointer);
+      if (!selected.found || selected.value === null || selected.value === undefined) continue;
+      values.push(selected.value);
+    }
+  }
+  return uniqueValues(values);
+}
+
+function resolvedSelection(selection, result) {
+  return Object.freeze({
+    target: selection.target,
+    cardinality: selection.cardinality,
+    requiredForRelation: selection.requiredForRelation === true,
+    candidates: Object.freeze(selectionCandidates(selection, result)),
+    reason: selection.reason
+  });
 }
 
 function suggestionFor(sourceTool, index, args, result) {
@@ -50,6 +103,7 @@ function suggestionFor(sourceTool, index, args, result) {
     if (resolved.found) partialArguments[binding.target] = resolved.value;
   }
   const missingRequired = (targetSchema.required || []).filter((name) => !Object.hasOwn(partialArguments, name));
+  const selections = (bindingEdge.selections || []).map((item) => resolvedSelection(item, result));
 
   return Object.freeze({
     tool: edge.tool,
@@ -57,7 +111,8 @@ function suggestionFor(sourceTool, index, args, result) {
     when: edge.when,
     arguments: Object.freeze(partialArguments),
     missingRequired: Object.freeze(missingRequired),
-    argumentsComplete: missingRequired.length === 0
+    argumentsComplete: missingRequired.length === 0,
+    selections: Object.freeze(selections)
   });
 }
 
@@ -68,7 +123,7 @@ export function toolWorkflowSuggestions(sourceTool, args = {}, result = {}) {
   return Object.freeze({
     schema: TOOL_WORKFLOW_SUGGESTIONS_SCHEMA,
     sourceTool,
-    invocationPolicy: 'Suggestions are partial call arguments only. Apply the relation condition before use, supply every missing required input, create a fresh requestId for mutating calls, and never treat a suggestion as authorization to invoke a tool.',
+    invocationPolicy: 'Suggestions are partial call arguments only. Apply the relation condition before use, supply every missing required input, explicitly choose any declared selection, create a fresh requestId for mutating calls, and never treat a suggestion as authorization to invoke a tool.',
     suggestions: Object.freeze(workflow.relations.map((_edge, index) => suggestionFor(sourceTool, index, args || {}, result)))
   });
 }

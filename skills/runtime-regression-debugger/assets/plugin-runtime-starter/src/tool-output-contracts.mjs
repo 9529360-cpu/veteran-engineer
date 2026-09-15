@@ -119,13 +119,56 @@ const TOOL_OUTPUT_CONTRACTS = Object.freeze({
     mission: OUTPUT_MISSION,
     tasks: { type: 'array', items: OUTPUT_TASK, description: 'Planned Mission tasks.' }
   }, ['mission', 'tasks']),
-  mission_execute: openObject('Execution dispatch/result for the current safe Mission wave.', {
-    missionId: stringField('Mission id.', { minLength: null }),
-    phase: stringField('Mission phase after execution attempt.', { minLength: null }),
-    status: stringField('Execution or Mission status.', { minLength: null }),
-    results: { type: 'array', items: openObject('Per-task execution result.'), description: 'Per-task worker/commit results when workers ran.' },
-    deferredTaskIds: stringArray('Ready task ids not admitted in this wave.')
-  }),
+  mission_execute: openObject('Execution dispatch/result for the current safe Mission wave. Fields are variant-dependent but missionId is always present.', {
+    missionId: stringField('Mission id.'),
+    phase: stringField('Current/next Mission phase when execution is already complete or no executable wave remains.', { minLength: null }),
+    message: stringField('Bounded execution status message for already-complete phases.', { minLength: null }),
+    waveIndex: integerField('Current Mission wave index when wave-scoped state is returned.', 0, Number.MAX_SAFE_INTEGER),
+    completed: booleanField('Whether the current execution/wave completion transition completed.'),
+    reason: stringField('Machine-readable execution state reason.', { minLength: null }),
+    admitted: stringArray('Task ids admitted for execution when admission is the limiting step.'),
+    waveBase: stringField('Mission integration head used as the worker wave base.', { minLength: null }),
+    pending: { type: 'array', items: openObject('Outstanding task dispatch.', {
+      taskId: stringField('Task id.'),
+      status: stringField('Current task/dispatch status.', { minLength: null }),
+      dispatchId: nullable(stringField('Latest dispatch id when present.', { minLength: null }))
+    }, ['taskId', 'status']), description: 'Outstanding admitted/dispatched/executing/cancelling/interrupted tasks.' },
+    tasks: { type: 'array', items: openObject('Task requiring an explicit retry.', {
+      taskId: stringField('Task id.'),
+      status: stringField('Failed/cancelled task status.', { minLength: null })
+    }, ['taskId', 'status']), description: 'Failed/cancelled tasks that require retry before the wave can progress.' },
+    dispatched: { type: 'array', items: openObject('Prepared external worker dispatch.', {
+      taskId: stringField('Task id.'),
+      dispatchId: stringField('Stable dispatch id.', { minLength: null }),
+      worktreePath: stringField('Runtime-owned task worktree path.', { minLength: null }),
+      packetPath: stringField('Worker packet artifact path.', { minLength: null }),
+      packet: anyField('Durable worker packet payload.')
+    }, ['taskId', 'dispatchId']), description: 'Prepared dispatch packets when runWorkers=false.' },
+    results: { type: 'array', items: openObject('Per-task runtime worker/integration result.', {
+      taskId: stringField('Task id.'),
+      ok: booleanField('Whether worker execution and serial integration completed successfully.'),
+      commitSha: nullable(stringField('Worker task commit when one was created and accepted.', { minLength: null })),
+      discardedCommitSha: nullable(stringField('Discarded task commit when Mission cancellation fenced integration.', { minLength: null })),
+      bootstrap: anyField('Bootstrap execution result when authorized.'),
+      bootstrapEvidenceId: nullable(stringField('Bootstrap evidence id when present.', { minLength: null })),
+      runtime: openObject('Bounded worker runtime outcome.', {
+        namespace: nullable(stringField('Runtime namespace/container identity when present.', { minLength: null })),
+        durationMs: nullable(integerField('Worker runtime duration in milliseconds when known.', 0, Number.MAX_SAFE_INTEGER)),
+        termination: anyField('Worker termination projection.'),
+        outputCapture: anyField('Bounded worker output-capture projection.')
+      }),
+      error: nullable(openObject('Worker failure summary.', {
+        code: stringField('Stable worker failure code.', { minLength: null }),
+        message: stringField('Bounded worker failure message.', { minLength: null })
+      }))
+    }, ['taskId', 'ok']), description: 'Per-task worker/commit results when runtime workers ran.' },
+    preparationFailures: { type: 'array', items: openObject('Task preparation failure before worker launch.', {
+      taskId: stringField('Task id.'),
+      code: stringField('Stable preparation failure code.', { minLength: null }),
+      message: stringField('Bounded preparation failure message.', { minLength: null }),
+      bootstrapEvidenceId: nullable(stringField('Bootstrap-failure evidence id when present.', { minLength: null }))
+    }, ['taskId', 'code', 'message']), description: 'Task worktree/bootstrap/dispatch preparation failures.' }
+  }, ['missionId']),
   mission_status: openObject('Current Mission aggregate status.', {
     mission: OUTPUT_MISSION,
     tasks: { type: 'array', items: OUTPUT_TASK, description: 'Mission tasks.' },

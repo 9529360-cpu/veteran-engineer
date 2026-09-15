@@ -34,6 +34,15 @@ test('flagship output contracts expose fields needed to chain the engineering wo
   assert.ok(plan.properties.mission.properties.id);
   assert.ok(plan.properties.tasks.items.properties.id);
 
+  const execute = toolOutputJsonSchema('mission_execute');
+  assert.deepEqual(execute.required, ['missionId']);
+  assert.ok(execute.properties.results.items.properties.taskId);
+  assert.ok(execute.properties.results.items.properties.ok);
+  assert.ok(execute.properties.pending.items.properties.taskId);
+  assert.ok(execute.properties.tasks.items.properties.taskId);
+  assert.equal(Object.hasOwn(execute.properties, 'status'), false);
+  assert.equal(Object.hasOwn(execute.properties, 'deferredTaskIds'), false);
+
   const status = toolOutputJsonSchema('mission_status');
   assert.ok(status.properties.candidates);
   assert.ok(status.properties.mergeProposals);
@@ -53,6 +62,25 @@ test('flagship output contracts expose fields needed to chain the engineering wo
   const handoff = toolOutputJsonSchema('handoff_export');
   assert.deepEqual(handoff.required, ['id', 'artifactPointer', 'handoff']);
   assert.equal(handoff.properties.handoff.properties.schema.type, 'string');
+});
+
+test('mission_execute contract accepts real execution variants and exposes safe task-selection fields', () => {
+  const execute = toolOutputZodSchema(z, 'mission_execute');
+  assert.equal(execute.safeParse({ missionId: 'm1', phase: 'validation', completed: true }).success, true);
+  assert.equal(execute.safeParse({
+    missionId: 'm1', waveIndex: 2, reason: 'wave-has-tasks-requiring-retry',
+    tasks: [{ taskId: 'T2', status: 'failed' }]
+  }).success, true);
+  assert.equal(execute.safeParse({
+    missionId: 'm1', waveIndex: 2, reason: 'wave-has-outstanding-dispatches',
+    pending: [{ taskId: 'T3', status: 'executing', dispatchId: 'dispatch-1' }]
+  }).success, true);
+  assert.equal(execute.safeParse({
+    missionId: 'm1', waveIndex: 2, waveBase: 'abc',
+    results: [{ taskId: 'T4', ok: false, commitSha: null, discardedCommitSha: null, runtime: {}, error: { code: 'WORKER_FAILED', message: 'boom' } }],
+    preparationFailures: []
+  }).success, true);
+  assert.equal(execute.safeParse({ results: [] }).success, false);
 });
 
 test('legacy 2025 output schemas and structured content wrap natural array roots only', () => {
