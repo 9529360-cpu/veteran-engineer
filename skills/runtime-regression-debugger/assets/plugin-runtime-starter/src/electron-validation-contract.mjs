@@ -143,8 +143,10 @@ function normalizeWindowStateExpectation(raw, index) {
       if (!Number.isInteger(raw.bounds[key]) || raw.bounds[key] < 1 || raw.bounds[key] > MAX_WINDOW_DIMENSION) throw electronError(`Electron scenario step ${index + 1} window state bounds ${key} must be an integer between 1 and ${MAX_WINDOW_DIMENSION}`, 'ELECTRON_SCENARIO_INVALID');
       bounds[key] = raw.bounds[key];
     }
+    if (Object.keys(bounds).length === 0) throw electronError(`Electron scenario step ${index + 1} window state bounds must include width or height`, 'ELECTRON_SCENARIO_INVALID');
     output.bounds = Object.freeze(bounds);
   }
+  if (Object.keys(output).length === 0) throw electronError(`Electron scenario step ${index + 1} window state must include at least one expectation`, 'ELECTRON_SCENARIO_INVALID');
   return Object.freeze(output);
 }
 
