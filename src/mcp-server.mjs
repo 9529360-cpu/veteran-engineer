@@ -9,10 +9,12 @@ import { toolOutputJsonSchema, toolOutputStructuredContent, toolOutputZodSchema 
 import { toolAnnotations } from './tool-annotations.mjs';
 import { toolWorkflowMeta } from './tool-workflow-relations.mjs';
 import { toolWorkflowBindingsMeta } from './tool-workflow-bindings.mjs';
+import { assertCurrentWorkflowBindingTypeSafety } from './tool-workflow-binding-type-safety.mjs';
 import { toolWorkflowSuggestionsMeta, toolWorkflowErrorSuggestionsMeta } from './tool-workflow-suggestions.mjs';
 import { inspectMcpSdkIntegrity, assertMcpSdkIntegrity } from './mcp-sdk-integrity.mjs';
 
 const runtimeRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+assertCurrentWorkflowBindingTypeSafety();
 
 function stateRootFromEnv() {
   return path.resolve(process.env.VETERAN_ENGINEER_STATE_DIR || path.join(os.homedir(), '.veteran-engineer', 'state'));
