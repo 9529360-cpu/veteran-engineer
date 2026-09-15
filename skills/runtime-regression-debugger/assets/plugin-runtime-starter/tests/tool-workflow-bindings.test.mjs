@@ -84,6 +84,7 @@ test('workflow bindings project deterministic carry, transforms, and explicit se
         assert.ok(item.pointer.startsWith('/'), `${name} -> ${edge.tool}.${item.target}`);
         assert.equal(item.mode, 'if-present-non-null', `${name} -> ${edge.tool}.${item.target}`);
         assert.ok(['identity', 'singleton-array'].includes(item.transform), `${name} -> ${edge.tool}.${item.target}`);
+        assert.ok(['guaranteed', 'conditional'].includes(item.availability), `${name} -> ${edge.tool}.${item.target}`);
         assert.notEqual(item.target, 'requestId', `${name} -> ${edge.tool} must not carry requestId`);
         assert.equal(boundTargets.has(item.target), false, `${name} -> ${edge.tool}.${item.target} duplicate`);
         boundTargets.add(item.target);
@@ -97,37 +98,83 @@ test('workflow bindings project deterministic carry, transforms, and explicit se
       }
       const expectedUnbound = (targetSchema.required || []).filter((required) => !boundTargets.has(required));
       assert.deepEqual(projected.unboundRequired, expectedUnbound, `${name} -> ${edge.tool} unbound required`);
+      assert.deepEqual(Object.keys(projected.requiredCoverage), ['guaranteed', 'conditional', 'selection', 'unbound']);
+      const covered = [
+        ...projected.requiredCoverage.guaranteed,
+        ...projected.requiredCoverage.conditional,
+        ...projected.requiredCoverage.selection,
+        ...projected.requiredCoverage.unbound
+      ];
+      assert.deepEqual([...covered].sort(), [...(targetSchema.required || [])].sort(), `${name} -> ${edge.tool} required coverage`);
     }
   }
 });
 
 test('workflow bindings carry deterministic identities and transformed evidence ids without inventing business inputs', () => {
   assert.deepEqual(binding('project_open', 'mission_plan', 'projectId', 'next'), {
-    target: 'projectId', source: 'structuredContent', pointer: '/id', mode: 'if-present-non-null', transform: 'identity'
+    target: 'projectId', source: 'structuredContent', pointer: '/id', mode: 'if-present-non-null', transform: 'identity', availability: 'guaranteed'
   });
   assert.deepEqual(relation('project_open', 'mission_plan', 'next').unboundRequired, ['requestId', 'goal', 'doneDefinition']);
 
   assert.deepEqual(binding('mission_plan', 'mission_execute', 'missionId', 'next'), {
-    target: 'missionId', source: 'structuredContent', pointer: '/mission/id', mode: 'if-present-non-null', transform: 'identity'
+    target: 'missionId', source: 'structuredContent', pointer: '/mission/id', mode: 'if-present-non-null', transform: 'identity', availability: 'guaranteed'
   });
   assert.deepEqual(relation('mission_plan', 'mission_execute', 'next').unboundRequired, ['requestId']);
 
   assert.deepEqual(binding('validation_run', 'evidence_query', 'ids', 'inspect'), {
-    target: 'ids', source: 'structuredContent', pointer: '/evidenceId', mode: 'if-present-non-null', transform: 'singleton-array'
+    target: 'ids', source: 'structuredContent', pointer: '/evidenceId', mode: 'if-present-non-null', transform: 'singleton-array', availability: 'conditional'
   });
   assert.deepEqual(binding('experience_commit', 'evidence_query', 'ids', 'inspect'), {
-    target: 'ids', source: 'structuredContent', pointer: '/evidenceIds', mode: 'if-present-non-null', transform: 'identity'
+    target: 'ids', source: 'structuredContent', pointer: '/evidenceIds', mode: 'if-present-non-null', transform: 'identity', availability: 'conditional'
   });
 
   assert.ok(binding('candidate_refresh', 'candidate_status', 'missionId', 'inspect'));
   assert.deepEqual(binding('candidate_refresh', 'candidate_status', 'candidateId', 'inspect'), {
-    target: 'candidateId', source: 'structuredContent', pointer: '/candidate/id', mode: 'if-present-non-null', transform: 'identity'
+    target: 'candidateId', source: 'structuredContent', pointer: '/candidate/id', mode: 'if-present-non-null', transform: 'identity', availability: 'conditional'
   });
 
   assert.deepEqual(binding('experience_commit', 'experience_review', 'experienceId', 'next'), {
-    target: 'experienceId', source: 'structuredContent', pointer: '/id', mode: 'if-present-non-null', transform: 'identity'
+    target: 'experienceId', source: 'structuredContent', pointer: '/id', mode: 'if-present-non-null', transform: 'identity', availability: 'conditional'
   });
   assert.deepEqual(relation('experience_commit', 'experience_review', 'next').unboundRequired, ['requestId', 'action']);
+});
+
+test('workflow required coverage distinguishes guaranteed, conditional, selected, and truly unbound target inputs', () => {
+  let edge = relation('project_open', 'mission_plan', 'next');
+  assert.deepEqual(edge.requiredCoverage, {
+    guaranteed: ['projectId'],
+    conditional: [],
+    selection: [],
+    unbound: ['requestId', 'goal', 'doneDefinition']
+  });
+
+  edge = relation('evidence_query', 'mission_status', 'inspect');
+  assert.equal(binding('evidence_query', 'mission_status', 'missionId', 'inspect').availability, 'conditional');
+  assert.deepEqual(edge.requiredCoverage, {
+    guaranteed: [],
+    conditional: ['missionId'],
+    selection: [],
+    unbound: []
+  });
+  assert.deepEqual(edge.unboundRequired, []);
+
+  edge = relation('mission_execute', 'worker_retry', 'recover');
+  assert.equal(binding('mission_execute', 'worker_retry', 'missionId', 'recover').availability, 'guaranteed');
+  assert.deepEqual(edge.requiredCoverage, {
+    guaranteed: ['missionId'],
+    conditional: [],
+    selection: ['taskId'],
+    unbound: ['requestId']
+  });
+  assert.deepEqual(edge.unboundRequired, ['requestId', 'taskId']);
+
+  edge = relation('experience_commit', 'experience_review', 'next');
+  assert.deepEqual(edge.requiredCoverage, {
+    guaranteed: [],
+    conditional: ['experienceId'],
+    selection: [],
+    unbound: ['requestId', 'action']
+  });
 });
 
 test('workflow selections make ambiguous next-step choices explicit instead of auto-binding a candidate', () => {

@@ -76,6 +76,14 @@ test('workflow suggestions resolve deterministic bindings and transforms into pa
     evidenceIds: ['e1', 'e2'], freshness: 'fresh'
   });
   assert.deepEqual(next.arguments, { projectId: 'project-1', ids: ['e1', 'e2'] });
+
+  next = suggestion('evidence_query', 'mission_status', 'inspect', {}, [{ id: 'e1' }]);
+  assert.deepEqual(next.arguments, {});
+  assert.deepEqual(next.missingRequired, ['missionId']);
+
+  next = suggestion('evidence_query', 'mission_status', 'inspect', { missionId: 'mission-conditional' }, [{ id: 'e1' }]);
+  assert.deepEqual(next.arguments, { missionId: 'mission-conditional' });
+  assert.deepEqual(next.missingRequired, []);
 });
 
 test('workflow suggestions expose filtered selection candidates without auto-binding them', () => {
