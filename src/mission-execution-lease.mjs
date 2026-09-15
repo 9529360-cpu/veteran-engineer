@@ -56,12 +56,8 @@ export class MissionExecutionLeaseManager {
     if (typeof missionId !== 'string' || !missionId.trim()) {
       throw errorWithCode('Mission execution lease requires a non-empty missionId', 'MISSION_ID_REQUIRED');
     }
-    if (this.store.backendKind === 'local-json') {
-      return this.#acquireLocal({ missionId, operation });
-    }
-    if (this.store.backendKind === 'postgres') {
-      return this.#acquirePostgres({ missionId, operation });
-    }
+    if (this.store.backendKind === 'local-json') return this.#acquireLocal({ missionId, operation });
+    if (this.store.backendKind === 'postgres') return this.#acquirePostgres({ missionId, operation });
     throw errorWithCode(
       `State backend ${this.store.backendKind || 'unknown'} does not provide a mission execution lease implementation`,
       'MISSION_EXECUTION_LEASE_UNSUPPORTED',
@@ -78,18 +74,19 @@ export class MissionExecutionLeaseManager {
       });
     }
 
-    const leaseDir = path.join(this.store.root, 'execution-leases');
+    const store = this.store;
+    const leaseDir = path.join(store.root, 'execution-leases');
     const lockPath = path.join(leaseDir, `mission-${sha256(missionId).slice(0, 40)}.lock`);
     const token = randomId('missionlease');
     const owner = { pid: process.pid, token, missionId, acquiredAt: nowIso() };
     await fs.mkdir(leaseDir, { recursive: true, mode: 0o700 });
 
-    const releaseStateLock = await this.store.acquireLock();
+    const releaseStateLock = await store.acquireLock();
     try {
       const current = await readLocalLease(lockPath);
       if (current.exists) {
         const ownerPid = current.owner?.pid;
-        const malformedStale = current.malformed && current.ageMs > (this.store.lockStaleMs || 30_000);
+        const malformedStale = current.malformed && current.ageMs > (store.lockStaleMs || 30_000);
         if ((Number.isInteger(ownerPid) && !pidAlive(ownerPid)) || malformedStale) {
           await fs.unlink(lockPath).catch((error) => {
             if (error?.code !== 'ENOENT') throw error;
@@ -111,9 +108,7 @@ export class MissionExecutionLeaseManager {
         await handle.writeFile(JSON.stringify(owner));
         await handle.sync();
       } catch (error) {
-        if (error?.code === 'EEXIST') {
-          throw busyError({ missionId, operation, backendKind: 'local-json', reason: 'lease-raced' });
-        }
+        if (error?.code === 'EEXIST') throw busyError({ missionId, operation, backendKind: 'local-json', reason: 'lease-raced' });
         throw error;
       } finally {
         await handle?.close().catch(() => {});
@@ -127,10 +122,10 @@ export class MissionExecutionLeaseManager {
       missionId,
       backendKind: 'local-json',
       leaseId: token,
-      async release() {
+      release: async () => {
         if (released) return;
         released = true;
-        const releaseLock = await this.store.acquireLock();
+        const releaseLock = await store.acquireLock();
         try {
           const current = await readLocalLease(lockPath);
           if (!current.exists || current.owner?.token !== token) return;
@@ -140,7 +135,7 @@ export class MissionExecutionLeaseManager {
         } finally {
           await releaseLock();
         }
-      }.bind(this)
+      }
     };
   }
 
@@ -181,7 +176,7 @@ export class MissionExecutionLeaseManager {
       missionId,
       backendKind: 'postgres',
       leaseId: `${keyA}:${keyB}`,
-      async release() {
+      release: async () => {
         if (released) return;
         released = true;
         try {
