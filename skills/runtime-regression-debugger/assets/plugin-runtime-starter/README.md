@@ -130,11 +130,23 @@ Distribution is now profile-aware. `export_plugin_bundle.py --profile desktop|co
 
 The default shared runtime root is `~/plugins/veteran-engineer`. Durable runtime state is separate at `~/.veteran-engineer/state`, and installer ownership metadata lives at `~/.veteran-engineer/installer.json`.
 
+For a fresh machine, download `veteran-engineer-bootstrap.mjs` from the desired stable GitHub Release (or the latest release) and run it directly with Node 20+:
+
+```bash
+node veteran-engineer-bootstrap.mjs install generic
+# local host integrations
+node veteran-engineer-bootstrap.mjs install codex
+node veteran-engineer-bootstrap.mjs install hermes
+# pin the bootstrap to an exact stable release when required
+node veteran-engineer-bootstrap.mjs install generic --release v0.4.0
+```
+
+The bootstrap refuses to overwrite an existing runtime. Before promotion it self-verifies against the selected GitHub Release asset digest, verifies the release manifest and canonical runtime checksum, validates every runtime file, prepares the pinned base dependency graph with `npm ci --include=optional --omit=dev --ignore-scripts`, verifies the required MCP SDK packages actually installed, and only then atomically promotes the runtime and binds the selected host. Network, digest, bundle, or dependency failures leave no active runtime. If host binding itself fails after promotion, the verified runtime is deliberately left in place for explicit repair rather than being removed underneath a potentially partial host-side mutation.
+
+For an existing installation, use the lifecycle CLI:
+
 ```bash
 node bin/veteran-engineer.mjs hosts
-node bin/veteran-engineer.mjs install generic
-node bin/veteran-engineer.mjs install codex
-node bin/veteran-engineer.mjs install hermes
 node bin/veteran-engineer.mjs status
 node bin/veteran-engineer.mjs doctor
 node bin/veteran-engineer.mjs upgrade --release latest
@@ -144,7 +156,7 @@ node bin/veteran-engineer.mjs upgrade --release v0.4.0
 
 Codex, Hermes, generic MCP, and trusted external adapters bind the same shared runtime; hosts do not fork the engineering core. Local repair still re-synchronizes the caller's distribution. Remote upgrade resolves only a public, non-prerelease GitHub Release, requires an exact release commit, verifies GitHub asset SHA-256 metadata plus the release manifest/checksum, validates every file in the canonical runtime bundle, stages it outside the active runtime, then atomically swaps the shared runtime and rebinds every recorded host. Existing `node_modules` capabilities are preserved only when the target dependency graph is identical; dependency-graph changes fail closed instead of reusing stale packages. Downgrades are rejected.
 
-The canonical runtime release asset is separate from the Desktop/Codex/Web plugin archives, so lifecycle management does not depend on a product-specific ZIP layout or an external unzip/tar binary. Zero-clone bootstrap and automatic dependency installation remain separate lifecycle work; `upgrade --release` assumes Veteran is already installed.
+The canonical runtime and standalone bootstrap release assets are separate from the Desktop/Codex/Web plugin archives, so lifecycle management does not depend on a product-specific ZIP layout or an external unzip/tar binary.
 
 ## Development validation
 
