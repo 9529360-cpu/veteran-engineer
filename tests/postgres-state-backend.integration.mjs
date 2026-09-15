@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import test from 'node:test';
 import { createVeteranApp } from '../src/app.mjs';
+import { MissionExecutionLeaseManager } from '../src/mission-execution-lease.mjs';
 import { assertDurableOutcomeStateBackend } from '../src/state-backend-durability-contract.mjs';
 import { PostgresStateBackend } from '../src/postgres-state-backend.mjs';
 import { cleanup, tempDir } from './helpers.mjs';
@@ -86,6 +87,41 @@ test('postgres separate backend instances serialize one durable state identity w
     assert.equal(auditA.head, auditB.head);
     assert.equal(auditA.entries, beforeAudit.entries + 24);
   } finally {
+    await Promise.all([backendA?.close?.(), backendB?.close?.()].filter(Boolean).map((promise) => promise.catch(() => {})));
+    await Promise.all([cleanup(rootA), cleanup(rootB)]);
+  }
+});
+
+test('postgres mission execution lease fences a second runtime and releases with the owning session', async () => {
+  const rootA = await tempDir('veteran-postgres-execution-lease-a-');
+  const rootB = await tempDir('veteran-postgres-execution-lease-b-');
+  const key = instanceKey('execution-lease');
+  let backendA;
+  let backendB;
+  let leaseA;
+  let leaseB;
+  try {
+    backendA = await new PostgresStateBackend({ root: rootA, connectionString, instanceKey: key, poolMax: 2 }).init();
+    backendB = await new PostgresStateBackend({ root: rootB, connectionString, instanceKey: key, poolMax: 2 }).init();
+    const managerA = new MissionExecutionLeaseManager({ store: backendA });
+    const managerB = new MissionExecutionLeaseManager({ store: backendB });
+    const missionId = 'mission-postgres-execution-lease';
+
+    leaseA = await managerA.acquire({ missionId, operation: 'integration-owner' });
+    await assert.rejects(
+      managerB.acquire({ missionId, operation: 'integration-contender' }),
+      (error) => error?.code === 'MISSION_EXECUTION_ACTIVE'
+        && error?.details?.backendKind === 'postgres'
+        && error?.details?.missionId === missionId
+    );
+
+    await leaseA.release();
+    leaseA = null;
+    leaseB = await managerB.acquire({ missionId, operation: 'integration-takeover-after-release' });
+    assert.equal(leaseB.backendKind, 'postgres');
+  } finally {
+    await leaseA?.release().catch(() => {});
+    await leaseB?.release().catch(() => {});
     await Promise.all([backendA?.close?.(), backendB?.close?.()].filter(Boolean).map((promise) => promise.catch(() => {})));
     await Promise.all([cleanup(rootA), cleanup(rootB)]);
   }
