@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { signalProcessTree } from './process-lifecycle-authority.mjs';
 
 export const NATIVE_BROWSER_SCENARIO_CONTRACT = 'veteran-browser-scenario-v1';
 const RESULT_CONTRACT = 'veteran-browser-validation-v1';
@@ -63,7 +64,7 @@ export function normalizeNativeBrowserScenario(raw) {
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 function kill(child, signal = 'SIGTERM') {
   if (!child?.pid) return;
-  try { process.platform === 'win32' ? child.kill(signal) : process.kill(-child.pid, signal); } catch { try { child.kill(signal); } catch {} }
+  signalProcessTree(child.pid, signal);
 }
 class Cdp {
   constructor(child) {
