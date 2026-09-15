@@ -338,24 +338,31 @@ async function invoke(target, operation, params = {}) {
 let chain = Promise.resolve();
 rl.on('line', (line) => {
   if (!line || Buffer.byteLength(line) > MAX_MESSAGE_BYTES) return;
+  let message;
+  try { message = JSON.parse(line); } catch { return; }
+  if (!Number.isInteger(message?.id) || message.id <= 0) return;
+
+  try {
+    if (message.operation === 'inventory') {
+      reply({ id: message.id, ok: true, inventory: inventory() });
+      return;
+    }
+    if (message.operation === 'diagnostics') {
+      reply({ id: message.id, ok: true, diagnostics: diagnosticsSnapshot() });
+      return;
+    }
+    if (message.operation === 'quit') {
+      reply({ id: message.id, ok: true });
+      setImmediate(() => app.quit());
+      return;
+    }
+  } catch (error) {
+    reply({ id: message.id, ok: false, code: error?.code || 'ELECTRON_BRIDGE_OPERATION_FAILED' });
+    return;
+  }
+
   chain = chain.then(async () => {
-    let message;
-    try { message = JSON.parse(line); } catch { return; }
-    if (!Number.isInteger(message?.id) || message.id <= 0) return;
     try {
-      if (message.operation === 'inventory') {
-        reply({ id: message.id, ok: true, inventory: inventory() });
-        return;
-      }
-      if (message.operation === 'diagnostics') {
-        reply({ id: message.id, ok: true, diagnostics: diagnosticsSnapshot() });
-        return;
-      }
-      if (message.operation === 'quit') {
-        reply({ id: message.id, ok: true });
-        setImmediate(() => app.quit());
-        return;
-      }
       const result = await invoke(message.target, message.operation, message.params || {});
       reply({ id: message.id, ...result });
     } catch (error) {
