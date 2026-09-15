@@ -214,8 +214,8 @@ export function compileMissionExecutionStrategy({
   const configuredMaxWorkers = workerLimit(project.workerPolicy?.maxWorkers, 2);
   const structuralParallelism = Math.max(1, Math.min(configuredMaxWorkers, maxWaveWidth || 1));
   let maxConcurrentWorkers = structuralParallelism;
-  if (tasks.length <= 1 || maxWaveWidth <= 1 || taskClass === 'consequential') maxConcurrentWorkers = 1;
-  else if (taskClass === 'heavy') maxConcurrentWorkers = Math.min(structuralParallelism, 2);
+  if (tasks.length <= 1 || maxWaveWidth <= 1 || effectiveRisk === 'critical') maxConcurrentWorkers = 1;
+  else if (effectiveRisk === 'high') maxConcurrentWorkers = Math.min(structuralParallelism, 2);
   const executionMode = tasks.length <= 1
     ? 'single-worker'
     : maxConcurrentWorkers > 1
@@ -239,6 +239,7 @@ export function compileMissionExecutionStrategy({
   if (inferredRiskTasks.length) reasons.push('runtime-inferred-task-risk');
   if (projectWriteConflicts.length) reasons.push('same-project-write-overlap');
   if (maxConcurrentWorkers < structuralParallelism) reasons.push('risk-shaped-concurrency');
+  if (taskClass === 'heavy' && maxConcurrentWorkers === structuralParallelism && structuralParallelism > 2) reasons.push('size-heavy-full-parallelism');
   if (runtimeFeedbackCapabilities.length) reasons.push('runtime-feedback-available');
   if (browserLikeValidationAvailable) reasons.push('browser-validation-available');
 
