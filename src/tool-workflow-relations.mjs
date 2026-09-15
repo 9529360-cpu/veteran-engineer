@@ -58,6 +58,7 @@ export const TOOL_WORKFLOW_RELATIONS = Object.freeze({
     relation('mission_status', 'inspect', 'Inspect the authoritative state produced by the transition.'),
     relation('mission_readiness', 'next', 'Re-evaluate readiness after each state-machine step.'),
     relation('evidence_query', 'inspect', 'Inspect proof artifacts created by validation or review transitions.'),
+    relation('mission_resume', 'recover', 'Resume and reconcile interrupted execution when readiness or advance reports RECONCILIATION_REQUIRED.'),
     relation('remediation_plan', 'recover', 'Create a bounded remediation plan when review findings block progress.'),
     relation('candidate_status', 'inspect', 'Inspect candidate identity and proof freshness during candidate/finalize phases.'),
     relation('handoff_export', 'next', 'Export a resumable handoff when finalization reaches operator action.')

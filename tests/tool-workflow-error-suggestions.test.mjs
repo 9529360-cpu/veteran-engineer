@@ -46,6 +46,12 @@ function assertMissionAdvanceErrorSuggestions(meta, errorCode = 'MISSION_NOT_FOU
   assert.deepEqual(readiness.arguments, { missionId: 'mission-missing' });
   assert.deepEqual(readiness.missingRequired, []);
 
+  const resume = projection.suggestions.find((item) => item.tool === 'mission_resume' && item.kind === 'recover');
+  assert.ok(resume);
+  assert.deepEqual(resume.arguments, { missionId: 'mission-missing' });
+  assert.deepEqual(resume.missingRequired, ['requestId']);
+  assert.equal(Object.hasOwn(resume.arguments, 'requestId'), false);
+
   const remediation = projection.suggestions.find((item) => item.tool === 'remediation_plan' && item.kind === 'recover');
   assert.ok(remediation);
   assert.deepEqual(remediation.arguments, { missionId: 'mission-missing' });
