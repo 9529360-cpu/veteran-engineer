@@ -5,7 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { createVeteranApp } from '../src/app.mjs';
 import { ProjectBootstrapExecutor } from '../src/bootstrap-executor.mjs';
-import { createGitRepo, cleanup } from './helpers.mjs';
+import { createGitRepo, cleanup, waitForProcessStopped } from './helpers.mjs';
 
 const packageJson = `${JSON.stringify({ name: 'bootstrap-fixture', version: '1.0.0', packageManager: 'npm@10.0.0' }, null, 2)}\n`;
 const packageLock = `${JSON.stringify({ name: 'bootstrap-fixture', version: '1.0.0', lockfileVersion: 3, requires: true, packages: { '': { name: 'bootstrap-fixture', version: '1.0.0' } } }, null, 2)}\n`;
@@ -304,18 +304,11 @@ setInterval(()=>{},1000);
       (error) => error.code === 'BOOTSTRAP_STEP_TIMEOUT'
     );
     const childPid = Number(await fs.readFile(childPidFile, 'utf8'));
-    let alive = true;
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      try {
-        const stat = await fs.readFile(`/proc/${childPid}/stat`, 'utf8');
-        alive = !['Z', 'X'].includes(stat.split(' ')[2]);
-      } catch (error) {
-        if (error?.code === 'ENOENT') alive = false; else throw error;
-      }
-      if (!alive) break;
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    assert.equal(alive, false);
+    assert.equal(
+      await waitForProcessStopped(childPid, { timeoutMs: 2_000, pollMs: 50 }),
+      true,
+      'bootstrap timeout must not leave package-manager descendants running'
+    );
   } finally {
     await cleanup(fixture.root);
   }
