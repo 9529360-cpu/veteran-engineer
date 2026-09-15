@@ -3,6 +3,12 @@ import path from 'node:path';
 import { git } from './git.mjs';
 import { nowIso, randomId, sha256, stableStringify } from './util.mjs';
 import {
+  currentProcessOwner,
+  inspectProcessOwner,
+  processOwnerDefinitelyGone,
+  processOwnerFromRecord
+} from './process-owner.mjs';
+import {
   startValidationService,
   stopValidationService,
   waitForValidationReadiness
@@ -49,16 +55,6 @@ function worktreeNameFor(key) {
   return `live-validation-${sha256(key).slice(0, 24)}`;
 }
 
-function pidAlive(pid) {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error?.code === 'EPERM';
-  }
-}
-
 function liveLeaseState(state) {
   state.runtime ||= {};
   const current = state.runtime.liveValidationLeases;
@@ -71,10 +67,16 @@ function liveLeaseState(state) {
   return leases;
 }
 
-function reapDeadLeases(leases) {
+async function leaseOwnerGone(lease) {
+  const owner = processOwnerFromRecord(lease);
+  if (!owner) return true;
+  return processOwnerDefinitelyGone(await inspectProcessOwner(owner));
+}
+
+async function reapDeadLeases(leases) {
   const reapedWorktreeNames = new Set();
   for (const [key, lease] of Object.entries(leases.sessions)) {
-    if (pidAlive(lease?.pid)) continue;
+    if (!(await leaseOwnerGone(lease))) continue;
     if (lease?.worktreeName) reapedWorktreeNames.add(lease.worktreeName);
     if (lease?.endpointLeaseKey && leases.endpoints[lease.endpointLeaseKey]?.sessionId === lease?.sessionId) {
       delete leases.endpoints[lease.endpointLeaseKey];
@@ -83,17 +85,18 @@ function reapDeadLeases(leases) {
   }
   for (const [key, lease] of Object.entries(leases.endpoints)) {
     const owner = lease?.sessionKey ? leases.sessions[lease.sessionKey] : null;
-    if (!owner || owner.sessionId !== lease?.sessionId || !pidAlive(lease?.pid)) delete leases.endpoints[key];
+    if (!owner || owner.sessionId !== lease?.sessionId) delete leases.endpoints[key];
   }
   return reapedWorktreeNames;
 }
 
 function leaseDetails(lease) {
+  const owner = processOwnerFromRecord(lease);
   return {
     ownerMissionId: lease?.missionId || null,
     ownerCapability: lease?.capability || null,
     ownerSessionId: lease?.sessionId || null,
-    ownerPid: Number.isInteger(lease?.pid) ? lease.pid : null,
+    ownerPid: owner?.pid || null,
     ownerWorktreeName: lease?.worktreeName || null
   };
 }
@@ -364,9 +367,10 @@ export class LiveValidationSessionManager {
 
   async #reserveLease({ project, mission, capability, sessionId, worktreeName, endpoint }) {
     const key = sessionKey(project.id, mission.id, capability);
-    return this.store.transaction('live_validation_session_reserved', (state) => {
+    const processOwner = await currentProcessOwner();
+    return this.store.transaction('live_validation_session_reserved', async (state) => {
       const leases = liveLeaseState(state);
-      const reapedWorktreeNames = reapDeadLeases(leases);
+      const reapedWorktreeNames = await reapDeadLeases(leases);
       const existingSession = leases.sessions[key] || null;
       if (existingSession) {
         throw Object.assign(new Error('Persistent live validation session is already owned by another runtime instance'), {
@@ -386,9 +390,9 @@ export class LiveValidationSessionManager {
         });
       }
       if (Object.keys(leases.sessions).length >= this.maxSessions) {
-        throw Object.assign(new Error(`Persistent live validation session limit reached (${this.maxSessions})`), {
+        throw Object.assign(new Error(`Persistent live validation session limit reached (${this.maxSessions})`, {
           code: 'LIVE_VALIDATION_SESSION_LIMIT_REACHED'
-        });
+        }));
       }
       const reservation = {
         key,
@@ -400,7 +404,8 @@ export class LiveValidationSessionManager {
         worktreeName,
         endpointLeaseKey: endpoint.leaseKey,
         endpointOrigin: endpoint.origin,
-        pid: process.pid,
+        pid: processOwner.pid,
+        processOwner,
         reservedAt: nowIso()
       };
       leases.sessions[key] = reservation;
