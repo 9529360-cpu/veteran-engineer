@@ -76,6 +76,7 @@ test('workflow relations make the primary operator journeys and recovery paths d
   assert.ok(relation('mission_execute', 'mission_advance', 'next'));
   assert.ok(relation('mission_execute', 'worker_retry', 'recover'));
   assert.ok(relation('mission_status', 'mission_resume', 'recover'));
+  assert.ok(relation('mission_advance', 'mission_resume', 'recover'));
   assert.ok(relation('mission_advance', 'remediation_plan', 'recover'));
   assert.ok(relation('review_run', 'semantic_review_run', 'next'));
   assert.ok(relation('semantic_review_run', 'candidate_preflight', 'next'));
