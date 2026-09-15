@@ -35,6 +35,47 @@ jobs:
       - name: Run full validation
         run: npm run check
 
+  browser-smoke:
+    name: Chromium full-stack smoke
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install runtime dependencies
+        run: npm ci --include=optional
+
+      - name: Resolve hosted Chromium browser
+        shell: bash
+        run: |
+          set -euo pipefail
+          BROWSER_PATH=""
+          for candidate in google-chrome google-chrome-stable chromium chromium-browser; do
+            if command -v "$candidate" >/dev/null 2>&1; then
+              BROWSER_PATH="$(command -v "$candidate")"
+              break
+            fi
+          done
+          if [ -z "$BROWSER_PATH" ]; then
+            echo "No supported Chromium browser found on the hosted runner" >&2
+            exit 1
+          fi
+          echo "Using browser: $BROWSER_PATH"
+          "$BROWSER_PATH" --version
+          echo "VETERAN_TEST_BROWSER_PATH=$BROWSER_PATH" >> "$GITHUB_ENV"
+
+      - name: Run real Chromium UI-to-API validation
+        run: node --test tests/browser-native-validation.integration.mjs
+
   electron-smoke:
     name: Electron desktop smoke
     needs: test
