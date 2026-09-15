@@ -67,7 +67,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ELECTRON_PATH="$(node -p 'require("electron")')"
+          ELECTRON_PATH="$(node -p 'require("electron")' | tail -n 1)"
           echo "Using Electron binary: $ELECTRON_PATH"
           ls -l "$ELECTRON_PATH"
           xvfb-run -a env VETERAN_TEST_ELECTRON_PATH="$ELECTRON_PATH" npm run test:electron
