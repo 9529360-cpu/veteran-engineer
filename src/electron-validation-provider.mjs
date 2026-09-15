@@ -31,6 +31,20 @@ function matches(value, expected, mode) {
   return mode === 'equals' ? value === expected : value.includes(expected);
 }
 
+function windowStateMatches(observed, expected) {
+  if (!observed || typeof observed !== 'object' || Array.isArray(observed)) return false;
+  for (const key of ['visible', 'minimized', 'maximized', 'fullScreen']) {
+    if (Object.hasOwn(expected, key) && observed[key] !== expected[key]) return false;
+  }
+  if (expected.bounds) {
+    if (!observed.bounds || typeof observed.bounds !== 'object' || Array.isArray(observed.bounds)) return false;
+    for (const key of ['width', 'height']) {
+      if (Object.hasOwn(expected.bounds, key) && observed.bounds[key] !== expected.bounds[key]) return false;
+    }
+  }
+  return true;
+}
+
 function remainingBudget(deadline, requested) {
   const remaining = deadline - Date.now();
   if (remaining <= 0) throw electronError('Electron validation exceeded its total timeout', 'ELECTRON_VALIDATION_TIMEOUT');
@@ -193,6 +207,15 @@ async function executeStep(session, step, stepIndex, assertions, attachments) {
       passed,
       detail: `expected=${step.count} observed=${observed}`
     });
+    if (!passed) throw electronError(`Electron assertion failed: ${assertionName(step, stepIndex)}`, 'ELECTRON_ASSERTION_FAILED', { stepIndex });
+    return;
+  }
+
+  if (step.action === 'assertWindowState') {
+    const value = await commandUntil(session, step, 'windowState', {}, (item) => item?.ok && windowStateMatches(item.state, step.state));
+    const passed = Boolean(value?.ok && windowStateMatches(value.state, step.state));
+    const detail = assertionDetail(`expected=${JSON.stringify(step.state)} observed=${JSON.stringify(value?.state ?? null)}`);
+    assertions.push({ name: assertionName(step, stepIndex), passed, detail });
     if (!passed) throw electronError(`Electron assertion failed: ${assertionName(step, stepIndex)}`, 'ELECTRON_ASSERTION_FAILED', { stepIndex });
     return;
   }
