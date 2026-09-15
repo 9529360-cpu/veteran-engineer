@@ -148,6 +148,40 @@ test('electron validation drives windows and webview guests, asserts surface cou
   }
 });
 
+test('electron surface count assertion polls until matching windows disappear', async () => {
+  const root = await fixture();
+  let listCalls = 0;
+  const sequence = [1, 1, 0];
+  const automation = {
+    async launch() {
+      return {
+        async listSurfaces() {
+          const count = sequence[Math.min(listCalls++, sequence.length - 1)];
+          return {
+            windows: Array.from({ length: count }, (_, index) => ({ index, id: index + 10, type: 'window', title: `Secondary ${index}`, url: `file:///secondary-${index}.html`, hostId: null })),
+            webviews: []
+          };
+        },
+        async command() { return { ok: false, code: 'UNEXPECTED_OPERATION' }; },
+        async close() {}
+      };
+    }
+  };
+  try {
+    await fs.writeFile(path.join(root, 'scenario.json'), `${JSON.stringify({
+      contract: ELECTRON_SCENARIO_CONTRACT,
+      steps: [{ action: 'assertSurfaceCount', target: { type: 'window', titleIncludes: 'Secondary' }, count: 0, timeoutMs: 1000 }]
+    })}\n`);
+    const config = normalizeElectronValidation({ executablePath: 'electron-bin', scenarioFile: 'scenario.json', timeoutMs: 2000, stepTimeoutMs: 1000 });
+    const result = await runElectronValidation(config, { cwd: root, automation, environment: { PATH: process.env.PATH || '' } });
+    assert.equal(result.passed, true, result.summary);
+    assert.equal(result.assertions[0].detail, 'expected=0 observed=0');
+    assert.ok(listCalls >= 3);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('electron assertion failure fails closed and captures a best-effort failure screenshot', async () => {
   const root = await fixture();
   try {
