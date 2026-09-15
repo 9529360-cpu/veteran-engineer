@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { git, resolveRepository, runProcess, sourceIdentity } from './git.mjs';
+import { PROCESS_LIFECYCLE_STATE, probeProcess } from './process-lifecycle-authority.mjs';
 import { ensureDir, errorWithCode, pathExists, randomId, sha256, sleep, within } from './util.mjs';
 
 const MANAGED_REPO_LOCK_TIMEOUT_MS = 120_000;
@@ -119,16 +120,6 @@ export function sanitizeStoredRemoteUrl(input) {
   }
 }
 
-async function pidAlive(pid) {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error?.code === 'EPERM';
-  }
-}
-
 async function acquireManagedRepoLock(lockPath) {
   const started = Date.now();
   const token = randomId('repolock');
@@ -156,7 +147,8 @@ async function acquireManagedRepoLock(lockPath) {
         const ageMs = Date.now() - stat.mtimeMs;
         try {
           const lock = JSON.parse(raw);
-          stale = ageMs > MANAGED_REPO_LOCK_STALE_MS && !(await pidAlive(lock.pid));
+          const ownerProbe = probeProcess(lock.pid);
+          stale = ageMs > MANAGED_REPO_LOCK_STALE_MS && ownerProbe.state === PROCESS_LIFECYCLE_STATE.MISSING;
         } catch {
           stale = ageMs > MANAGED_REPO_LOCK_STALE_MS;
         }
