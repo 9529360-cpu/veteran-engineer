@@ -99,7 +99,7 @@ export class ExperienceService {
     }, { experienceId });
   }
 
-  async query({ projectId, mechanism, sourceHead, limit = 8, recordUsage = true }) {
+  async query({ projectId, mechanism, sourceHead, limit = 8, recordUsage = false }) {
     const state = await this.store.read();
     const now = Date.now();
     const candidates = Object.values(state.experiences)
