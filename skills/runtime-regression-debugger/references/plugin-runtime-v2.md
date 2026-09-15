@@ -49,7 +49,7 @@ Also test an official client in `auto` mode against the forced standalone fallba
 
 ## Public tools
 
-Keep the public surface intention-level. The current `0.3.0` runtime locks an exact **34-tool** surface grouped around project/mission execution, workers, evidence/validation/review, immutable candidates, experience governance, runtime maintenance, and handoff export. `tests/mcp-handshake.test.mjs` is the exact-surface regression boundary.
+Keep the public surface intention-level. The current `0.4.0` runtime locks an exact **34-tool** surface grouped around project/mission execution, workers, evidence/validation/review, immutable candidates, experience governance, runtime maintenance, and handoff export. `tests/mcp-handshake.test.mjs` is the exact-surface regression boundary.
 
 Do not expose generic Git, shell, or arbitrary-filesystem tools merely because the runtime executes workers internally. A new public tool must represent an operator intent with bounded authority and evidence, not a thin wrapper around a primitive.
 
@@ -124,7 +124,7 @@ Project-scoped experience records are optional reviewed runtime evidence, not Sk
 
 ## Current convergence and next evolution
 
-The bundled `0.3.0` starter already includes proof-fresh finalize proposals without automatic merge/push, confined container workers, layered state-backend contracts, Local JSON durability reconciliation, an opt-in PostgreSQL hosted backend with real-engine and cross-instance concurrency evidence, and runtime-managed remote repository acquisition with credential-safe fast-forward-only reuse. Normal validation also enforces root/runtime-starter parity when the starter is embedded in the repository.
+The bundled `0.4.0` starter already includes proof-fresh finalize proposals without automatic merge/push, confined container workers, layered state-backend contracts, Local JSON durability reconciliation, an opt-in PostgreSQL hosted backend with real-engine and cross-instance concurrency evidence, and runtime-managed remote repository acquisition with credential-safe fast-forward-only reuse. Normal validation also enforces root/runtime-starter parity when the starter is embedded in the repository.
 
 Keep those gates stable before opening another feature wave. The next major step should be evidence-driven product work, such as a versioned release candidate, formal packaging of optional hosted capabilities, or another bounded repository/host connector. Do not reopen a completed milestone merely because an old roadmap item still exists; refresh repository truth first.
 

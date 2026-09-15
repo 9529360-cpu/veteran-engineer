@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { VeteranInstaller } from '../src/installer/index.mjs';
+import { RUNTIME_VERSION } from '../src/constants.mjs';
 
 function optionValue(argv, index, option) {
   const value = argv[index + 1];
@@ -28,6 +29,7 @@ function parse(argv) {
     else if (arg === '--descriptor') out.options.descriptorPath = optionValue(argv, i++, arg);
     else if (arg === '--surface-profile') out.options.surfaceProfile = optionValue(argv, i++, arg);
     else if (arg === '--hermes-home') out.options.hermesHome = optionValue(argv, i++, arg);
+    else if (arg === '--release') out.options.release = optionValue(argv, i++, arg);
     else if (arg === '--trusted-adapter-dir') out.trustedAdapterDirs.push(optionValue(argv, i++, arg));
     else throw new Error(`Unknown argument: ${arg}`);
   }
@@ -35,7 +37,7 @@ function parse(argv) {
 }
 
 function usage() {
-  return `Veteran Engineer ${process.env.npm_package_version || '0.3.0'}\n\nUsage:\n  veteran-engineer install <codex|hermes|generic> [options]\n  veteran-engineer status [host] [--json]\n  veteran-engineer doctor [host] [--json]\n  veteran-engineer repair [host] [options]\n  veteran-engineer upgrade [options]\n  veteran-engineer uninstall <host> [--purge]\n  veteran-engineer hosts [--json]\n\nSurface profiles: local-stdio, remote-mcp, secure-tunnel. Use --surface-profile with generic descriptors.\nShared runtime defaults to ~/plugins/veteran-engineer. Durable state defaults to ~/.veteran-engineer/state.\n`;
+  return `Veteran Engineer ${process.env.npm_package_version || RUNTIME_VERSION}\n\nUsage:\n  veteran-engineer install <codex|hermes|generic> [options]\n  veteran-engineer status [host] [--json]\n  veteran-engineer doctor [host] [--json]\n  veteran-engineer repair [host] [options]\n  veteran-engineer upgrade [--release latest|vX.Y.Z] [options]\n  veteran-engineer uninstall <host> [--purge]\n  veteran-engineer hosts [--json]\n\nSurface profiles: local-stdio, remote-mcp, secure-tunnel. Use --surface-profile with generic descriptors.\nShared runtime defaults to ~/plugins/veteran-engineer. Durable state defaults to ~/.veteran-engineer/state.\n`;
 }
 
 function doctorText(report) {
