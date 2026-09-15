@@ -1,6 +1,7 @@
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { electronError } from './electron-validation-contract.mjs';
+import { signalProcessTree } from './process-lifecycle-authority.mjs';
 
 const BRIDGE_CONTRACT = 'veteran-electron-bridge-v1';
 const MAX_BRIDGE_MESSAGE_BYTES = 256 * 1024;
@@ -11,16 +12,7 @@ function delay(ms) {
 }
 
 function killProcessTree(pid, signal = 'SIGTERM') {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  if (process.platform === 'win32') {
-    const args = ['/PID', String(pid), '/T'];
-    if (signal === 'SIGKILL') args.push('/F');
-    const result = spawnSync('taskkill', args, { stdio: 'ignore', windowsHide: true });
-    return result.status === 0;
-  }
-  try { process.kill(-pid, signal); return true; } catch {
-    try { process.kill(pid, signal); return true; } catch { return false; }
-  }
+  return signalProcessTree(pid, signal).signalled;
 }
 
 function appendBounded(current, chunk, max = 32 * 1024) {
