@@ -1,5 +1,5 @@
 export const RUNTIME_NAME = 'veteran-engineer';
-export const RUNTIME_VERSION = '0.4.0';
+export const RUNTIME_VERSION = '0.5.0';
 export const STATE_SCHEMA_VERSION = 3;
 export const HOST_ADAPTER_API_VERSION = 1;
 export const LEGACY_PROTOCOL_VERSION = '2025-11-25';
