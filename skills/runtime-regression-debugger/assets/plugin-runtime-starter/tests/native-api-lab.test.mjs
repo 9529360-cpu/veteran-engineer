@@ -23,6 +23,7 @@ test('API Lab blocks loopback targets unless explicitly authorized', async () =>
   } finally { server.close(); }
 });
 
+
 test('API Lab never authorizes link-local metadata targets through the private-network flag', async () => {
   await assert.rejects(
     () => runApiLab({ baseUrl: 'http://169.254.169.254', steps: [{ id: 'metadata', path: '/latest/meta-data/' }] }, { allowPrivateNetwork: true }),
@@ -95,6 +96,7 @@ test('API Lab rejects base URLs with query or fragment data', () => {
 test('API Lab refuses secret interpolation into URLs and cross-origin steps', async () => {
   const spec = normalizeApiLabSpec({ baseUrl: 'https://example.com', secrets: { token: 'TOKEN' }, steps: [{ id: 'one', path: '/v1/{{token}}' }] });
   await assert.rejects(() => runApiLab(spec, { environment: { TOKEN: 'secret' } }), (error) => error.code === 'API_LAB_SECRET_IN_URL');
+
   await assert.rejects(() => runApiLab({ baseUrl: 'https://example.com', steps: [{ id: 'one', path: 'https://example.org/' }] }), (error) => error.code === 'API_LAB_CROSS_ORIGIN_BLOCKED');
 });
 
