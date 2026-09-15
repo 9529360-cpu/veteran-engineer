@@ -1,5 +1,5 @@
 {
-  "version": "0.3.0",
+  "version": "0.4.0",
   "channel": "stable",
-  "reason": "First durable public release of Veteran Engineer."
+  "reason": "Promote verified remote upgrades and zero-clone bootstrap as the stable Veteran Engineer product lifecycle."
 }
