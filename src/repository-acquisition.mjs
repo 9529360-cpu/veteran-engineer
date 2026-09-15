@@ -3,6 +3,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { git, resolveRepository, runProcess, sourceIdentity } from './git.mjs';
 import { ensureDir, errorWithCode, pathExists, randomId, sha256, sleep, within } from './util.mjs';
+import {
+  currentProcessOwner,
+  inspectProcessOwner,
+  processOwnerDefinitelyGone,
+  processOwnerFromRecord
+} from './process-owner.mjs';
 
 const MANAGED_REPO_LOCK_TIMEOUT_MS = 120_000;
 const MANAGED_REPO_LOCK_STALE_MS = 300_000;
@@ -119,24 +125,15 @@ export function sanitizeStoredRemoteUrl(input) {
   }
 }
 
-async function pidAlive(pid) {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error?.code === 'EPERM';
-  }
-}
-
 async function acquireManagedRepoLock(lockPath) {
   const started = Date.now();
   const token = randomId('repolock');
+  const processOwner = await currentProcessOwner();
   while (true) {
     try {
       const handle = await fs.open(lockPath, 'wx', 0o600);
       try {
-        await handle.writeFile(JSON.stringify({ pid: process.pid, token, acquiredAt: new Date().toISOString() }));
+        await handle.writeFile(JSON.stringify({ pid: processOwner.pid, processOwner, token, acquiredAt: new Date().toISOString() }));
       } finally {
         await handle.close();
       }
@@ -156,7 +153,12 @@ async function acquireManagedRepoLock(lockPath) {
         const ageMs = Date.now() - stat.mtimeMs;
         try {
           const lock = JSON.parse(raw);
-          stale = ageMs > MANAGED_REPO_LOCK_STALE_MS && !(await pidAlive(lock.pid));
+          const owner = processOwnerFromRecord(lock);
+          if (!owner) {
+            stale = ageMs > MANAGED_REPO_LOCK_STALE_MS;
+          } else if (ageMs > MANAGED_REPO_LOCK_STALE_MS) {
+            stale = processOwnerDefinitelyGone(await inspectProcessOwner(owner));
+          }
         } catch {
           stale = ageMs > MANAGED_REPO_LOCK_STALE_MS;
         }
