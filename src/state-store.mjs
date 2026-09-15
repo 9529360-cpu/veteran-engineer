@@ -2,6 +2,12 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { DEFAULT_LOCK_STALE_MS, DEFAULT_LOCK_TIMEOUT_MS, STATE_SCHEMA_VERSION } from './constants.mjs';
 import { clone, ensureDir, nowIso, pathExists, randomId, sha256, sleep, stableStringify } from './util.mjs';
+import {
+  currentProcessOwner,
+  inspectProcessOwner,
+  processOwnerDefinitelyGone,
+  processOwnerFromRecord
+} from './process-owner.mjs';
 
 function emptyState() {
   return {
@@ -22,16 +28,6 @@ function emptyState() {
       }
     }
   };
-}
-
-async function pidAlive(pid) {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error?.code === 'EPERM';
-  }
 }
 
 function auditMaterial(entry) {
@@ -124,11 +120,12 @@ export class StateStore {
     await ensureDir(this.root);
     const started = Date.now();
     const token = randomId('lock');
+    const processOwner = await currentProcessOwner();
     while (true) {
       try {
         const handle = await fs.open(this.lockPath, 'wx', 0o600);
         try {
-          await handle.writeFile(JSON.stringify({ pid: process.pid, token, acquiredAt: nowIso() }));
+          await handle.writeFile(JSON.stringify({ pid: processOwner.pid, processOwner, token, acquiredAt: nowIso() }));
           await handle.sync();
         } finally {
           // Windows may deny other processes even read access while this handle is open.
@@ -152,7 +149,12 @@ export class StateStore {
           const ageMs = Date.now() - stat.mtimeMs;
           try {
             const lock = JSON.parse(raw);
-            stale = ageMs > this.lockStaleMs && !(await pidAlive(lock.pid));
+            const owner = processOwnerFromRecord(lock);
+            if (!owner) {
+              stale = ageMs > this.lockStaleMs;
+            } else if (ageMs > this.lockStaleMs) {
+              stale = processOwnerDefinitelyGone(await inspectProcessOwner(owner));
+            }
           } catch {
             // A newly created lock can be observed before its JSON payload is fully written.
             // Never delete a young malformed/partial lock; only age can make it reclaimable.
