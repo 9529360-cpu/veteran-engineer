@@ -17,7 +17,7 @@ Input JSON shape:
 
 Commands:
   work_graph.py mission.json validate
-  work_graph.py mission.json plan [--allow-high-risk-parallel]
+  work_graph.py mission.json plan [--allow-high-risk-parallel] [--max-parallel N]
   work_graph.py mission.json ready --completed T1,T2
   work_graph.py mission.json conflicts
 
@@ -160,8 +160,93 @@ def all_conflicts(tasks: dict[str, dict]) -> list[dict]:
     return rows
 
 
-def plan_waves(tasks: dict[str, dict], allow_high_risk_parallel: bool) -> list[list[str]]:
+def child_counts(tasks: dict[str, dict]) -> dict[str, int]:
+    counts = {task_id: 0 for task_id in tasks}
+    for task in tasks.values():
+        for dep in task["depends_on"]:
+            counts[dep] += 1
+    return counts
+
+
+def select_wave(
+    tasks: dict[str, dict],
+    ready: list[str],
+    allow_high_risk_parallel: bool,
+    max_parallel: int,
+    children: dict[str, int],
+) -> list[str]:
+    """Choose a deterministic high-throughput maximal safe subset of ready tasks.
+
+    Prefer tasks that conflict with fewer ready siblings, then tasks that unlock more
+    downstream work. When high-risk parallelism is not explicitly allowed, do useful
+    low/medium-risk work first and serialize high/consequential work only when it is
+    the remaining ready frontier.
+    """
+    if max_parallel < 1:
+        raise RuntimeError("max_parallel must be a positive integer")
+
+    pool = list(ready)
+    if not allow_high_risk_parallel:
+        ordinary = [
+            task_id
+            for task_id in pool
+            if RISK_LEVELS[tasks[task_id]["risk"]] < RISK_LEVELS["high"]
+        ]
+        if ordinary:
+            pool = ordinary
+        else:
+            return [
+                min(
+                    pool,
+                    key=lambda task_id: (
+                        RISK_LEVELS[tasks[task_id]["risk"]],
+                        -children[task_id],
+                        task_id,
+                    ),
+                )
+            ]
+
+    remaining = set(pool)
+    wave: list[str] = []
+    while remaining and len(wave) < max_parallel:
+        eligible = [
+            task_id
+            for task_id in remaining
+            if not any(task_conflicts(tasks[task_id], tasks[chosen]) for chosen in wave)
+        ]
+        if not eligible:
+            break
+
+        def score(task_id: str) -> tuple[int, int, int, str]:
+            conflict_degree = sum(
+                1
+                for other_id in remaining
+                if other_id != task_id and task_conflicts(tasks[task_id], tasks[other_id])
+            )
+            return (
+                conflict_degree,
+                -children[task_id],
+                RISK_LEVELS[tasks[task_id]["risk"]],
+                task_id,
+            )
+
+        chosen = min(eligible, key=score)
+        wave.append(chosen)
+        remaining.remove(chosen)
+
+    return wave
+
+
+def plan_waves(
+    tasks: dict[str, dict],
+    allow_high_risk_parallel: bool,
+    max_parallel: int | None = None,
+) -> list[list[str]]:
     topological_order(tasks)  # validates cycle before scheduling
+    if max_parallel is not None and max_parallel < 1:
+        raise RuntimeError("max_parallel must be a positive integer")
+    parallel_limit = max_parallel or len(tasks)
+    children = child_counts(tasks)
     remaining = set(tasks)
     completed: set[str] = set()
     waves: list[list[str]] = []
@@ -175,22 +260,13 @@ def plan_waves(tasks: dict[str, dict], allow_high_risk_parallel: bool) -> list[l
         if not ready:
             raise RuntimeError("no ready tasks; dependency graph is inconsistent")
 
-        wave: list[str] = []
-        for task_id in ready:
-            candidate = tasks[task_id]
-            if wave:
-                if not allow_high_risk_parallel and RISK_LEVELS[candidate["risk"]] >= RISK_LEVELS["high"]:
-                    continue
-                if not allow_high_risk_parallel and any(
-                    RISK_LEVELS[tasks[chosen]["risk"]] >= RISK_LEVELS["high"] for chosen in wave
-                ):
-                    continue
-                if any(task_conflicts(candidate, tasks[chosen]) for chosen in wave):
-                    continue
-            wave.append(task_id)
-            if not allow_high_risk_parallel and RISK_LEVELS[candidate["risk"]] >= RISK_LEVELS["high"]:
-                break
-
+        wave = select_wave(
+            tasks,
+            ready,
+            allow_high_risk_parallel,
+            parallel_limit,
+            children,
+        )
         if not wave:
             wave = [ready[0]]
         waves.append(wave)
@@ -212,6 +288,7 @@ def main() -> int:
     sub.add_parser("validate")
     p_plan = sub.add_parser("plan")
     p_plan.add_argument("--allow-high-risk-parallel", action="store_true")
+    p_plan.add_argument("--max-parallel", type=int, default=None)
     p_ready = sub.add_parser("ready")
     p_ready.add_argument("--completed", default="")
     sub.add_parser("conflicts")
@@ -230,10 +307,17 @@ def main() -> int:
             "valid": True,
         }
     elif args.command == "plan":
-        waves = plan_waves(tasks, args.allow_high_risk_parallel)
+        if args.max_parallel is not None and args.max_parallel < 1:
+            raise RuntimeError("--max-parallel must be a positive integer")
+        waves = plan_waves(tasks, args.allow_high_risk_parallel, args.max_parallel)
+        widths = [len(wave) for wave in waves]
         output = {
             "mission": data.get("mission"),
+            "scheduler": "throughput-first-v1",
             "wave_count": len(waves),
+            "max_parallel": args.max_parallel,
+            "max_wave_width": max(widths, default=0),
+            "average_wave_width": round(sum(widths) / len(widths), 3) if widths else 0,
             "waves": [
                 {
                     "index": index,
