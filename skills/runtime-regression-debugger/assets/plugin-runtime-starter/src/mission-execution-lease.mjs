@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { PROCESS_LIFECYCLE_STATE, probeProcess } from './process-lifecycle-authority.mjs';
 import { nowIso, randomId, sha256 } from './util.mjs';
 
 function errorWithCode(message, code, details = null) {
@@ -7,16 +8,6 @@ function errorWithCode(message, code, details = null) {
   error.code = code;
   if (details) error.details = details;
   return error;
-}
-
-function pidAlive(pid) {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error?.code === 'EPERM';
-  }
 }
 
 function busyError({ missionId, operation, backendKind, owner = null, reason = 'lease-held' }) {
@@ -86,8 +77,10 @@ export class MissionExecutionLeaseManager {
       const current = await readLocalLease(lockPath);
       if (current.exists) {
         const ownerPid = current.owner?.pid;
+        const ownerProbe = Number.isInteger(ownerPid) ? probeProcess(ownerPid) : null;
+        const ownerMissing = ownerProbe?.state === PROCESS_LIFECYCLE_STATE.MISSING;
         const malformedStale = current.malformed && current.ageMs > (store.lockStaleMs || 30_000);
-        if ((Number.isInteger(ownerPid) && !pidAlive(ownerPid)) || malformedStale) {
+        if (ownerMissing || malformedStale) {
           await fs.unlink(lockPath).catch((error) => {
             if (error?.code !== 'ENOENT') throw error;
           });
@@ -97,7 +90,11 @@ export class MissionExecutionLeaseManager {
             operation,
             backendKind: 'local-json',
             owner: current.owner ? { pid: ownerPid || null, acquiredAt: current.owner.acquiredAt || null } : null,
-            reason: current.malformed ? 'lease-metadata-unreadable' : 'lease-held'
+            reason: current.malformed
+              ? 'lease-metadata-unreadable'
+              : ownerProbe?.state === PROCESS_LIFECYCLE_STATE.UNKNOWN
+                ? 'lease-owner-probe-unknown'
+                : 'lease-held'
           });
         }
       }
