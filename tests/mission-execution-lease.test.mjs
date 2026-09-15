@@ -3,7 +3,7 @@ import test from 'node:test';
 import { createVeteranApp } from '../src/app.mjs';
 import { cleanup, createGitRepo } from './helpers.mjs';
 
-test('mission execution lease fences restart reconciliation and advance across runtime instances', async () => {
+test('mission execution lease fences restart reconciliation and execution ownership across runtime instances', async () => {
   const fixture = await createGitRepo({ files: { 'src/a.txt': 'a\n' } });
   let lease = null;
   try {
@@ -16,7 +16,7 @@ test('mission execution lease fences restart reconciliation and advance across r
       requestId: 'execution-lease-plan',
       projectId: project.id,
       goal: 'keep one runtime authoritative for mission execution',
-      doneDefinition: 'a second runtime cannot reconcile or advance execution while authority is leased',
+      doneDefinition: 'a second runtime cannot reconcile, advance, or integrate execution while authority is leased',
       tasks: [{ id: 'T1', contract: 'own src/a.txt', owner: 'src/a.txt', dependencies: [], writeSet: ['src/a.txt'], risk: 'low' }]
     });
     const missionId = planned.mission.id;
@@ -24,28 +24,24 @@ test('mission execution lease fences restart reconciliation and advance across r
 
     lease = await app1.services.missionExecutionLeaseManager.acquire({ missionId, operation: 'test-live-execution' });
 
-    await assert.rejects(
-      app2.callTool('mission_resume', {
-        requestId: 'execution-lease-resume-blocked',
-        missionId
-      }),
-      (error) => {
-        assert.equal(error?.code, 'MISSION_EXECUTION_ACTIVE');
-        assert.equal(error?.details?.missionId, missionId);
-        assert.equal(error?.details?.backendKind, 'local-json');
-        return true;
-      }
-    );
-    await assert.rejects(
-      app2.callTool('mission_advance', {
-        requestId: 'execution-lease-advance-blocked',
-        missionId,
-        runWorkers: false
-      }),
-      (error) => error?.code === 'MISSION_EXECUTION_ACTIVE'
-        && error?.details?.missionId === missionId
-        && error?.details?.operation === 'mission-advance-execution'
-    );
+    const blockedCalls = [
+      ['mission_resume', { requestId: 'execution-lease-resume-blocked', missionId }, 'mission-resume'],
+      ['mission_advance', { requestId: 'execution-lease-advance-blocked', missionId, runWorkers: false }, 'mission-advance-execution'],
+      ['task_result_commit', { requestId: 'execution-lease-result-blocked', missionId, taskId: 'T1' }, 'task-result-commit'],
+      ['worker_resume', { requestId: 'execution-lease-worker-resume-blocked', missionId, taskId: 'T1' }, 'worker-resume']
+    ];
+    for (const [tool, args, operation] of blockedCalls) {
+      await assert.rejects(
+        app2.callTool(tool, args),
+        (error) => {
+          assert.equal(error?.code, 'MISSION_EXECUTION_ACTIVE');
+          assert.equal(error?.details?.missionId, missionId);
+          assert.equal(error?.details?.backendKind, 'local-json');
+          assert.equal(error?.details?.operation, operation);
+          return true;
+        }
+      );
+    }
 
     const blockedStatus = await app2.services.missionService.status({ missionId });
     assert.equal(blockedStatus.mission.status, 'ready');
