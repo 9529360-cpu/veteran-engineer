@@ -7,9 +7,40 @@ export const TOOL_WORKFLOW_BINDINGS_SCHEMA = 'veteran-tool-workflow-bindings-v1'
 
 const SOURCE_KINDS = new Set(['arguments', 'structuredContent']);
 const IDENTITY_KEYS = new Set(['projectId', 'missionId', 'taskId', 'candidateId', 'evidenceId', 'experienceId']);
+const TRANSFORMS = new Set(['identity', 'singleton-array']);
+const SELECTION_CARDINALITIES = new Set(['one', 'many']);
+const FILTER_OPERATORS = new Set(['equals', 'in']);
 
 function identitySource(source, pointer) {
   return Object.freeze({ source, pointer });
+}
+
+function explicitBinding(target, source, pointer, transform = 'identity') {
+  return Object.freeze({ target, source, pointer, transform });
+}
+
+function selectionSource(collectionPointer, itemPointer, { legacyCollectionPointer = null, filter = null } = {}) {
+  return Object.freeze({
+    source: 'structuredContent',
+    collectionPointer,
+    ...(legacyCollectionPointer === null ? {} : { legacyCollectionPointer }),
+    itemPointer,
+    ...(filter ? { filter: Object.freeze({ ...filter }) } : {})
+  });
+}
+
+function selection(target, cardinality, sources, reason) {
+  return Object.freeze({
+    target,
+    cardinality,
+    requiredForRelation: true,
+    sources: Object.freeze([...sources]),
+    reason
+  });
+}
+
+function relationKey(sourceTool, targetTool, kind) {
+  return `${sourceTool}:${kind}:${targetTool}`;
 }
 
 const DECLARED_IDENTITY_SOURCES = Object.freeze({
@@ -98,6 +129,58 @@ const DECLARED_IDENTITY_SOURCES = Object.freeze({
   handoff_export: { missionId: identitySource('arguments', '/missionId') }
 });
 
+const EXPLICIT_RELATION_BINDINGS = Object.freeze({
+  [relationKey('validation_run', 'evidence_query', 'inspect')]: Object.freeze([
+    explicitBinding('ids', 'structuredContent', '/evidenceId', 'singleton-array')
+  ]),
+  [relationKey('review_run', 'evidence_query', 'inspect')]: Object.freeze([
+    explicitBinding('ids', 'structuredContent', '/evidenceId', 'singleton-array')
+  ]),
+  [relationKey('semantic_review_run', 'evidence_query', 'inspect')]: Object.freeze([
+    explicitBinding('ids', 'structuredContent', '/evidenceId', 'singleton-array')
+  ]),
+  [relationKey('candidate_refresh', 'evidence_query', 'inspect')]: Object.freeze([
+    explicitBinding('ids', 'structuredContent', '/evidenceId', 'singleton-array')
+  ]),
+  [relationKey('experience_commit', 'evidence_query', 'inspect')]: Object.freeze([
+    explicitBinding('ids', 'structuredContent', '/evidenceIds')
+  ])
+});
+
+const RELATION_SELECTIONS = Object.freeze({
+  [relationKey('validation_capabilities', 'validation_run', 'next')]: Object.freeze([
+    selection('capability', 'one', [
+      selectionSource('', '/name', { legacyCollectionPointer: '/result' })
+    ], 'Select the configured validation capability to execute; rawCommand is a separate explicitly gated path.')
+  ]),
+  [relationKey('mission_execute', 'worker_retry', 'recover')]: Object.freeze([
+    selection('taskId', 'one', [
+      selectionSource('/results', '/taskId', { filter: { pointer: '/ok', operator: 'equals', value: false } }),
+      selectionSource('/tasks', '/taskId')
+    ], 'Select one failed or cancelled task. Result rows are restricted to ok=false; retry-required task rows are already failure-scoped.')
+  ]),
+  [relationKey('mission_execute', 'worker_cancel', 'recover')]: Object.freeze([
+    selection('taskId', 'one', [
+      selectionSource('/pending', '/taskId', { filter: { pointer: '/status', operator: 'in', value: ['executing', 'cancelling'] } })
+    ], 'Select one currently executing or cancelling task; other pending states are not valid worker_cancel targets.')
+  ]),
+  [relationKey('evidence_query', 'experience_commit', 'next')]: Object.freeze([
+    selection('evidenceIds', 'many', [
+      selectionSource('', '/id', { legacyCollectionPointer: '/result' })
+    ], 'Select the evidence records that support the experience candidate; do not attach unrelated query results automatically.')
+  ]),
+  [relationKey('experience_audit', 'experience_review', 'next')]: Object.freeze([
+    selection('experienceId', 'one', [
+      selectionSource('', '/id', { legacyCollectionPointer: '/result' })
+    ], 'Select the specific audited experience whose lifecycle action should be reviewed.')
+  ]),
+  [relationKey('experience_compact', 'experience_review', 'next')]: Object.freeze([
+    selection('experienceId', 'one', [
+      selectionSource('/kept', '')
+    ], 'Select one retained candidate experience for the next explicit lifecycle review.')
+  ])
+});
+
 export const TOOL_IDENTITY_SOURCES = Object.freeze(Object.fromEntries(
   TOOL_NAMES.map((name) => [name, Object.freeze({ ...(DECLARED_IDENTITY_SOURCES[name] || {}) })])
 ));
@@ -117,9 +200,9 @@ function expandVariants(schema) {
   return [schema];
 }
 
-function schemaHasPointer(schema, pointer) {
+function schemasAtPointer(schema, pointer) {
   const segments = pointerSegments(pointer);
-  if (!segments) return false;
+  if (!segments) return [];
   let candidates = expandVariants(schema);
   for (const segment of segments) {
     const next = [];
@@ -129,16 +212,41 @@ function schemaHasPointer(schema, pointer) {
         if (child) next.push(...expandVariants(child));
       }
     }
-    if (next.length === 0) return false;
+    if (next.length === 0) return [];
     candidates = next;
   }
-  return candidates.length > 0;
+  return candidates;
+}
+
+function schemaHasPointer(schema, pointer) {
+  return schemasAtPointer(schema, pointer).length > 0;
 }
 
 function sourceSchema(toolName, descriptor) {
   if (descriptor.source === 'arguments') return toolInputJsonSchema(toolName);
   if (descriptor.source === 'structuredContent') return toolOutputJsonSchema(toolName);
   return null;
+}
+
+function arrayItemSchemasAtPointer(schema, collectionPointer) {
+  return schemasAtPointer(schema, collectionPointer)
+    .filter((candidate) => candidate?.type === 'array' && candidate.items)
+    .flatMap((candidate) => expandVariants(candidate.items));
+}
+
+function itemPointerExists(schema, collectionPointer, itemPointer) {
+  const itemSchemas = arrayItemSchemasAtPointer(schema, collectionPointer);
+  if (!itemSchemas.length) return false;
+  if (itemPointer === '') return true;
+  return itemSchemas.some((itemSchema) => schemaHasPointer(itemSchema, itemPointer));
+}
+
+function explicitBindingsFor(sourceTool, edge) {
+  return EXPLICIT_RELATION_BINDINGS[relationKey(sourceTool, edge.tool, edge.kind)] || [];
+}
+
+function selectionsFor(sourceTool, edge) {
+  return RELATION_SELECTIONS[relationKey(sourceTool, edge.tool, edge.kind)] || [];
 }
 
 function compileRelation(sourceTool, edge) {
@@ -151,15 +259,27 @@ function compileRelation(sourceTool, edge) {
       target: identity,
       source: descriptor.source,
       pointer: descriptor.pointer,
-      mode: 'if-present-non-null'
+      mode: 'if-present-non-null',
+      transform: 'identity'
+    }));
+  }
+  for (const descriptor of explicitBindingsFor(sourceTool, edge)) {
+    bindings.push(Object.freeze({
+      target: descriptor.target,
+      source: descriptor.source,
+      pointer: descriptor.pointer,
+      mode: 'if-present-non-null',
+      transform: descriptor.transform
     }));
   }
   const boundTargets = new Set(bindings.map((binding) => binding.target));
+  const selections = selectionsFor(sourceTool, edge);
   const unboundRequired = (targetSchema.required || []).filter((name) => !boundTargets.has(name));
   return Object.freeze({
     tool: edge.tool,
     kind: edge.kind,
     bindings: Object.freeze(bindings),
+    selections,
     unboundRequired: Object.freeze(unboundRequired)
   });
 }
@@ -170,11 +290,57 @@ export const TOOL_WORKFLOW_BINDINGS = Object.freeze(Object.fromEntries(
     return [name, Object.freeze({
       schema: TOOL_WORKFLOW_BINDINGS_SCHEMA,
       sourceTool: name,
-      copyPolicy: 'Copy a binding only when its source pointer resolves to a non-null value. Never synthesize requestId or non-identity business inputs.',
+      copyPolicy: 'Copy a deterministic binding only when its source pointer resolves to a non-null value. Apply declared transforms exactly. Never synthesize requestId or non-identity business inputs.',
+      selectionPolicy: 'Selections are not automatic bindings. A client or operator must choose values from the declared source collection after applying any filter.',
       relations: Object.freeze(workflow.relations.map((edge) => compileRelation(name, edge)))
     })];
   })
 ));
+
+function assertBindingDescriptor(sourceTool, targetTool, descriptor, seenTargets) {
+  if (!SOURCE_KINDS.has(descriptor.source)) throw new Error(`Unknown workflow binding source for ${sourceTool} -> ${targetTool}.${descriptor.target}: ${descriptor.source}`);
+  if (!TRANSFORMS.has(descriptor.transform)) throw new Error(`Unknown workflow binding transform for ${sourceTool} -> ${targetTool}.${descriptor.target}: ${descriptor.transform}`);
+  if (seenTargets.has(descriptor.target)) throw new Error(`Duplicate workflow binding target ${sourceTool} -> ${targetTool}.${descriptor.target}`);
+  seenTargets.add(descriptor.target);
+  const sourceContract = sourceSchema(sourceTool, descriptor);
+  const sourceCandidates = schemasAtPointer(sourceContract, descriptor.pointer);
+  if (!sourceCandidates.length) throw new Error(`Workflow binding source pointer does not exist for ${sourceTool} -> ${targetTool}.${descriptor.target}: ${descriptor.source}${descriptor.pointer}`);
+  const targetSchema = toolInputJsonSchema(targetTool).properties?.[descriptor.target];
+  if (!targetSchema) throw new Error(`Workflow binding targets unknown input ${sourceTool} -> ${targetTool}.${descriptor.target}`);
+  if (descriptor.transform === 'singleton-array' && targetSchema.type !== 'array') {
+    throw new Error(`singleton-array binding target must be an array for ${sourceTool} -> ${targetTool}.${descriptor.target}`);
+  }
+}
+
+function assertSelectionDescriptor(sourceTool, targetTool, descriptor) {
+  if (!SELECTION_CARDINALITIES.has(descriptor.cardinality)) throw new Error(`Unknown workflow selection cardinality for ${sourceTool} -> ${targetTool}.${descriptor.target}`);
+  if (descriptor.requiredForRelation !== true) throw new Error(`Workflow selection must be explicit requiredForRelation for ${sourceTool} -> ${targetTool}.${descriptor.target}`);
+  const targetSchema = toolInputJsonSchema(targetTool).properties?.[descriptor.target];
+  if (!targetSchema) throw new Error(`Workflow selection targets unknown input ${sourceTool} -> ${targetTool}.${descriptor.target}`);
+  if (descriptor.cardinality === 'many' && targetSchema.type !== 'array') throw new Error(`Many-cardinality workflow selection requires an array target for ${sourceTool} -> ${targetTool}.${descriptor.target}`);
+  if (!Array.isArray(descriptor.sources) || descriptor.sources.length === 0) throw new Error(`Workflow selection requires at least one source for ${sourceTool} -> ${targetTool}.${descriptor.target}`);
+  if (typeof descriptor.reason !== 'string' || descriptor.reason.length === 0) throw new Error(`Workflow selection requires a reason for ${sourceTool} -> ${targetTool}.${descriptor.target}`);
+
+  const natural = toolOutputJsonSchema(sourceTool);
+  const legacy = toolOutputJsonSchema(sourceTool, { legacyEnvelope: true });
+  for (const source of descriptor.sources) {
+    if (source.source !== 'structuredContent') throw new Error(`Workflow selection source must be structuredContent for ${sourceTool} -> ${targetTool}.${descriptor.target}`);
+    if (!itemPointerExists(natural, source.collectionPointer, source.itemPointer)) {
+      throw new Error(`Workflow selection pointer does not exist for ${sourceTool} -> ${targetTool}.${descriptor.target}: ${source.collectionPointer}${source.itemPointer}`);
+    }
+    const legacyPointer = source.legacyCollectionPointer ?? source.collectionPointer;
+    if (!itemPointerExists(legacy, legacyPointer, source.itemPointer)) {
+      throw new Error(`Legacy workflow selection pointer does not exist for ${sourceTool} -> ${targetTool}.${descriptor.target}: ${legacyPointer}${source.itemPointer}`);
+    }
+    if (source.filter) {
+      if (!FILTER_OPERATORS.has(source.filter.operator)) throw new Error(`Unknown workflow selection filter operator for ${sourceTool} -> ${targetTool}.${descriptor.target}`);
+      const itemSchemas = arrayItemSchemasAtPointer(natural, source.collectionPointer);
+      if (!itemSchemas.some((itemSchema) => schemaHasPointer(itemSchema, source.filter.pointer))) {
+        throw new Error(`Workflow selection filter pointer does not exist for ${sourceTool} -> ${targetTool}.${descriptor.target}: ${source.filter.pointer}`);
+      }
+    }
+  }
+}
 
 function assertBindingContract() {
   if (Object.keys(TOOL_IDENTITY_SOURCES).length !== TOOL_NAMES.length) {
@@ -200,28 +366,22 @@ function assertBindingContract() {
 
     const workflow = TOOL_WORKFLOW_RELATIONS[name];
     const compiled = TOOL_WORKFLOW_BINDINGS[name];
-    if (compiled.relations.length !== workflow.relations.length) {
-      throw new Error(`Workflow binding relation count drift for ${name}`);
-    }
+    if (compiled.relations.length !== workflow.relations.length) throw new Error(`Workflow binding relation count drift for ${name}`);
     for (let index = 0; index < workflow.relations.length; index += 1) {
       const edge = workflow.relations[index];
       const bindingEdge = compiled.relations[index];
-      if (bindingEdge.tool !== edge.tool || bindingEdge.kind !== edge.kind) {
-        throw new Error(`Workflow binding relation drift for ${name} at index ${index}`);
+      if (bindingEdge.tool !== edge.tool || bindingEdge.kind !== edge.kind) throw new Error(`Workflow binding relation drift for ${name} at index ${index}`);
+      const seenTargets = new Set();
+      for (const binding of bindingEdge.bindings) assertBindingDescriptor(name, edge.tool, binding, seenTargets);
+      const selectionTargets = new Set();
+      for (const descriptor of bindingEdge.selections) {
+        if (selectionTargets.has(descriptor.target)) throw new Error(`Duplicate workflow selection target ${name} -> ${edge.tool}.${descriptor.target}`);
+        selectionTargets.add(descriptor.target);
+        assertSelectionDescriptor(name, edge.tool, descriptor);
       }
       const targetSchema = toolInputJsonSchema(edge.tool);
-      const seenTargets = new Set();
-      for (const binding of bindingEdge.bindings) {
-        if (!Object.hasOwn(targetSchema.properties || {}, binding.target)) {
-          throw new Error(`Workflow binding targets unknown input ${name} -> ${edge.tool}.${binding.target}`);
-        }
-        if (seenTargets.has(binding.target)) throw new Error(`Duplicate workflow binding target ${name} -> ${edge.tool}.${binding.target}`);
-        seenTargets.add(binding.target);
-      }
       const expectedUnbound = (targetSchema.required || []).filter((required) => !seenTargets.has(required));
-      if (JSON.stringify(expectedUnbound) !== JSON.stringify(bindingEdge.unboundRequired)) {
-        throw new Error(`Workflow unbound-required drift for ${name} -> ${edge.tool}`);
-      }
+      if (JSON.stringify(expectedUnbound) !== JSON.stringify(bindingEdge.unboundRequired)) throw new Error(`Workflow unbound-required drift for ${name} -> ${edge.tool}`);
     }
   }
 }

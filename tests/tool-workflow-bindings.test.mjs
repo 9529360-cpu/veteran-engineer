@@ -40,6 +40,10 @@ function binding(from, to, target, kind = null) {
   return relation(from, to, kind)?.bindings.find((entry) => entry.target === target);
 }
 
+function selection(from, to, target, kind = null) {
+  return relation(from, to, kind)?.selections.find((entry) => entry.target === target);
+}
+
 function assertPublishedBindings(tools) {
   assert.equal(tools.length, 34);
   for (const tool of tools) {
@@ -52,7 +56,7 @@ function assertPublishedBindings(tools) {
   }
 }
 
-test('workflow bindings project the exact relation graph onto target input contracts', () => {
+test('workflow bindings project deterministic carry, transforms, and explicit selections onto the exact relation graph', () => {
   assert.equal(TOOL_NAMES.length, 34);
   assert.equal(Object.keys(TOOL_IDENTITY_SOURCES).length, TOOL_NAMES.length);
   assert.equal(Object.keys(TOOL_WORKFLOW_BINDINGS).length, TOOL_NAMES.length);
@@ -65,6 +69,7 @@ test('workflow bindings project the exact relation graph onto target input contr
     assert.equal(compiled.relations.length, workflow.relations.length, name);
     assert.equal(typeof compiled.copyPolicy, 'string', name);
     assert.ok(compiled.copyPolicy.includes('Never synthesize requestId'), name);
+    assert.equal(typeof compiled.selectionPolicy, 'string', name);
 
     for (let index = 0; index < workflow.relations.length; index += 1) {
       const edge = workflow.relations[index];
@@ -78,9 +83,17 @@ test('workflow bindings project the exact relation graph onto target input contr
         assert.ok(['arguments', 'structuredContent'].includes(item.source), `${name} -> ${edge.tool}.${item.target}`);
         assert.ok(item.pointer.startsWith('/'), `${name} -> ${edge.tool}.${item.target}`);
         assert.equal(item.mode, 'if-present-non-null', `${name} -> ${edge.tool}.${item.target}`);
+        assert.ok(['identity', 'singleton-array'].includes(item.transform), `${name} -> ${edge.tool}.${item.target}`);
         assert.notEqual(item.target, 'requestId', `${name} -> ${edge.tool} must not carry requestId`);
         assert.equal(boundTargets.has(item.target), false, `${name} -> ${edge.tool}.${item.target} duplicate`);
         boundTargets.add(item.target);
+      }
+      for (const item of projected.selections) {
+        assert.ok(Object.hasOwn(targetSchema.properties || {}, item.target), `${name} -> ${edge.tool}.${item.target}`);
+        assert.ok(['one', 'many'].includes(item.cardinality), `${name} -> ${edge.tool}.${item.target}`);
+        assert.equal(item.requiredForRelation, true, `${name} -> ${edge.tool}.${item.target}`);
+        assert.ok(item.sources.length > 0, `${name} -> ${edge.tool}.${item.target}`);
+        assert.ok(item.reason.length > 0, `${name} -> ${edge.tool}.${item.target}`);
       }
       const expectedUnbound = (targetSchema.required || []).filter((required) => !boundTargets.has(required));
       assert.deepEqual(projected.unboundRequired, expectedUnbound, `${name} -> ${edge.tool} unbound required`);
@@ -88,38 +101,68 @@ test('workflow bindings project the exact relation graph onto target input contr
   }
 });
 
-test('workflow bindings expose safe identity carry without inventing selected-task or business inputs', () => {
+test('workflow bindings carry deterministic identities and transformed evidence ids without inventing business inputs', () => {
   assert.deepEqual(binding('project_open', 'mission_plan', 'projectId', 'next'), {
-    target: 'projectId', source: 'structuredContent', pointer: '/id', mode: 'if-present-non-null'
+    target: 'projectId', source: 'structuredContent', pointer: '/id', mode: 'if-present-non-null', transform: 'identity'
   });
   assert.deepEqual(relation('project_open', 'mission_plan', 'next').unboundRequired, ['requestId', 'goal', 'doneDefinition']);
 
   assert.deepEqual(binding('mission_plan', 'mission_execute', 'missionId', 'next'), {
-    target: 'missionId', source: 'structuredContent', pointer: '/mission/id', mode: 'if-present-non-null'
+    target: 'missionId', source: 'structuredContent', pointer: '/mission/id', mode: 'if-present-non-null', transform: 'identity'
   });
   assert.deepEqual(relation('mission_plan', 'mission_execute', 'next').unboundRequired, ['requestId']);
 
-  assert.deepEqual(binding('mission_status', 'mission_readiness', 'missionId', 'next'), {
-    target: 'missionId', source: 'structuredContent', pointer: '/mission/id', mode: 'if-present-non-null'
+  assert.deepEqual(binding('validation_run', 'evidence_query', 'ids', 'inspect'), {
+    target: 'ids', source: 'structuredContent', pointer: '/evidenceId', mode: 'if-present-non-null', transform: 'singleton-array'
   });
-  assert.deepEqual(relation('mission_status', 'mission_readiness', 'next').unboundRequired, []);
-
-  assert.ok(binding('mission_execute', 'worker_retry', 'missionId', 'recover'));
-  assert.equal(binding('mission_execute', 'worker_retry', 'taskId', 'recover'), undefined);
-  assert.deepEqual(relation('mission_execute', 'worker_retry', 'recover').unboundRequired, ['requestId', 'taskId']);
+  assert.deepEqual(binding('experience_commit', 'evidence_query', 'ids', 'inspect'), {
+    target: 'ids', source: 'structuredContent', pointer: '/evidenceIds', mode: 'if-present-non-null', transform: 'identity'
+  });
 
   assert.ok(binding('candidate_refresh', 'candidate_status', 'missionId', 'inspect'));
   assert.deepEqual(binding('candidate_refresh', 'candidate_status', 'candidateId', 'inspect'), {
-    target: 'candidateId', source: 'structuredContent', pointer: '/candidate/id', mode: 'if-present-non-null'
+    target: 'candidateId', source: 'structuredContent', pointer: '/candidate/id', mode: 'if-present-non-null', transform: 'identity'
   });
 
   assert.deepEqual(binding('experience_commit', 'experience_review', 'experienceId', 'next'), {
-    target: 'experienceId', source: 'structuredContent', pointer: '/id', mode: 'if-present-non-null'
+    target: 'experienceId', source: 'structuredContent', pointer: '/id', mode: 'if-present-non-null', transform: 'identity'
   });
   assert.deepEqual(relation('experience_commit', 'experience_review', 'next').unboundRequired, ['requestId', 'action']);
+});
 
+test('workflow selections make ambiguous next-step choices explicit instead of auto-binding a candidate', () => {
+  const capability = selection('validation_capabilities', 'validation_run', 'capability', 'next');
+  assert.equal(capability.cardinality, 'one');
+  assert.deepEqual(capability.sources[0], {
+    source: 'structuredContent', collectionPointer: '', legacyCollectionPointer: '/result', itemPointer: '/name'
+  });
+  assert.deepEqual(relation('validation_capabilities', 'validation_run', 'next').unboundRequired, ['requestId']);
+
+  const retry = selection('mission_execute', 'worker_retry', 'taskId', 'recover');
+  assert.equal(retry.cardinality, 'one');
+  assert.deepEqual(retry.sources[0].filter, { pointer: '/ok', operator: 'equals', value: false });
+  assert.equal(retry.sources[0].collectionPointer, '/results');
+  assert.equal(retry.sources[1].collectionPointer, '/tasks');
+  assert.equal(binding('mission_execute', 'worker_retry', 'taskId', 'recover'), undefined);
+  assert.deepEqual(relation('mission_execute', 'worker_retry', 'recover').unboundRequired, ['requestId', 'taskId']);
+
+  const cancel = selection('mission_execute', 'worker_cancel', 'taskId', 'recover');
+  assert.deepEqual(cancel.sources[0].filter, { pointer: '/status', operator: 'in', value: ['executing', 'cancelling'] });
+
+  const evidence = selection('evidence_query', 'experience_commit', 'evidenceIds', 'next');
+  assert.equal(evidence.cardinality, 'many');
+  assert.equal(evidence.sources[0].legacyCollectionPointer, '/result');
+
+  const audit = selection('experience_audit', 'experience_review', 'experienceId', 'next');
+  assert.equal(audit.cardinality, 'one');
+  assert.equal(audit.sources[0].legacyCollectionPointer, '/result');
   assert.equal(binding('experience_audit', 'experience_review', 'experienceId', 'next'), undefined);
   assert.deepEqual(relation('experience_audit', 'experience_review', 'next').unboundRequired, ['requestId', 'experienceId', 'action']);
+
+  const compact = selection('experience_compact', 'experience_review', 'experienceId', 'next');
+  assert.deepEqual(compact.sources[0], {
+    source: 'structuredContent', collectionPointer: '/kept', itemPointer: ''
+  });
 });
 
 test('standalone fallback publishes workflow bindings for all public tools', async () => {
