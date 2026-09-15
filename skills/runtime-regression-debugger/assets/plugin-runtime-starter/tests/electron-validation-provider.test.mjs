@@ -17,6 +17,19 @@ async function fixture() {
   return root;
 }
 
+function zeroDiagnostics(overrides = {}) {
+  return {
+    consoleMessages: 0,
+    pageErrors: 0,
+    crashes: 0,
+    unresponsiveEvents: 0,
+    responsiveEvents: 0,
+    activeUnresponsive: 0,
+    webContentsObserved: 2,
+    ...overrides
+  };
+}
+
 function fakeAutomation(state = {}) {
   const surfaces = {
     windows: [{ index: 0, id: 1, type: 'window', title: 'Veteran Electron Fixture', url: 'file:///main.html?secret=redacted', hostId: null }],
@@ -24,6 +37,7 @@ function fakeAutomation(state = {}) {
   };
   const command = async (target, operation, params = {}) => {
     const webview = target?.type === 'webview';
+    if (operation === 'diagnostics') return { ok: true, diagnostics: state.runtimeDiagnostics || zeroDiagnostics() };
     if (operation === 'fill') {
       if (webview) state.guestValue = params.value;
       else state.windowValue = params.value;
@@ -85,10 +99,11 @@ test('electron validation config is bounded and rejects repository-escaping scen
   );
 });
 
-test('electron scenario exposes a bounded BrowserWindow and webview interaction DSL without arbitrary JavaScript', () => {
+test('electron scenario exposes bounded BrowserWindow and webview lifecycle assertions without arbitrary JavaScript', () => {
   const scenario = normalizeElectronScenario({
     contract: ELECTRON_SCENARIO_CONTRACT,
     steps: [
+      { action: 'assertSurfaceCount', target: { type: 'window', titleIncludes: 'Veteran' }, count: 1 },
       { action: 'click', selector: '#save' },
       { action: 'fill', target: { type: 'webview', urlIncludes: 'guest' }, selector: '#name', value: 'Ada' },
       { action: 'press', target: { type: 'webview' }, selector: '#name', key: 'Enter' },
@@ -96,26 +111,33 @@ test('electron scenario exposes a bounded BrowserWindow and webview interaction 
       { action: 'screenshot', filename: 'final.png' }
     ]
   });
-  assert.equal(scenario.steps.length, 5);
-  assert.equal(scenario.steps[1].target.type, 'webview');
+  assert.equal(scenario.steps.length, 6);
+  assert.equal(scenario.steps[0].count, 1);
+  assert.equal(scenario.steps[2].target.type, 'webview');
+  assert.throws(
+    () => normalizeElectronScenario({ contract: ELECTRON_SCENARIO_CONTRACT, steps: [{ action: 'assertSurfaceCount', count: 65 }] }),
+    (error) => error.code === 'ELECTRON_SCENARIO_INVALID'
+  );
   assert.throws(
     () => normalizeElectronScenario({ contract: ELECTRON_SCENARIO_CONTRACT, steps: [{ action: 'evaluate', script: 'process.exit()' }] }),
     (error) => error.code === 'ELECTRON_SCENARIO_INVALID'
   );
 });
 
-test('electron validation drives windows and webview guests, captures evidence, sanitizes URLs, and closes the app', async () => {
+test('electron validation drives windows and webview guests, asserts surface counts, captures evidence, sanitizes URLs, and closes the app', async () => {
   const root = await fixture();
   const state = {};
   try {
     await fs.writeFile(path.join(root, 'scenario.json'), `${JSON.stringify({
       contract: ELECTRON_SCENARIO_CONTRACT,
       steps: [
+        { action: 'assertSurfaceCount', target: { type: 'window', titleIncludes: 'Veteran' }, count: 1 },
         { action: 'waitForSurface', target: { type: 'window', titleIncludes: 'Veteran' } },
         { action: 'assertText', selector: '#status', text: 'ready', match: 'equals' },
         { action: 'click', selector: '#go' },
         { action: 'assertValue', selector: '#field', value: 'abc' },
         { action: 'screenshot', filename: 'window.png' },
+        { action: 'assertSurfaceCount', target: { type: 'webview', urlIncludes: 'guest' }, count: 1 },
         { action: 'waitForSurface', target: { type: 'webview', urlIncludes: 'guest' } },
         { action: 'fill', target: { type: 'webview', urlIncludes: 'guest' }, selector: '#field', value: 'hello' },
         { action: 'click', target: { type: 'webview', urlIncludes: 'guest' }, selector: '#go' },
@@ -126,14 +148,107 @@ test('electron validation drives windows and webview guests, captures evidence, 
     const config = normalizeElectronValidation({ executablePath: 'electron-bin', scenarioFile: 'scenario.json', timeoutMs: 5000, stepTimeoutMs: 1000 });
     const result = await runElectronValidation(config, { cwd: root, automation: fakeAutomation(state), environment: { PATH: process.env.PATH || '' } });
     assert.equal(result.passed, true, result.summary);
-    assert.equal(result.assertions.length, 3);
+    assert.equal(result.assertions.length, 5);
+    assert.deepEqual(result.assertions.slice(0, 1), [{ name: 'assertSurfaceCount step 1', passed: true, detail: 'expected=1 observed=1' }]);
     assert.deepEqual(result.attachments.map((item) => item.name), ['electron/window.png', 'electron/guest.png']);
     assert.equal(result.surfaces.windows[0].url, 'file:///main.html');
     assert.equal(result.surfaces.webviews[0].url, 'file:///guest.html');
+    assert.equal(result.diagnostics.crashes, 0);
+    assert.equal(result.diagnostics.webContentsObserved, 2);
     assert.equal(state.guestValue, 'hello');
     assert.equal(state.guestClicked, true);
     assert.equal(state.launchOptions.chromiumSandbox, true);
     assert.equal(state.closed, true);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('electron surface count assertion polls until matching windows disappear', async () => {
+  const root = await fixture();
+  let listCalls = 0;
+  const sequence = [1, 1, 0];
+  const automation = {
+    async launch() {
+      return {
+        async listSurfaces() {
+          const count = sequence[Math.min(listCalls++, sequence.length - 1)];
+          return {
+            windows: Array.from({ length: count }, (_, index) => ({ index, id: index + 10, type: 'window', title: `Secondary ${index}`, url: `file:///secondary-${index}.html`, hostId: null })),
+            webviews: []
+          };
+        },
+        async command() { return { ok: false, code: 'UNEXPECTED_OPERATION' }; },
+        async close() {}
+      };
+    }
+  };
+  try {
+    await fs.writeFile(path.join(root, 'scenario.json'), `${JSON.stringify({
+      contract: ELECTRON_SCENARIO_CONTRACT,
+      steps: [{ action: 'assertSurfaceCount', target: { type: 'window', titleIncludes: 'Secondary' }, count: 0, timeoutMs: 1000 }]
+    })}\n`);
+    const config = normalizeElectronValidation({ executablePath: 'electron-bin', scenarioFile: 'scenario.json', timeoutMs: 2000, stepTimeoutMs: 1000 });
+    const result = await runElectronValidation(config, { cwd: root, automation, environment: { PATH: process.env.PATH || '' } });
+    assert.equal(result.passed, true, result.summary);
+    assert.equal(result.assertions[0].detail, 'expected=0 observed=0');
+    assert.ok(listCalls >= 3);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('electron renderer crash diagnostics fail closed even when scenario steps complete', async () => {
+  const root = await fixture();
+  const state = { runtimeDiagnostics: zeroDiagnostics({ crashes: 1 }) };
+  try {
+    await fs.writeFile(path.join(root, 'scenario.json'), `${JSON.stringify({
+      contract: ELECTRON_SCENARIO_CONTRACT,
+      steps: [{ action: 'waitForSurface', target: { type: 'window', titleIncludes: 'Veteran' } }]
+    })}\n`);
+    const config = normalizeElectronValidation({ executablePath: 'electron-bin', scenarioFile: 'scenario.json', timeoutMs: 2000, stepTimeoutMs: 500 });
+    const result = await runElectronValidation(config, { cwd: root, automation: fakeAutomation(state), environment: { PATH: process.env.PATH || '' } });
+    assert.equal(result.passed, false);
+    assert.equal(result.failureCode, 'ELECTRON_RENDERER_CRASHED');
+    assert.equal(result.diagnostics.crashes, 1);
+    assert.match(result.summary, /renderer crash event/);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('electron recovered unresponsive episode stays diagnostic without false failure', async () => {
+  const root = await fixture();
+  const state = { runtimeDiagnostics: zeroDiagnostics({ unresponsiveEvents: 1, responsiveEvents: 1, activeUnresponsive: 0 }) };
+  try {
+    await fs.writeFile(path.join(root, 'scenario.json'), `${JSON.stringify({
+      contract: ELECTRON_SCENARIO_CONTRACT,
+      steps: [{ action: 'waitForSurface', target: { type: 'window', titleIncludes: 'Veteran' } }]
+    })}\n`);
+    const config = normalizeElectronValidation({ executablePath: 'electron-bin', scenarioFile: 'scenario.json', timeoutMs: 2000, stepTimeoutMs: 500 });
+    const result = await runElectronValidation(config, { cwd: root, automation: fakeAutomation(state), environment: { PATH: process.env.PATH || '' } });
+    assert.equal(result.passed, true, result.summary);
+    assert.equal(result.diagnostics.unresponsiveEvents, 1);
+    assert.equal(result.diagnostics.responsiveEvents, 1);
+    assert.equal(result.diagnostics.activeUnresponsive, 0);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('electron validation fails closed when a renderer remains unresponsive', async () => {
+  const root = await fixture();
+  const state = { runtimeDiagnostics: zeroDiagnostics({ unresponsiveEvents: 1, activeUnresponsive: 1 }) };
+  try {
+    await fs.writeFile(path.join(root, 'scenario.json'), `${JSON.stringify({
+      contract: ELECTRON_SCENARIO_CONTRACT,
+      steps: [{ action: 'waitForSurface', target: { type: 'window', titleIncludes: 'Veteran' } }]
+    })}\n`);
+    const config = normalizeElectronValidation({ executablePath: 'electron-bin', scenarioFile: 'scenario.json', timeoutMs: 2000, stepTimeoutMs: 500 });
+    const result = await runElectronValidation(config, { cwd: root, automation: fakeAutomation(state), environment: { PATH: process.env.PATH || '' } });
+    assert.equal(result.passed, false);
+    assert.equal(result.failureCode, 'ELECTRON_RENDERER_UNRESPONSIVE');
+    assert.equal(result.diagnostics.activeUnresponsive, 1);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

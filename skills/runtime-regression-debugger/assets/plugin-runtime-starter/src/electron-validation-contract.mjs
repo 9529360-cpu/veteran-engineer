@@ -17,7 +17,7 @@ const MAX_SCREENSHOTS = 32;
 const MAX_TIMEOUT_MS = 10 * 60_000;
 const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_STEP_TIMEOUT_MS = 10_000;
-const ACTIONS = new Set(['waitForSurface', 'click', 'fill', 'press', 'assertVisible', 'assertText', 'assertValue', 'assertUrl', 'screenshot']);
+const ACTIONS = new Set(['waitForSurface', 'assertSurfaceCount', 'click', 'fill', 'press', 'assertVisible', 'assertText', 'assertValue', 'assertUrl', 'screenshot']);
 const TARGET_TYPES = new Set(['window', 'webview']);
 const MATCH_MODES = new Set(['equals', 'contains']);
 const SAFE_ENV_KEYS = [
@@ -132,6 +132,11 @@ function normalizeStep(raw, index, defaultStepTimeoutMs) {
   if (selectorRequired.has(action) && !selector) throw electronError(`Electron scenario step ${index + 1} action ${action} requires selector`, 'ELECTRON_SCENARIO_INVALID');
   const step = { action, target, timeoutMs, ...(name ? { name } : {}) };
   if (selector) step.selector = selector;
+  if (action === 'assertSurfaceCount') {
+    const count = Number(raw.count);
+    if (!Number.isInteger(count) || count < 0 || count > MAX_SURFACES) throw electronError(`Electron scenario step ${index + 1} surface count must be between 0 and ${MAX_SURFACES}`, 'ELECTRON_SCENARIO_INVALID');
+    step.count = count;
+  }
   if (action === 'fill') step.value = boundedString(raw.value ?? '', 'Electron fill value', { max: 10000, allowEmpty: true });
   if (action === 'press') { step.key = boundedString(raw.key, 'Electron key', { max: 120 }); if (selector) step.selector = selector; }
   if (action === 'assertText') {
