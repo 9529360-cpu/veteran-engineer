@@ -16,6 +16,23 @@ import { normalizeObservabilityValidation, runObservabilityValidation } from './
 import { LiveValidationSessionManager } from './live-validation-session-manager.mjs';
 
 const VALIDATION_PURPOSES = new Set(['final-validation', 'runtime-feedback']);
+const WORKTREE_ADMIN_TAILS = new Map();
+
+async function withWorktreeAdminLock(repoPath, operation) {
+  const key = path.resolve(repoPath);
+  const previous = WORKTREE_ADMIN_TAILS.get(key) || Promise.resolve();
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const tail = previous.catch(() => {}).then(() => gate);
+  WORKTREE_ADMIN_TAILS.set(key, tail);
+  await previous.catch(() => {});
+  try {
+    return await operation();
+  } finally {
+    release();
+    if (WORKTREE_ADMIN_TAILS.get(key) === tail) WORKTREE_ADMIN_TAILS.delete(key);
+  }
+}
 
 function normalizeCapability(raw) {
   if (!raw || typeof raw !== 'object' || !raw.name) return null;
@@ -94,6 +111,15 @@ function browserFallbackSession(attempt, liveSession) {
   };
 }
 
+function normalizedSourceCommitSha(value) {
+  if (value === undefined || value === null) return null;
+  const normalized = String(value).trim();
+  if (!normalized) {
+    throw Object.assign(new Error('sourceCommitSha must be a non-empty commit identity'), { code: 'VALIDATION_SOURCE_IDENTITY_INVALID' });
+  }
+  return normalized;
+}
+
 export class ValidationService {
   constructor({
     store,
@@ -141,7 +167,9 @@ export class ValidationService {
     rawCommand = null,
     confirmRawValidation = false,
     purpose = 'final-validation',
-    targetCommitSha = null
+    targetCommitSha = null,
+    sourceCommitSha = null,
+    recordMissionValidation = true
   }) {
     if (!VALIDATION_PURPOSES.has(purpose)) {
       throw Object.assign(new Error(`Unknown validation purpose: ${purpose}`), { code: 'VALIDATION_PURPOSE_INVALID' });
@@ -152,6 +180,13 @@ export class ValidationService {
     if (purpose !== 'runtime-feedback' && targetCommitSha) {
       throw Object.assign(new Error('targetCommitSha is reserved for runtime feedback'), { code: 'VALIDATION_TARGET_OVERRIDE_BLOCKED' });
     }
+    if (sourceCommitSha !== null && purpose !== 'final-validation') {
+      throw Object.assign(new Error('sourceCommitSha is reserved for final validation snapshot execution'), { code: 'VALIDATION_SOURCE_OVERRIDE_BLOCKED' });
+    }
+    if (typeof recordMissionValidation !== 'boolean') {
+      throw Object.assign(new Error('recordMissionValidation must be boolean'), { code: 'VALIDATION_RECORDING_MODE_INVALID' });
+    }
+    const anchoredCommitSha = normalizedSourceCommitSha(sourceCommitSha);
 
     const project = await this.projectService.get(projectId);
     const caps = await this.capabilities({ projectId });
@@ -202,10 +237,23 @@ export class ValidationService {
         throw Object.assign(new Error(`Unknown mission: ${missionId}`), { code: 'MISSION_NOT_FOUND' });
       }
       validationMissionId = mission.id;
-      const missionWt = await this.worktreeManager.ensureMissionWorktree(project, mission);
-      commitSha = (await git(missionWt.path, ['rev-parse', 'HEAD'])).stdout.trim();
+      if (anchoredCommitSha) {
+        commitSha = anchoredCommitSha;
+      } else {
+        const missionWt = await this.worktreeManager.ensureMissionWorktree(project, mission);
+        commitSha = (await git(missionWt.path, ['rev-parse', 'HEAD'])).stdout.trim();
+      }
     } else {
+      if (anchoredCommitSha) {
+        throw Object.assign(new Error('sourceCommitSha requires a mission or candidate validation scope'), { code: 'VALIDATION_SOURCE_SCOPE_INVALID' });
+      }
       commitSha = project.sourceIdentity.head;
+    }
+    if (anchoredCommitSha && commitSha !== anchoredCommitSha) {
+      throw Object.assign(new Error('Validation source snapshot does not match the requested commit identity'), {
+        code: 'VALIDATION_SOURCE_IDENTITY_MISMATCH',
+        details: { expectedCommitSha: anchoredCommitSha, actualCommitSha: commitSha }
+      });
     }
 
     const liveSupport = purpose === 'runtime-feedback' && selected.service
@@ -226,7 +274,7 @@ export class ValidationService {
     } else {
       const validationId = randomId('validation');
       wt = path.join(this.store.worktreesDir, `validation-${validationId}`);
-      await git(project.repoPath, ['worktree', 'add', '--detach', wt, commitSha]);
+      await withWorktreeAdminLock(project.repoPath, () => git(project.repoPath, ['worktree', 'add', '--detach', wt, commitSha]));
       ownsEphemeralWorktree = true;
     }
 
@@ -391,7 +439,7 @@ export class ValidationService {
         cleanup = await stopValidationService(serviceRun, selected.service.shutdownGraceMs);
       }
       if (ownsEphemeralWorktree) {
-        await git(project.repoPath, ['worktree', 'remove', '--force', wt], { allowFailure: true });
+        await withWorktreeAdminLock(project.repoPath, () => git(project.repoPath, ['worktree', 'remove', '--force', wt], { allowFailure: true }));
         await fs.rm(wt, { recursive: true, force: true });
       }
     }
@@ -436,7 +484,7 @@ export class ValidationService {
       attachments: artifactCollection.attachments,
       metadata: { candidateId, purpose }
     });
-    if (validationMissionId) {
+    if (validationMissionId && recordMissionValidation) {
       await this.store.transaction('mission_validation_recorded', (state) => {
         const target = state.missions[validationMissionId];
         target.validation.status = passed ? 'passed' : 'failed';
