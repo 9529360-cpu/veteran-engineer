@@ -151,7 +151,7 @@ export function projectPolicy(operatorConfig, repoPath, remoteUrl = null) {
   const requiredValidationCapabilities = normalizedStringArray(specific.requiredValidationCapabilities || defaults.requiredValidationCapabilities || []);
   const workerPolicy = {
     enabled: false,
-    maxWorkers: 2,
+    maxWorkers: 4,
     capabilities: [],
     allowUnconfinedCustomWorkers: false,
     allowRawValidation: false,
