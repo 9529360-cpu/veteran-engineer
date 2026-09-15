@@ -70,7 +70,11 @@ Do not use one local-MCP plugin archive as the universal Web/Desktop artifact. C
 
 ### Install
 
-Synchronize the distribution first, then bind the requested host, then persist installer state. Repeated install must converge rather than duplicate entries.
+For an already-present distribution, synchronize the distribution first, then bind the requested host, then persist installer state. Repeated install must converge rather than duplicate entries.
+
+For a fresh machine, use the standalone verified bootstrap release asset instead of requiring a repository clone. Bootstrap must refuse to overwrite an existing runtime, verify its own selected-release asset digest, verify the stable release identity/manifest/canonical runtime/checksums, materialize only into a sibling staging directory, and prepare the pinned base dependency graph there with lifecycle scripts disabled. Verify the required MCP SDK packages after package-manager completion because optional-dependency failure can otherwise be reported as a successful install. Only after those checks pass may bootstrap atomically promote the runtime and invoke the installed Veteran CLI to bind the selected built-in host.
+
+Failures before promotion must leave no active runtime. A host-binding failure after promotion is different: preserve the verified runtime for explicit repair instead of deleting it beneath potentially partial host-owned configuration. Preflight known host CLI requirements before release download when practical.
 
 ### Doctor
 
