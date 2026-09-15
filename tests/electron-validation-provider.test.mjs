@@ -17,6 +17,19 @@ async function fixture() {
   return root;
 }
 
+function zeroDiagnostics(overrides = {}) {
+  return {
+    consoleMessages: 0,
+    pageErrors: 0,
+    crashes: 0,
+    unresponsiveEvents: 0,
+    responsiveEvents: 0,
+    activeUnresponsive: 0,
+    webContentsObserved: 2,
+    ...overrides
+  };
+}
+
 function fakeAutomation(state = {}) {
   const surfaces = {
     windows: [{ index: 0, id: 1, type: 'window', title: 'Veteran Electron Fixture', url: 'file:///main.html?secret=redacted', hostId: null }],
@@ -24,6 +37,7 @@ function fakeAutomation(state = {}) {
   };
   const command = async (target, operation, params = {}) => {
     const webview = target?.type === 'webview';
+    if (operation === 'diagnostics') return { ok: true, diagnostics: state.runtimeDiagnostics || zeroDiagnostics() };
     if (operation === 'fill') {
       if (webview) state.guestValue = params.value;
       else state.windowValue = params.value;
@@ -139,6 +153,8 @@ test('electron validation drives windows and webview guests, asserts surface cou
     assert.deepEqual(result.attachments.map((item) => item.name), ['electron/window.png', 'electron/guest.png']);
     assert.equal(result.surfaces.windows[0].url, 'file:///main.html');
     assert.equal(result.surfaces.webviews[0].url, 'file:///guest.html');
+    assert.equal(result.diagnostics.crashes, 0);
+    assert.equal(result.diagnostics.webContentsObserved, 2);
     assert.equal(state.guestValue, 'hello');
     assert.equal(state.guestClicked, true);
     assert.equal(state.launchOptions.chromiumSandbox, true);
@@ -177,6 +193,62 @@ test('electron surface count assertion polls until matching windows disappear', 
     assert.equal(result.passed, true, result.summary);
     assert.equal(result.assertions[0].detail, 'expected=0 observed=0');
     assert.ok(listCalls >= 3);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('electron renderer crash diagnostics fail closed even when scenario steps complete', async () => {
+  const root = await fixture();
+  const state = { runtimeDiagnostics: zeroDiagnostics({ crashes: 1 }) };
+  try {
+    await fs.writeFile(path.join(root, 'scenario.json'), `${JSON.stringify({
+      contract: ELECTRON_SCENARIO_CONTRACT,
+      steps: [{ action: 'waitForSurface', target: { type: 'window', titleIncludes: 'Veteran' } }]
+    })}\n`);
+    const config = normalizeElectronValidation({ executablePath: 'electron-bin', scenarioFile: 'scenario.json', timeoutMs: 2000, stepTimeoutMs: 500 });
+    const result = await runElectronValidation(config, { cwd: root, automation: fakeAutomation(state), environment: { PATH: process.env.PATH || '' } });
+    assert.equal(result.passed, false);
+    assert.equal(result.failureCode, 'ELECTRON_RENDERER_CRASHED');
+    assert.equal(result.diagnostics.crashes, 1);
+    assert.match(result.summary, /renderer crash event/);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('electron recovered unresponsive episode stays diagnostic without false failure', async () => {
+  const root = await fixture();
+  const state = { runtimeDiagnostics: zeroDiagnostics({ unresponsiveEvents: 1, responsiveEvents: 1, activeUnresponsive: 0 }) };
+  try {
+    await fs.writeFile(path.join(root, 'scenario.json'), `${JSON.stringify({
+      contract: ELECTRON_SCENARIO_CONTRACT,
+      steps: [{ action: 'waitForSurface', target: { type: 'window', titleIncludes: 'Veteran' } }]
+    })}\n`);
+    const config = normalizeElectronValidation({ executablePath: 'electron-bin', scenarioFile: 'scenario.json', timeoutMs: 2000, stepTimeoutMs: 500 });
+    const result = await runElectronValidation(config, { cwd: root, automation: fakeAutomation(state), environment: { PATH: process.env.PATH || '' } });
+    assert.equal(result.passed, true, result.summary);
+    assert.equal(result.diagnostics.unresponsiveEvents, 1);
+    assert.equal(result.diagnostics.responsiveEvents, 1);
+    assert.equal(result.diagnostics.activeUnresponsive, 0);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('electron validation fails closed when a renderer remains unresponsive', async () => {
+  const root = await fixture();
+  const state = { runtimeDiagnostics: zeroDiagnostics({ unresponsiveEvents: 1, activeUnresponsive: 1 }) };
+  try {
+    await fs.writeFile(path.join(root, 'scenario.json'), `${JSON.stringify({
+      contract: ELECTRON_SCENARIO_CONTRACT,
+      steps: [{ action: 'waitForSurface', target: { type: 'window', titleIncludes: 'Veteran' } }]
+    })}\n`);
+    const config = normalizeElectronValidation({ executablePath: 'electron-bin', scenarioFile: 'scenario.json', timeoutMs: 2000, stepTimeoutMs: 500 });
+    const result = await runElectronValidation(config, { cwd: root, automation: fakeAutomation(state), environment: { PATH: process.env.PATH || '' } });
+    assert.equal(result.passed, false);
+    assert.equal(result.failureCode, 'ELECTRON_RENDERER_UNRESPONSIVE');
+    assert.equal(result.diagnostics.activeUnresponsive, 1);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
