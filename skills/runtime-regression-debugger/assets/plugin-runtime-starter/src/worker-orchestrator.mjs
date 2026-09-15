@@ -505,8 +505,10 @@ export class WorkerOrchestrator {
       }
       const waveIds = mission.waves[waveIndex] || [];
       const candidates = waveIds.map((id) => state.tasks[`${missionId}:${id}`]).filter((task) => task?.status === 'planned');
+      const capabilityReserved = candidates.filter((task) => task.capabilityLease?.reservationId);
+      const admissionCandidates = capabilityReserved.length ? capabilityReserved : candidates;
       const byId = new Map(Object.values(state.tasks).filter((task) => task.missionId === missionId).map((task) => [task.id, task]));
-      const ready = candidates.filter((task) => task.dependencies.every((dep) => byId.get(dep)?.status === 'done'));
+      const ready = admissionCandidates.filter((task) => task.dependencies.every((dep) => byId.get(dep)?.status === 'done'));
       const budget = missionExecutionCapacity({ state, mission, project, runWorkers });
       const selected = ready.slice(0, budget.capacity);
       for (const task of selected) {
