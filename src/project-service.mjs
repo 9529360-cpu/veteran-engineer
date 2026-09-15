@@ -1,5 +1,12 @@
 import path from 'node:path';
-import { git, repositorySourceAuthority, resolveRepository, sourceIdentity } from './git.mjs';
+import {
+  git,
+  repositorySourceAuthority,
+  resolveRepository,
+  sourceIdentity,
+  sourceIdentityFromAuthority,
+  withDetachedWorktree
+} from './git.mjs';
 import { acquireRemoteRepository, normalizeRemoteRepositoryUrl, sanitizeStoredRemoteUrl } from './repository-acquisition.mjs';
 import { nowIso, randomId, sha256 } from './util.mjs';
 import { projectPolicy } from './operator-config.mjs';
@@ -7,6 +14,25 @@ import { requireSurfaceCapability, resolveSurfaceProfile } from './surface-capab
 import { inspectProjectEnvironment } from './project-environment.mjs';
 import { assessProjectEnvironmentReadiness } from './project-environment-readiness.mjs';
 import { compileProjectBootstrapPlan } from './project-bootstrap-plan.mjs';
+
+async function inspectAuthorityEnvironment({ repo, projectKey, sourceAuthority, storeRoot, surfaceProfile }) {
+  const environmentSourceIdentity = sourceIdentityFromAuthority(sourceAuthority);
+  const inspect = async (snapshotRepo) => {
+    const environmentProfile = await inspectProjectEnvironment(snapshotRepo);
+    const environmentReadiness = await assessProjectEnvironmentReadiness(environmentProfile, {
+      cwd: storeRoot,
+      surfaceProfile: surfaceProfile.id
+    });
+    const bootstrapPlan = compileProjectBootstrapPlan(environmentProfile, environmentReadiness);
+    return { environmentProfile, environmentReadiness, bootstrapPlan, environmentSourceIdentity };
+  };
+
+  if (sourceAuthority.scope === 'remote-default' && !sourceAuthority.aligned) {
+    const snapshotPath = path.join(storeRoot, 'project-snapshots', `${projectKey}-${randomId('authority')}`);
+    return withDetachedWorktree(repo, sourceAuthority.head, snapshotPath, inspect);
+  }
+  return inspect(repo);
+}
 
 export class ProjectService {
   constructor({ store, operatorConfig = { defaults: {}, projects: {} }, managedProjectsRoot, surfaceProfile = 'local-stdio' }) {
@@ -62,10 +88,19 @@ export class ProjectService {
 
     const identity = await sourceIdentity(repo);
     const sourceAuthority = await repositorySourceAuthority(repo, { observedIdentity: identity });
-    const environmentProfile = await inspectProjectEnvironment(repo);
-    const environmentReadiness = await assessProjectEnvironmentReadiness(environmentProfile, { cwd: this.store.root, surfaceProfile: this.surfaceProfile.id });
-    const bootstrapPlan = compileProjectBootstrapPlan(environmentProfile, environmentReadiness);
     const projectKey = sha256(repo).slice(0, 24);
+    const {
+      environmentProfile,
+      environmentReadiness,
+      bootstrapPlan,
+      environmentSourceIdentity
+    } = await inspectAuthorityEnvironment({
+      repo,
+      projectKey,
+      sourceAuthority,
+      storeRoot: this.store.root,
+      surfaceProfile: this.surfaceProfile
+    });
     const policy = projectPolicy(this.operatorConfig, repo, remoteUrl);
     return this.store.transaction('project_opened', (state) => {
       let project = Object.values(state.projects).find((item) => item.projectKey === projectKey);
@@ -82,6 +117,7 @@ export class ProjectService {
           updatedAt: nowIso(),
           sourceIdentity: identity,
           sourceAuthority,
+          environmentSourceIdentity,
           environmentProfile,
           environmentReadiness,
           bootstrapPlan,
@@ -101,6 +137,7 @@ export class ProjectService {
         project.updatedAt = nowIso();
         project.sourceIdentity = identity;
         project.sourceAuthority = sourceAuthority;
+        project.environmentSourceIdentity = environmentSourceIdentity;
         project.environmentProfile = environmentProfile;
         project.environmentReadiness = environmentReadiness;
         project.bootstrapPlan = bootstrapPlan;
@@ -126,6 +163,7 @@ export class ProjectService {
       sourceKind,
       remoteUrl,
       sourceAuthority: { scope: sourceAuthority.scope, ref: sourceAuthority.ref, head: sourceAuthority.head, aligned: sourceAuthority.aligned },
+      environmentSourceHead: environmentSourceIdentity.head,
       environmentContract: environmentProfile.contract,
       environmentReadiness: environmentReadiness.status,
       bootstrapPlan: bootstrapPlan.status,
@@ -139,13 +177,23 @@ export class ProjectService {
     if (!project) throw Object.assign(new Error(`Unknown project: ${projectId}`), { code: 'PROJECT_NOT_FOUND' });
     const identity = await sourceIdentity(project.repoPath);
     const sourceAuthority = await repositorySourceAuthority(project.repoPath, { observedIdentity: identity });
-    const environmentProfile = await inspectProjectEnvironment(project.repoPath);
-    const environmentReadiness = await assessProjectEnvironmentReadiness(environmentProfile, { cwd: this.store.root, surfaceProfile: this.surfaceProfile.id });
-    const bootstrapPlan = compileProjectBootstrapPlan(environmentProfile, environmentReadiness);
+    const {
+      environmentProfile,
+      environmentReadiness,
+      bootstrapPlan,
+      environmentSourceIdentity
+    } = await inspectAuthorityEnvironment({
+      repo: project.repoPath,
+      projectKey: project.projectKey,
+      sourceAuthority,
+      storeRoot: this.store.root,
+      surfaceProfile: this.surfaceProfile
+    });
     const result = await this.store.transaction('project_snapshotted', (working) => {
       const target = working.projects[projectId];
       target.sourceIdentity = identity;
       target.sourceAuthority = sourceAuthority;
+      target.environmentSourceIdentity = environmentSourceIdentity;
       target.environmentProfile = environmentProfile;
       target.environmentReadiness = environmentReadiness;
       target.bootstrapPlan = bootstrapPlan;
@@ -156,6 +204,7 @@ export class ProjectService {
       head: identity.head,
       dirty: identity.dirty,
       sourceAuthority: { scope: sourceAuthority.scope, ref: sourceAuthority.ref, head: sourceAuthority.head, aligned: sourceAuthority.aligned },
+      environmentSourceHead: environmentSourceIdentity.head,
       environmentContract: environmentProfile.contract,
       environmentReadiness: environmentReadiness.status,
       bootstrapPlan: bootstrapPlan.status,
