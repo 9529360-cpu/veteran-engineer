@@ -5,6 +5,7 @@ import { createVeteranApp } from './app.mjs';
 import { RUNTIME_NAME, RUNTIME_VERSION, LEGACY_PROTOCOL_VERSION } from './constants.mjs';
 import { MCP_TRANSPORT_MODES } from './mcp-protocol-capability.mjs';
 import { TOOL_DEFINITIONS, toolInputJsonSchema, toolInputZodSchema } from './tool-catalog.mjs';
+import { toolAnnotations } from './tool-annotations.mjs';
 import { inspectMcpSdkIntegrity, assertMcpSdkIntegrity } from './mcp-sdk-integrity.mjs';
 
 const runtimeRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -39,7 +40,8 @@ async function createOfficialSdkServerFactory({ stateRoot, configPath }) {
     for (const tool of TOOL_DEFINITIONS) {
       server.registerTool(tool.name, {
         description: tool.description,
-        inputSchema: toolInputZodSchema(z, tool.name)
+        inputSchema: toolInputZodSchema(z, tool.name),
+        annotations: toolAnnotations(tool.name)
       }, async (args) => {
         try {
           const result = await app.callTool(tool.name, args || {});
@@ -81,7 +83,7 @@ async function startFallback({ stateRoot, configPath }) {
             instructions: 'Veteran Engineer standalone fallback: legacy MCP 2025 only.'
           });
         } else if (message.method === 'tools/list') {
-          success(message.id, { tools: TOOL_DEFINITIONS.map((tool) => ({ name: tool.name, description: tool.description, inputSchema: toolInputJsonSchema(tool.name) })) });
+          success(message.id, { tools: TOOL_DEFINITIONS.map((tool) => ({ name: tool.name, description: tool.description, inputSchema: toolInputJsonSchema(tool.name), annotations: toolAnnotations(tool.name) })) });
         } else if (message.method === 'tools/call') {
           const name = message.params?.name;
           const args = message.params?.arguments || {};
