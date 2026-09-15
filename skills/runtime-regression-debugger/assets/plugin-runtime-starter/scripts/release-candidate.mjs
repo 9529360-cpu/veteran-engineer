@@ -5,6 +5,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { inspectReleaseContract } from './release-contract.mjs';
+import { writeRuntimeBundle } from '../src/installer/runtime-bundle.mjs';
 
 const self = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(self), '..');
@@ -55,6 +56,18 @@ export async function buildReleaseCandidate({ output, tag = null, commit = null 
   const contract = await inspectReleaseContract({ root, tag });
   await fs.mkdir(output, { recursive: true });
   const assets = [];
+  const runtimeFilename = 'veteran-engineer-runtime.json';
+  const runtimeTarget = path.join(output, runtimeFilename);
+  const runtimeRebuilt = path.join(output, '.veteran-engineer-runtime-rebuilt.json');
+  const firstRuntime = await writeRuntimeBundle({ root, output: runtimeTarget, version: contract.version });
+  const secondRuntime = await writeRuntimeBundle({ root, output: runtimeRebuilt, version: contract.version });
+  if (firstRuntime.sha256 !== secondRuntime.sha256) throw new Error(`Non-reproducible runtime release bundle: ${firstRuntime.sha256} != ${secondRuntime.sha256}`);
+  await fs.rm(runtimeRebuilt, { force: true });
+  const runtimeStat = await fs.stat(runtimeTarget);
+  const runtimeChecksum = 'veteran-engineer-runtime.sha256';
+  await fs.writeFile(path.join(output, runtimeChecksum), `${firstRuntime.sha256}  ${runtimeFilename}\n`, 'utf8');
+  assets.push({ profile: 'runtime', filename: runtimeFilename, checksumFile: runtimeChecksum, sha256: firstRuntime.sha256, bytes: runtimeStat.size });
+
   for (const profile of PROFILES) {
     const filename = `veteran-engineer-${profile}.zip`;
     const target = path.join(output, filename);

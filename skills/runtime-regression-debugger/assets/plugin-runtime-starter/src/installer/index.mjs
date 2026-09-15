@@ -6,14 +6,34 @@ import hermesAdapter from './adapters/hermes.mjs';
 import genericAdapter from './adapters/generic.mjs';
 import { loadExternalAdapters, validateHostAdapter } from './adapter-sdk.mjs';
 import { inspectPostgresStateCapability } from './capabilities.mjs';
-import { copyDistribution, defaultInstallerPaths, distributionDigest, readJson, runCommand, writeJsonAtomic } from './util.mjs';
+import { copyDistribution, defaultInstallerPaths, distributionDigest, readJson, runCommand, stableObjectHash, writeJsonAtomic } from './util.mjs';
 import { ensureDir, nowIso, pathExists } from '../util.mjs';
 import { RUNTIME_VERSION, HOST_ADAPTER_API_VERSION } from '../constants.mjs';
 import { inspectMcpSdkIntegrity } from '../mcp-sdk-integrity.mjs';
 import { resolveSurfaceProfile } from '../surface-capabilities.mjs';
+import { GitHubReleaseSource } from './release-source.mjs';
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_DISTRIBUTION_ROOT = path.resolve(moduleDir, '..', '..');
+
+async function dependencyGraphFingerprint(root) {
+  const lock = await readJson(path.join(root, 'package-lock.json'), null);
+  if (!lock) return null;
+  const normalized = structuredClone(lock);
+  delete normalized.version;
+  if (normalized.packages?.['']) delete normalized.packages[''].version;
+  return stableObjectHash(normalized);
+}
+
+function compareStableVersions(a, b) {
+  const parse = (value) => String(value || '').split('-', 1)[0].split('.').map((part) => Number(part));
+  const left = parse(a);
+  const right = parse(b);
+  for (let index = 0; index < 3; index += 1) {
+    if ((left[index] || 0) !== (right[index] || 0)) return (left[index] || 0) - (right[index] || 0);
+  }
+  return 0;
+}
 
 function initialInstallerState(paths) {
   return {
@@ -30,7 +50,7 @@ function initialInstallerState(paths) {
 }
 
 export class VeteranInstaller {
-  constructor({ distributionRoot = DEFAULT_DISTRIBUTION_ROOT, home, runtimeRoot, runtimeStateRoot, installerRoot, env = process.env, trustedAdapterDirs = [], exec = runCommand } = {}) {
+  constructor({ distributionRoot = DEFAULT_DISTRIBUTION_ROOT, home, runtimeRoot, runtimeStateRoot, installerRoot, env = process.env, trustedAdapterDirs = [], exec = runCommand, releaseSource = null } = {}) {
     const defaults = defaultInstallerPaths(home);
     this.distributionRoot = path.resolve(distributionRoot);
     this.home = defaults.home;
@@ -41,6 +61,7 @@ export class VeteranInstaller {
     this.env = { ...env };
     this.trustedAdapterDirs = trustedAdapterDirs.map((item) => path.resolve(item));
     this.exec = exec;
+    this.releaseSource = releaseSource || new GitHubReleaseSource({ installerRoot: this.installerRoot });
   }
 
   async #loadState() {
@@ -73,16 +94,16 @@ export class VeteranInstaller {
     return [...registry.values()].map((adapter) => ({ id: adapter.id, displayName: adapter.displayName, apiVersion: adapter.apiVersion, surface: resolveSurfaceProfile(adapter.surfaceProfile || 'local-stdio'), capabilities: adapter.capabilities || {} }));
   }
 
-  async #context(adapter, options = {}, state = null) {
+  async #context(adapter, options = {}, state = null, { version = RUNTIME_VERSION, distributionRoot = this.distributionRoot } = {}) {
     const current = state || await this.#loadState();
     return {
-      version: RUNTIME_VERSION,
+      version,
       adapterApiVersion: HOST_ADAPTER_API_VERSION,
       home: this.home,
       runtimeRoot: this.runtimeRoot,
       runtimeStateRoot: this.runtimeStateRoot,
       installerRoot: this.installerRoot,
-      distributionRoot: this.distributionRoot,
+      distributionRoot,
       env: this.env,
       options,
       previousBinding: current.hosts?.[adapter.id] || null,
@@ -90,14 +111,15 @@ export class VeteranInstaller {
     };
   }
 
-  async synchronizeDistribution() {
-    if (!(await pathExists(path.join(this.distributionRoot, 'package.json')))) {
-      const error = new Error(`Distribution root is invalid: ${this.distributionRoot}`);
+  async synchronizeDistribution({ sourceRoot = this.distributionRoot } = {}) {
+    const resolvedSourceRoot = path.resolve(sourceRoot);
+    if (!(await pathExists(path.join(resolvedSourceRoot, 'package.json')))) {
+      const error = new Error(`Distribution root is invalid: ${resolvedSourceRoot}`);
       error.code = 'DISTRIBUTION_INVALID';
       throw error;
     }
-    const sourceDigest = await distributionDigest(this.distributionRoot);
-    const copied = await copyDistribution(this.distributionRoot, this.runtimeRoot);
+    const sourceDigest = await distributionDigest(resolvedSourceRoot);
+    const copied = await copyDistribution(resolvedSourceRoot, this.runtimeRoot);
     const targetDigest = await distributionDigest(this.runtimeRoot);
     if (sourceDigest !== targetDigest) {
       const error = new Error('Distribution digest mismatch after synchronization');
@@ -234,18 +256,18 @@ export class VeteranInstaller {
     return { ok: runtime.ok && Object.values(hosts).every((item) => item.ok), runtime, hosts, version: state.installedVersion || RUNTIME_VERSION };
   }
 
-  async repair(hostId = null, options = {}) {
+  async #repairFromDistribution(hostId, options, { sourceRoot = this.distributionRoot, version = RUNTIME_VERSION, release = null } = {}) {
     const state = await this.#loadState();
     const ids = hostId ? [hostId] : Object.keys(state.hosts || {});
     if (ids.length === 0) throw Object.assign(new Error('No installed host bindings to repair'), { code: 'NO_INSTALLED_HOSTS' });
-    const sync = await this.synchronizeDistribution();
+    const sync = await this.synchronizeDistribution({ sourceRoot });
     const registry = await this.#registry();
     const results = {};
     for (const id of ids) {
       const adapter = registry.get(id);
       if (!adapter) { results[id] = { ok: false, error: 'adapter-unavailable' }; continue; }
       try {
-        const context = await this.#context(adapter, options, state);
+        const context = await this.#context(adapter, options, state, { version, distributionRoot: sourceRoot });
         context.previousBinding = state.hosts?.[id] || { id };
         const binding = await adapter.install(context);
         state.hosts[id] = { ...(state.hosts[id] || {}), id, displayName: adapter.displayName, apiVersion: adapter.apiVersion, binding, updatedAt: nowIso(), installedAt: state.hosts[id]?.installedAt || nowIso() };
@@ -254,16 +276,41 @@ export class VeteranInstaller {
         results[id] = { ok: false, error: error.code || 'REPAIR_FAILED', message: error.message };
       }
     }
-    state.installedVersion = RUNTIME_VERSION;
+    state.installedVersion = version;
     state.distributionDigest = sync.digest;
     state.runtimeRoot = this.runtimeRoot;
     state.runtimeStateRoot = this.runtimeStateRoot;
     await this.#saveState(state);
-    return { ok: Object.values(results).every((item) => item.ok), distribution: sync, hosts: results };
+    return { ok: Object.values(results).every((item) => item.ok), version, distribution: sync, hosts: results, release };
+  }
+
+  async repair(hostId = null, options = {}) {
+    return this.#repairFromDistribution(hostId, options);
   }
 
   async upgrade(options = {}) {
-    return this.repair(null, options);
+    if (!options.release) return this.repair(null, options);
+    const staged = await this.releaseSource.stage(options.release);
+    const { release: _releaseSelector, ...adapterOptions } = options;
+    try {
+      const state = await this.#loadState();
+      if (state.installedVersion && compareStableVersions(staged.version, state.installedVersion) < 0) {
+        throw Object.assign(new Error(`Refusing to downgrade Veteran Engineer from ${state.installedVersion} to ${staged.version}`), { code: 'RELEASE_DOWNGRADE_REJECTED' });
+      }
+      if (await pathExists(this.runtimeRoot)) {
+        const [currentGraph, targetGraph] = await Promise.all([dependencyGraphFingerprint(this.runtimeRoot), dependencyGraphFingerprint(staged.root)]);
+        if (!currentGraph || !targetGraph || currentGraph !== targetGraph) {
+          throw Object.assign(new Error('Remote release dependency graph differs from the installed runtime; dependency migration is required before upgrade'), { code: 'RELEASE_DEPENDENCY_GRAPH_CHANGED' });
+        }
+      }
+      return await this.#repairFromDistribution(null, adapterOptions, {
+        sourceRoot: staged.root,
+        version: staged.version,
+        release: { tag: staged.tag, commit: staged.commit, releaseId: staged.releaseId, runtimeSha256: staged.runtimeSha256 }
+      });
+    } finally {
+      await staged.cleanup();
+    }
   }
 
   async uninstall(hostId, { purge = false, ...options } = {}) {

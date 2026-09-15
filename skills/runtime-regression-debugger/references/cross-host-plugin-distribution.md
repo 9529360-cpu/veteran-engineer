@@ -89,6 +89,8 @@ Re-synchronize the packaged distribution and reapply the host adapter. Repair mu
 
 Refresh the shared runtime once, then reapply every host currently recorded as installed. Record per-host success or failure; never report a partial upgrade as globally successful.
 
+For public release upgrades, treat the release as a verified source, not merely a download URL. Require a public/non-prerelease release bound to an exact commit, validate release-asset SHA-256 metadata, the release manifest/checksum, and every canonical runtime-bundle file before touching the active runtime. Materialize into installer-owned staging, then use the existing staged/atomic distribution swap and rebind hosts with the target release version as context authority. Reject downgrades. Preserve an existing dependency tree only when the target dependency graph is equivalent; if the dependency graph changed, fail closed and require an explicit dependency-migration path rather than carrying stale packages forward.
+
 ### Uninstall
 
 Unbind one host without affecting other host bindings. Delete the shared runtime only when explicitly requested and no installed host remains.

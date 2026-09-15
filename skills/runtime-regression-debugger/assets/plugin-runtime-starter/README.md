@@ -6,7 +6,7 @@ The GitHub repository `9529360-cpu/veteran-engineer` is the implementation sourc
 
 ## Current checkpoint
 
-Version remains `0.3.0`. State schema remains `3`. The public MCP surface remains exactly **34 tools**.
+Current development version is `0.4.0`. State schema remains `3`. The public MCP surface remains exactly **34 tools**.
 
 Protocol support is intentionally split:
 
@@ -22,12 +22,13 @@ The pinned base dependency graph is:
 - `@modelcontextprotocol/core@2.0.0`
 - `zod@4.2.0`
 
-Current mainline validation at the #333 execution-blocker checkpoint proves:
+Current integration gates prove:
 
-1. `npm run check`: **225 syntax files**, exact **34-tool** surface, protocol constants, pinned SDK graph/lock integrity, runtime-starter mirror parity across **231 mirrored files**, and **421/421 Node tests PASS**;
+1. `npm run check`: exact **34-tool** surface, protocol constants, pinned SDK lock integrity, syntax, runtime-starter mirror parity, and the full Node regression suite;
 2. a real Docker engine-backed confined `WorkerAdapter` smoke;
 3. a real PostgreSQL engine-backed state-backend contract/durability integration gate, followed by the real modern MCP handshake while PostgreSQL is the active state backend;
-4. profile-aware Desktop/Codex/Web plugin artifact export with reproducibility and package-boundary checks.
+4. profile-aware Desktop/Codex/Web plugin artifact export with reproducibility and package-boundary checks;
+5. release-candidate reproducibility for the canonical runtime asset plus public release checksum verification before and after publication.
 
 The bundled recovery seed under `skills/runtime-regression-debugger/assets/plugin-runtime-starter/` is part of the product contract. The main validation gate now compares the mirrored runtime file set and file contents against the repository runtime so root/starter drift fails CI instead of becoming a future recovery surprise.
 
@@ -136,9 +137,14 @@ node bin/veteran-engineer.mjs install codex
 node bin/veteran-engineer.mjs install hermes
 node bin/veteran-engineer.mjs status
 node bin/veteran-engineer.mjs doctor
+node bin/veteran-engineer.mjs upgrade --release latest
+# or pin an exact stable release
+node bin/veteran-engineer.mjs upgrade --release v0.4.0
 ```
 
-Codex, Hermes, generic MCP, and trusted external adapters bind the same shared runtime; hosts do not fork the engineering core. Repair/upgrade stages a fresh distribution and preserves an existing `node_modules` tree, so installed runtime capabilities are not silently discarded during distribution refresh.
+Codex, Hermes, generic MCP, and trusted external adapters bind the same shared runtime; hosts do not fork the engineering core. Local repair still re-synchronizes the caller's distribution. Remote upgrade resolves only a public, non-prerelease GitHub Release, requires an exact release commit, verifies GitHub asset SHA-256 metadata plus the release manifest/checksum, validates every file in the canonical runtime bundle, stages it outside the active runtime, then atomically swaps the shared runtime and rebinds every recorded host. Existing `node_modules` capabilities are preserved only when the target dependency graph is identical; dependency-graph changes fail closed instead of reusing stale packages. Downgrades are rejected.
+
+The canonical runtime release asset is separate from the Desktop/Codex/Web plugin archives, so lifecycle management does not depend on a product-specific ZIP layout or an external unzip/tar binary. Zero-clone bootstrap and automatic dependency installation remain separate lifecycle work; `upgrade --release` assumes Veteran is already installed.
 
 ## Development validation
 
@@ -191,4 +197,4 @@ No convergence review found a reason to weaken the 34-tool compatibility surface
 
 ## Deliberate deferrals
 
-`0.3.0` remains a development line. Packaging the PostgreSQL driver into a future release dependency graph is a separate distribution/versioning decision; today it is an explicit hosted capability prerequisite. Production deployment/release, managed database migrations beyond the current v1 schema bootstrap, and automatic operator merge/push remain intentionally out of scope.
+`v0.3.0` is the first durable public release; `0.4.0` is the current development line. Packaging the PostgreSQL driver into the base dependency graph remains a separate distribution/versioning decision; today it is an explicit hosted capability prerequisite. Managed database migrations beyond the current v1 schema bootstrap and automatic operator merge/push remain intentionally out of scope.

@@ -16,7 +16,7 @@ Do not fork Mission, MCP, worker, state, evidence, or experience logic per host.
 
 ## Current line
 
-- Runtime/package/plugin version: `0.3.0`
+- Runtime/package/plugin development version: `0.4.0` (latest public release: `v0.3.0`)
 - State schema: `3`
 - Public MCP tool surface: exactly **34 tools**
 - Official modern protocol: `2026-07-28`
@@ -215,7 +215,7 @@ Host/tunnel/app provisioning remains external platform configuration unless a st
 - durable state: `~/.veteran-engineer/state`
 - installer metadata: `~/.veteran-engineer/installer.json`
 
-Install/repair/upgrade synchronizes one shared distribution. Host adapters stay thin. Purge is refused while another host still references the runtime. Distribution refresh preserves installed runtime dependencies/capabilities.
+Install/repair/upgrade synchronizes one shared distribution. Host adapters stay thin. Purge is refused while another host still references the runtime. Local refresh preserves installed runtime dependencies/capabilities. The 0.4 development line adds verified `upgrade --release latest|vX.Y.Z`: stable exact-commit GitHub Release metadata + asset/manifest/runtime-file SHA-256 verification, staged atomic swap, target-version host rebinding, downgrade refusal, and fail-closed dependency-graph drift detection.
 
 ## Convergence rules for the next pass
 
