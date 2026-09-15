@@ -2,6 +2,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export const BROWSER_VALIDATION_CONTRACT = 'veteran-browser-validation-v1';
 export const BROWSER_SESSION_CONTRACT = 'veteran-browser-session-jsonl-v1';
@@ -13,6 +14,7 @@ const MAX_ASSERTIONS = 256;
 export const MAX_BROWSER_STDOUT_BYTES = 512 * 1024;
 export const MAX_BROWSER_STDERR_BYTES = 256 * 1024;
 const MAX_TIMEOUT_MS = 10 * 60_000;
+const NATIVE_PROVIDER_PATH = fileURLToPath(new URL('./browser-native-provider.mjs', import.meta.url));
 const SAFE_ENV_KEYS = [
   'PATH', 'Path', 'PATHEXT', 'SystemRoot', 'WINDIR', 'COMSPEC',
   'TMPDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL', 'LC_CTYPE', 'SHELL'
@@ -72,6 +74,22 @@ function normalizeCommand(raw) {
   });
 }
 
+function normalizeNativeBrowserProvider(raw) {
+  if (raw === undefined || raw === null || raw === false) return null;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw errorWithCode('Native browser provider configuration must be an object', 'BROWSER_NATIVE_CONFIG_INVALID');
+  }
+  const executablePath = typeof raw.executablePath === 'string' ? raw.executablePath.trim() : '';
+  if (!executablePath || executablePath.length > MAX_COMMAND_PART_LENGTH || executablePath.includes('\u0000') || !path.isAbsolute(executablePath)) {
+    throw errorWithCode('Native browser executablePath must be a bounded absolute path', 'BROWSER_NATIVE_EXECUTABLE_PATH_INVALID');
+  }
+  return Object.freeze({ provider: 'native-chromium', executablePath });
+}
+
+function nativeProviderCommand(native, session = false) {
+  return [process.execPath, NATIVE_PROVIDER_PATH, ...(session ? ['--session'] : []), '--executable', native.executablePath];
+}
+
 function normalizeEnvAllowlist(raw) {
   if (raw === undefined || raw === null) return [];
   if (!Array.isArray(raw) || raw.length > MAX_ENV_NAMES) {
@@ -100,14 +118,17 @@ function normalizeTimeout(value, fallback = 120_000) {
   return Number.isFinite(numeric) ? Math.max(1000, Math.min(MAX_TIMEOUT_MS, numeric)) : fallback;
 }
 
-function normalizeBrowserSession(raw, browserTimeoutMs) {
+function normalizeBrowserSession(raw, browserTimeoutMs, native = null) {
   if (raw === undefined || raw === null || raw === false) return null;
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw errorWithCode('Browser session configuration must be an object', 'BROWSER_SESSION_CONFIG_INVALID');
   }
+  if (native && raw.command !== undefined) {
+    throw errorWithCode('Native browser session may not override its provider command', 'BROWSER_PROVIDER_CONFIG_AMBIGUOUS');
+  }
   return {
     contract: BROWSER_SESSION_CONTRACT,
-    command: normalizeCommand(raw.command),
+    command: native ? nativeProviderCommand(native, true) : normalizeCommand(raw.command),
     timeoutMs: normalizeTimeout(raw.timeoutMs, browserTimeoutMs)
   };
 }
@@ -118,15 +139,20 @@ export function normalizeBrowserValidation(raw) {
     throw errorWithCode('Browser validation configuration must be an object', 'BROWSER_VALIDATION_CONFIG_INVALID');
   }
   const timeoutMs = normalizeTimeout(raw.timeoutMs);
+  const native = normalizeNativeBrowserProvider(raw.native);
+  if (native && raw.command !== undefined) {
+    throw errorWithCode('Browser validation must choose either native or command provider execution', 'BROWSER_PROVIDER_CONFIG_AMBIGUOUS');
+  }
   return {
     contract: BROWSER_VALIDATION_CONTRACT,
-    command: normalizeCommand(raw.command),
+    command: native ? nativeProviderCommand(native, false) : normalizeCommand(raw.command),
     cwd: raw.cwd ? String(raw.cwd) : '.',
     timeoutMs,
     envAllowlist: normalizeEnvAllowlist(raw.envAllowlist),
     scenarioFile: normalizeRelativeFile(raw.scenarioFile),
     baseUrl: raw.baseUrl ? normalizeLoopbackUrl(raw.baseUrl) : null,
-    session: normalizeBrowserSession(raw.session, timeoutMs)
+    session: normalizeBrowserSession(raw.session, timeoutMs, native),
+    ...(native ? { native } : {})
   };
 }
 
@@ -237,6 +263,24 @@ async function runProviderProcess(command, args, { cwd, env, timeoutMs, input })
   });
 }
 
+function normalizeProviderFailureCode(raw, passed) {
+  if (passed || typeof raw !== 'string') return null;
+  const value = raw.trim();
+  return /^[A-Z][A-Z0-9_]{0,119}$/.test(value) ? value : null;
+}
+
+function normalizeProviderDiagnostics(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const output = {};
+  for (const [key, value] of Object.entries(raw).slice(0, 32)) {
+    if (!/^[A-Za-z][A-Za-z0-9_]{0,79}$/.test(key)) continue;
+    if (typeof value === 'boolean') output[key] = value;
+    else if (typeof value === 'number' && Number.isFinite(value)) output[key] = value;
+    else if (typeof value === 'string') output[key] = value.slice(0, 500);
+  }
+  return Object.keys(output).length ? output : null;
+}
+
 function normalizeAssertion(raw, index) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw errorWithCode(`Browser assertion ${index + 1} must be an object`, 'BROWSER_PROVIDER_RESULT_INVALID');
@@ -277,7 +321,9 @@ export function normalizeBrowserProviderResult(raw, baseUrl) {
     passed: raw.passed,
     summary: raw.summary === undefined || raw.summary === null ? '' : String(raw.summary).slice(0, 2000),
     assertions,
-    currentUrl
+    currentUrl,
+    failureCode: normalizeProviderFailureCode(raw.failureCode, raw.passed),
+    providerDiagnostics: normalizeProviderDiagnostics(raw.diagnostics)
   };
 }
 
@@ -342,7 +388,7 @@ export async function runBrowserValidation(browser, { cwd, serviceReadinessUrl =
   }
   try {
     const normalized = normalizeBrowserProviderResult(parsed, request.normalizedBaseUrl);
-    return { ...normalized, failureCode: normalized.passed ? null : 'BROWSER_ASSERTION_FAILED', diagnostics };
+    return { ...normalized, failureCode: normalized.passed ? null : (normalized.failureCode || 'BROWSER_ASSERTION_FAILED'), diagnostics };
   } catch (error) {
     return { passed: false, failureCode: error?.code || 'BROWSER_PROVIDER_RESULT_INVALID', summary: String(error?.message || error).slice(0, 1000), assertions: [], currentUrl: null, diagnostics };
   }
