@@ -1,8 +1,9 @@
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { CredentialBroker, normalizeCredentialReferences } from './credential-broker.mjs';
+import { signalProcessTree } from './process-lifecycle-authority.mjs';
 
 export const OBSERVABILITY_VALIDATION_CONTRACT = 'veteran-observability-validation-v1';
 
@@ -81,13 +82,7 @@ function capturedText(state) {
 
 function terminateTree(child) {
   if (!child?.pid) return;
-  if (process.platform === 'win32') {
-    spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
-    return;
-  }
-  try { process.kill(-child.pid, 'SIGKILL'); } catch {
-    try { child.kill('SIGKILL'); } catch {}
-  }
+  signalProcessTree(child.pid, 'SIGKILL');
 }
 
 function runProvider(command, args, { cwd, env, timeoutMs, input }) {
