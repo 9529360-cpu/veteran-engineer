@@ -15,11 +15,14 @@ const MAX_SCENARIO_BYTES = 256 * 1024;
 const MAX_STEPS = 256;
 const MAX_SCREENSHOTS = 32;
 const MAX_TIMEOUT_MS = 10 * 60_000;
+const MAX_WINDOW_DIMENSION = 32_768;
 const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_STEP_TIMEOUT_MS = 10_000;
-const ACTIONS = new Set(['waitForSurface', 'assertSurfaceCount', 'click', 'fill', 'press', 'assertVisible', 'assertText', 'assertValue', 'assertUrl', 'screenshot']);
+const ACTIONS = new Set(['waitForSurface', 'assertSurfaceCount', 'assertWindowState', 'click', 'fill', 'press', 'assertVisible', 'assertText', 'assertValue', 'assertUrl', 'screenshot']);
 const TARGET_TYPES = new Set(['window', 'webview']);
 const MATCH_MODES = new Set(['equals', 'contains']);
+const WINDOW_STATE_FIELDS = new Set(['visible', 'minimized', 'maximized', 'fullScreen', 'bounds']);
+const WINDOW_BOUND_FIELDS = new Set(['width', 'height']);
 const SAFE_ENV_KEYS = [
   'PATH', 'Path', 'PATHEXT', 'SystemRoot', 'WINDIR', 'COMSPEC',
   'TMPDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL', 'LC_CTYPE', 'SHELL',
@@ -120,6 +123,33 @@ function normalizeTarget(raw, index) {
   return Object.freeze({ type, index: targetIndex, ...(titleIncludes === null ? {} : { titleIncludes }), ...(urlIncludes === null ? {} : { urlIncludes }) });
 }
 
+function normalizeWindowStateExpectation(raw, index) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw electronError(`Electron scenario step ${index + 1} window state must be an object`, 'ELECTRON_SCENARIO_INVALID');
+  const keys = Object.keys(raw);
+  if (keys.length === 0 || keys.some((key) => !WINDOW_STATE_FIELDS.has(key))) throw electronError(`Electron scenario step ${index + 1} window state contains no supported expectations or an unknown field`, 'ELECTRON_SCENARIO_INVALID');
+  const output = {};
+  for (const key of ['visible', 'minimized', 'maximized', 'fullScreen']) {
+    if (raw[key] === undefined) continue;
+    if (typeof raw[key] !== 'boolean') throw electronError(`Electron scenario step ${index + 1} window state ${key} must be boolean`, 'ELECTRON_SCENARIO_INVALID');
+    output[key] = raw[key];
+  }
+  if (raw.bounds !== undefined) {
+    if (!raw.bounds || typeof raw.bounds !== 'object' || Array.isArray(raw.bounds)) throw electronError(`Electron scenario step ${index + 1} window state bounds must be an object`, 'ELECTRON_SCENARIO_INVALID');
+    const boundKeys = Object.keys(raw.bounds);
+    if (boundKeys.length === 0 || boundKeys.some((key) => !WINDOW_BOUND_FIELDS.has(key))) throw electronError(`Electron scenario step ${index + 1} window state bounds contains no supported expectations or an unknown field`, 'ELECTRON_SCENARIO_INVALID');
+    const bounds = {};
+    for (const key of ['width', 'height']) {
+      if (raw.bounds[key] === undefined) continue;
+      if (!Number.isInteger(raw.bounds[key]) || raw.bounds[key] < 1 || raw.bounds[key] > MAX_WINDOW_DIMENSION) throw electronError(`Electron scenario step ${index + 1} window state bounds ${key} must be an integer between 1 and ${MAX_WINDOW_DIMENSION}`, 'ELECTRON_SCENARIO_INVALID');
+      bounds[key] = raw.bounds[key];
+    }
+    if (Object.keys(bounds).length === 0) throw electronError(`Electron scenario step ${index + 1} window state bounds must include width or height`, 'ELECTRON_SCENARIO_INVALID');
+    output.bounds = Object.freeze(bounds);
+  }
+  if (Object.keys(output).length === 0) throw electronError(`Electron scenario step ${index + 1} window state must include at least one expectation`, 'ELECTRON_SCENARIO_INVALID');
+  return Object.freeze(output);
+}
+
 function normalizeStep(raw, index, defaultStepTimeoutMs) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw electronError(`Electron scenario step ${index + 1} must be an object`, 'ELECTRON_SCENARIO_INVALID');
   const action = String(raw.action || '');
@@ -136,6 +166,10 @@ function normalizeStep(raw, index, defaultStepTimeoutMs) {
     const count = Number(raw.count);
     if (!Number.isInteger(count) || count < 0 || count > MAX_SURFACES) throw electronError(`Electron scenario step ${index + 1} surface count must be between 0 and ${MAX_SURFACES}`, 'ELECTRON_SCENARIO_INVALID');
     step.count = count;
+  }
+  if (action === 'assertWindowState') {
+    if (target.type !== 'window') throw electronError(`Electron scenario step ${index + 1} window state assertions require a window target`, 'ELECTRON_SCENARIO_INVALID');
+    step.state = normalizeWindowStateExpectation(raw.state, index);
   }
   if (action === 'fill') step.value = boundedString(raw.value ?? '', 'Electron fill value', { max: 10000, allowEmpty: true });
   if (action === 'press') { step.key = boundedString(raw.key, 'Electron key', { max: 120 }); if (selector) step.selector = selector; }
