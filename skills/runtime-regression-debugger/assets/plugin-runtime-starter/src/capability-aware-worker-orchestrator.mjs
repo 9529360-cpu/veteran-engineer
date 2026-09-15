@@ -27,7 +27,7 @@ function readyWaveTasks(state, mission) {
 function predictedAdmission(state, mission, project, runWorkers) {
   const ready = readyWaveTasks(state, mission);
   const budget = missionExecutionCapacity({ state, mission, project, runWorkers });
-  return { ready, capacity: budget.capacity, selected: ready.slice(0, budget.capacity), budget };
+  return { ready, capacity: budget.capacity, budget };
 }
 
 function sameReservationConflicts(tasks, mission, project) {
@@ -163,7 +163,7 @@ export class CapabilityAwareWorkerOrchestrator {
       }
 
       const admission = predictedAdmission(state, mission, project, runWorkers);
-      if (!admission.selected.length) {
+      if (!admission.ready.length || admission.capacity === 0) {
         return {
           id: reservationId,
           missionId,
@@ -174,7 +174,9 @@ export class CapabilityAwareWorkerOrchestrator {
       }
 
       const blocked = [];
-      for (const task of admission.selected) {
+      const selected = [];
+      for (const task of admission.ready) {
+        if (selected.length >= admission.capacity) break;
         const projectWriteConflicts = activeProjectWriteConflicts({ state, mission, task });
         if (projectWriteConflicts.length) {
           blocked.push({ taskId: task.id, reason: 'project-write-conflict', conflicts: projectWriteConflicts });
@@ -196,19 +198,33 @@ export class CapabilityAwareWorkerOrchestrator {
           continue;
         }
         const conflicts = activeRuntimeResourceConflicts({ state, task, mission, project });
-        if (conflicts.length) blocked.push({ taskId: task.id, reason: 'runtime-resource-conflict', conflicts });
+        if (conflicts.length) {
+          blocked.push({ taskId: task.id, reason: 'runtime-resource-conflict', conflicts });
+          continue;
+        }
+        const sameReservation = sameReservationConflicts([...selected, task], mission, project)
+          .filter((entry) => entry.taskId === task.id);
+        if (sameReservation.length) {
+          blocked.push({ ...sameReservation[0], reason: 'same-admission-resource-conflict' });
+          continue;
+        }
+        selected.push(task);
       }
-      blocked.push(...sameReservationConflicts(admission.selected, mission, project).map((entry) => ({
-        ...entry,
-        reason: 'same-admission-resource-conflict'
-      })));
 
-      if (blocked.length) {
-        state.runtime.timeline.push({ type: 'capability_execution_blocked', missionId, taskIds: admission.selected.map((task) => task.id), blocked, at: nowIso() });
-        return { id: reservationId, missionId, taskIds: [], blocked, reason: 'capability-preflight-blocked' };
+      if (!selected.length) {
+        if (blocked.length) {
+          state.runtime.timeline.push({ type: 'capability_execution_blocked', missionId, taskIds: admission.ready.map((task) => task.id), blocked, at: nowIso() });
+        }
+        return {
+          id: reservationId,
+          missionId,
+          taskIds: [],
+          blocked,
+          reason: blocked.length ? 'capability-preflight-blocked' : 'no-ready-planned-tasks'
+        };
       }
 
-      const leases = admission.selected.map((task) => {
+      const leases = selected.map((task) => {
         const executionProfile = runWorkers ? workerCapabilityProfile(project, task) : null;
         const lease = {
           id: randomId('lease'),
@@ -227,8 +243,25 @@ export class CapabilityAwareWorkerOrchestrator {
         task.updatedAt = nowIso();
         return lease;
       });
-      state.runtime.timeline.push({ type: 'capability_execution_reserved', missionId, reservationId, taskIds: admission.selected.map((task) => task.id), at: nowIso() });
-      return { id: reservationId, missionId, taskIds: admission.selected.map((task) => task.id), leases, blocked: [], reason: null };
+      if (blocked.length) {
+        state.runtime.timeline.push({
+          type: 'capability_execution_partially_blocked',
+          missionId,
+          reservationId,
+          admittedTaskIds: selected.map((task) => task.id),
+          blocked,
+          at: nowIso()
+        });
+      }
+      state.runtime.timeline.push({ type: 'capability_execution_reserved', missionId, reservationId, taskIds: selected.map((task) => task.id), at: nowIso() });
+      return {
+        id: reservationId,
+        missionId,
+        taskIds: selected.map((task) => task.id),
+        leases,
+        blocked,
+        reason: blocked.length ? 'capability-preflight-partial' : null
+      };
     }, { missionId, runWorkers, reservationId });
   }
 
@@ -328,7 +361,11 @@ export class CapabilityAwareWorkerOrchestrator {
 
     await this.#reconcileReservation(reservation, 'delegate-returned');
     const capabilitySnapshot = await this.#snapshotAfterExecution(args.missionId, preflightSnapshot);
-    return { ...result, capabilitySnapshot };
+    return {
+      ...result,
+      ...(reservation.blocked.length ? { capabilityBlocked: reservation.blocked } : {}),
+      capabilitySnapshot
+    };
   }
 
   async commitExternalTaskResult(args) {
