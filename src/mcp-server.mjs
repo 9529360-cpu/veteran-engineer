@@ -5,6 +5,7 @@ import { createVeteranApp } from './app.mjs';
 import { RUNTIME_NAME, RUNTIME_VERSION, LEGACY_PROTOCOL_VERSION } from './constants.mjs';
 import { MCP_TRANSPORT_MODES } from './mcp-protocol-capability.mjs';
 import { TOOL_DEFINITIONS, toolInputJsonSchema, toolInputZodSchema } from './tool-catalog.mjs';
+import { toolOutputJsonSchema, toolOutputStructuredContent, toolOutputZodSchema } from './tool-output-contracts.mjs';
 import { toolAnnotations } from './tool-annotations.mjs';
 import { inspectMcpSdkIntegrity, assertMcpSdkIntegrity } from './mcp-sdk-integrity.mjs';
 
@@ -41,11 +42,15 @@ async function createOfficialSdkServerFactory({ stateRoot, configPath }) {
       server.registerTool(tool.name, {
         description: tool.description,
         inputSchema: toolInputZodSchema(z, tool.name),
+        outputSchema: toolOutputZodSchema(z, tool.name),
         annotations: toolAnnotations(tool.name)
       }, async (args) => {
         try {
           const result = await app.callTool(tool.name, args || {});
-          return { content: [{ type: 'text', text: jsonSafe(result) }] };
+          return {
+            content: [{ type: 'text', text: jsonSafe(result) }],
+            structuredContent: toolOutputStructuredContent(tool.name, result)
+          };
         } catch (error) {
           return { isError: true, content: [{ type: 'text', text: jsonSafe(errorPayload(error)) }] };
         }
@@ -83,13 +88,22 @@ async function startFallback({ stateRoot, configPath }) {
             instructions: 'Veteran Engineer standalone fallback: legacy MCP 2025 only.'
           });
         } else if (message.method === 'tools/list') {
-          success(message.id, { tools: TOOL_DEFINITIONS.map((tool) => ({ name: tool.name, description: tool.description, inputSchema: toolInputJsonSchema(tool.name), annotations: toolAnnotations(tool.name) })) });
+          success(message.id, { tools: TOOL_DEFINITIONS.map((tool) => ({
+            name: tool.name,
+            description: tool.description,
+            inputSchema: toolInputJsonSchema(tool.name),
+            outputSchema: toolOutputJsonSchema(tool.name, { legacyEnvelope: true }),
+            annotations: toolAnnotations(tool.name)
+          })) });
         } else if (message.method === 'tools/call') {
           const name = message.params?.name;
           const args = message.params?.arguments || {};
           try {
             const result = await app.callTool(name, args);
-            success(message.id, { content: [{ type: 'text', text: jsonSafe(result) }] });
+            success(message.id, {
+              content: [{ type: 'text', text: jsonSafe(result) }],
+              structuredContent: toolOutputStructuredContent(name, result, { legacyEnvelope: true })
+            });
           } catch (error) {
             success(message.id, { isError: true, content: [{ type: 'text', text: jsonSafe(errorPayload(error)) }] });
           }
