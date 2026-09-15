@@ -142,7 +142,8 @@ test('mission resume refuses to reconcile while this runtime still owns mission 
       }),
       (error) => {
         assert.equal(error?.code, 'MISSION_EXECUTION_ACTIVE');
-        assert.equal(error?.details?.activeExecutionCalls, 1);
+        assert.equal(error?.details?.backendKind, 'local-json');
+        assert.equal(error?.details?.owner?.pid, process.pid);
         return true;
       }
     );
