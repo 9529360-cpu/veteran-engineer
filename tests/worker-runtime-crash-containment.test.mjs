@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import test from 'node:test';
-import { cleanup, tempDir } from './helpers.mjs';
+import { cleanup, processRunning, tempDir, waitForProcessStopped } from './helpers.mjs';
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -36,22 +36,8 @@ async function waitForMissing(file, timeoutMs = 4_000) {
   throw new Error(`Timed out waiting for ${file} to be removed`);
 }
 
-function processAlive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    if (error?.code === 'ESRCH') return false;
-    throw error;
-  }
-}
-
 async function waitForProcessExit(pid, timeoutMs = 4_000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (!processAlive(pid)) return;
-    await sleep(25);
-  }
+  if (await waitForProcessStopped(pid, { timeoutMs })) return;
   throw new Error(`Timed out waiting for process ${pid} to exit`);
 }
 
@@ -65,7 +51,7 @@ async function assertHeartbeatStopped(file) {
 
 async function killIfAlive(pid) {
   try {
-    if (Number.isInteger(pid) && pid > 0 && processAlive(pid)) process.kill(pid, 'SIGKILL');
+    if (await processRunning(pid)) process.kill(pid, 'SIGKILL');
   } catch {}
 }
 
@@ -122,8 +108,8 @@ test('SIGKILL of the runtime parent cannot leave supervised worker descendants o
     workerPid = Number(await fs.readFile(workerPidFile, 'utf8'));
     grandchildPid = Number(await fs.readFile(grandchildPidFile, 'utf8'));
     runtimeProfileRoot = await fs.readFile(runtimeProfileRootFile, 'utf8');
-    assert.equal(processAlive(workerPid), true);
-    assert.equal(processAlive(grandchildPid), true);
+    assert.equal(await processRunning(workerPid), true);
+    assert.equal(await processRunning(grandchildPid), true);
     await fs.access(runtimeProfileRoot);
 
     harness.kill('SIGKILL');
