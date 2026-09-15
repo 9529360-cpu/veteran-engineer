@@ -2,6 +2,11 @@ import { spawn, spawnSync } from 'node:child_process';
 import { rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import {
+  PROCESS_LIFECYCLE_STATE,
+  probeProcessGroup,
+  signalProcessTree
+} from './process-lifecycle-authority.mjs';
 
 const FORCE_KILL_AFTER_MS = 3_000;
 const RUNTIME_PROFILE_PREFIX = 'veteran-engineer-';
@@ -32,37 +37,6 @@ let workerTreeReaped = false;
 
 process.stdout.on('error', () => {});
 process.stderr.on('error', () => {});
-
-function killProcessTree(pid, signal = 'SIGTERM') {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  if (process.platform === 'win32') {
-    const args = ['/PID', String(pid), '/T'];
-    if (signal === 'SIGKILL') args.push('/F');
-    const result = spawnSync('taskkill', args, { stdio: 'ignore', windowsHide: true });
-    return result.status === 0;
-  }
-  try {
-    process.kill(-pid, signal);
-    return true;
-  } catch {
-    try {
-      process.kill(pid, signal);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-}
-
-function processGroupAlive(pid) {
-  if (process.platform === 'win32' || !Number.isInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(-pid, 0);
-    return true;
-  } catch (error) {
-    return error?.code === 'EPERM';
-  }
-}
 
 function cleanupContainer() {
   if (!container?.engine || !container?.name) return;
@@ -105,7 +79,7 @@ function cleanupRuntimeProfile() {
 function scheduleForceKill() {
   if (forceTimer || !worker?.pid) return;
   forceTimer = setTimeout(() => {
-    killProcessTree(worker.pid, 'SIGKILL');
+    signalProcessTree(worker.pid, 'SIGKILL');
     cleanupContainer();
   }, FORCE_KILL_AFTER_MS);
 }
@@ -115,7 +89,7 @@ function terminateWorker(signal = 'SIGTERM') {
   else if (!pendingSignal) pendingSignal = 'SIGTERM';
   if (!worker?.pid) return false;
   const effectiveSignal = pendingSignal === 'SIGKILL' ? 'SIGKILL' : signal;
-  const signalled = killProcessTree(worker.pid, effectiveSignal);
+  const signalled = signalProcessTree(worker.pid, effectiveSignal).signalled;
   cleanupContainer();
   if (effectiveSignal !== 'SIGKILL' && signalled) scheduleForceKill();
   return signalled;
@@ -166,7 +140,7 @@ function reapExitedWorkerGroup(pid) {
     return;
   }
 
-  const signalled = killProcessTree(pid, 'SIGTERM');
+  const signalled = signalProcessTree(pid, 'SIGTERM').signalled;
   if (process.platform === 'win32') {
     // taskkill /T is the strongest available best effort after the root process exits.
     markWorkerTreeReaped();
@@ -175,7 +149,8 @@ function reapExitedWorkerGroup(pid) {
   if (signalled) scheduleForceKill();
 
   const poll = () => {
-    if (!processGroupAlive(pid)) {
+    const probe = probeProcessGroup(pid);
+    if (probe.state === PROCESS_LIFECYCLE_STATE.MISSING) {
       markWorkerTreeReaped();
       return;
     }
