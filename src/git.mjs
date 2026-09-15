@@ -5,6 +5,7 @@ import { DEFAULT_COMMAND_TIMEOUT_MS } from './constants.mjs';
 import { errorWithCode, normalizePathList, within } from './util.mjs';
 
 const SAFE_SUBPROCESS_ENV_KEYS = ['PATH', 'HOME', 'USERPROFILE', 'TMP', 'TEMP', 'TMPDIR', 'SYSTEMROOT', 'COMSPEC', 'LANG', 'LC_ALL', 'SHELL'];
+const DEFAULT_REMOTE_BRANCH_CANDIDATES = ['main', 'master'];
 
 export function allowlistedProcessEnvironment(extraKeys = [], source = process.env) {
   if (!Array.isArray(extraKeys) || extraKeys.some((key) => typeof key !== 'string' || !key.trim())) {
@@ -74,6 +75,107 @@ export async function sourceIdentity(repo) {
     dirty: dirtyPaths.length > 0,
     dirtyPaths: normalizePathList(dirtyPaths)
   };
+}
+
+async function verifiedRefHead(repo, ref) {
+  const result = await git(repo, ['rev-parse', '--verify', ref], { allowFailure: true });
+  const head = result.code === 0 ? result.stdout.trim() : '';
+  return /^[0-9a-f]{40,64}$/i.test(head) ? head : null;
+}
+
+export async function repositorySourceAuthority(repo, { observedIdentity = null, remote = 'origin' } = {}) {
+  const observed = observedIdentity || await sourceIdentity(repo);
+  const remoteUrl = await git(repo, ['remote', 'get-url', remote], { allowFailure: true });
+  let remoteRef = null;
+  let head = null;
+
+  if (remoteUrl.code === 0 && remoteUrl.stdout.trim()) {
+    const symbolic = await git(repo, ['symbolic-ref', '-q', `refs/remotes/${remote}/HEAD`], { allowFailure: true });
+    const symbolicRef = symbolic.code === 0 ? symbolic.stdout.trim() : '';
+    if (symbolicRef) {
+      const symbolicHead = await verifiedRefHead(repo, symbolicRef);
+      if (symbolicHead) {
+        remoteRef = symbolicRef;
+        head = symbolicHead;
+      }
+    }
+    if (!remoteRef) {
+      for (const branch of DEFAULT_REMOTE_BRANCH_CANDIDATES) {
+        const candidate = `refs/remotes/${remote}/${branch}`;
+        const candidateHead = await verifiedRefHead(repo, candidate);
+        if (!candidateHead) continue;
+        remoteRef = candidate;
+        head = candidateHead;
+        break;
+      }
+    }
+  }
+
+  const observedProjection = {
+    head: observed.head,
+    branch: observed.branch,
+    dirty: observed.dirty
+  };
+  if (remoteRef && head) {
+    const prefix = `refs/remotes/${remote}/`;
+    const branch = remoteRef.startsWith(prefix) ? remoteRef.slice(prefix.length) : remoteRef;
+    return {
+      contract: 'veteran-source-authority-v1',
+      scope: 'remote-default',
+      remote,
+      ref: remoteRef,
+      head,
+      branch,
+      dirty: false,
+      dirtyPaths: [],
+      aligned: observed.head === head && !observed.dirty,
+      observed: observedProjection
+    };
+  }
+
+  return {
+    contract: 'veteran-source-authority-v1',
+    scope: 'checkout',
+    remote: null,
+    ref: 'HEAD',
+    head: observed.head,
+    branch: observed.branch,
+    dirty: observed.dirty,
+    dirtyPaths: observed.dirtyPaths,
+    aligned: !observed.dirty,
+    observed: observedProjection
+  };
+}
+
+export function sourceIdentityFromAuthority(authority) {
+  return {
+    head: authority.head,
+    branch: authority.branch || null,
+    dirty: authority.dirty === true,
+    dirtyPaths: normalizePathList(authority.dirtyPaths || [])
+  };
+}
+
+export function sameSourceAuthorityLineage(left, right) {
+  if (!left || !right) return false;
+  return left.scope === right.scope
+    && (left.remote || null) === (right.remote || null)
+    && (left.ref || null) === (right.ref || null);
+}
+
+export async function withDetachedWorktree(repo, commitSha, target, callback) {
+  if (typeof callback !== 'function') throw new TypeError('withDetachedWorktree requires a callback');
+  const resolvedTarget = path.resolve(target);
+  await fs.rm(resolvedTarget, { recursive: true, force: true });
+  await fs.mkdir(path.dirname(resolvedTarget), { recursive: true });
+  await git(repo, ['worktree', 'add', '--detach', resolvedTarget, commitSha]);
+  try {
+    return await callback(resolvedTarget);
+  } finally {
+    await git(repo, ['worktree', 'remove', '--force', resolvedTarget], { allowFailure: true });
+    await fs.rm(resolvedTarget, { recursive: true, force: true });
+    await git(repo, ['worktree', 'prune', '--expire', 'now'], { allowFailure: true });
+  }
 }
 
 export async function changedPaths(repo, base = 'HEAD') {

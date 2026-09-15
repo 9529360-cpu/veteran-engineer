@@ -1,4 +1,10 @@
-import { git, sourceIdentity } from './git.mjs';
+import {
+  git,
+  repositorySourceAuthority,
+  sameSourceAuthorityLineage,
+  sourceIdentity,
+  sourceIdentityFromAuthority
+} from './git.mjs';
 import { isStateCommitAuditOutcomeUnknown } from './state-backend-durability-contract.mjs';
 import { nowIso, randomId } from './util.mjs';
 
@@ -32,12 +38,45 @@ export class CandidateService {
   async preflight({ missionId }) {
     const { mission } = await this.missionService.status({ missionId });
     const project = await this.projectService.get(mission.projectId);
-    const live = await sourceIdentity(project.repoPath);
-    if (live.dirty) throw Object.assign(new Error('Dirty source checkout blocks candidate preflight'), { code: 'DIRTY_SOURCE_BLOCKED', details: live.dirtyPaths });
+    const observed = await sourceIdentity(project.repoPath);
+    const sourceAuthority = mission.baseSourceAuthority
+      ? await repositorySourceAuthority(project.repoPath, { observedIdentity: observed })
+      : null;
+    if (mission.baseSourceAuthority && !sameSourceAuthorityLineage(mission.baseSourceAuthority, sourceAuthority)) {
+      throw Object.assign(new Error('Repository source authority changed after the mission was planned'), {
+        code: 'SOURCE_AUTHORITY_CHANGED',
+        details: {
+          expected: {
+            scope: mission.baseSourceAuthority.scope,
+            remote: mission.baseSourceAuthority.remote || null,
+            ref: mission.baseSourceAuthority.ref || null
+          },
+          actual: {
+            scope: sourceAuthority?.scope || null,
+            remote: sourceAuthority?.remote || null,
+            ref: sourceAuthority?.ref || null
+          }
+        }
+      });
+    }
+    const live = sourceAuthority ? sourceIdentityFromAuthority(sourceAuthority) : observed;
+    const checkoutIsAuthority = !mission.baseSourceAuthority || mission.baseSourceAuthority.scope === 'checkout';
+    if (checkoutIsAuthority && observed.dirty) {
+      throw Object.assign(new Error('Dirty source checkout blocks candidate preflight'), { code: 'DIRTY_SOURCE_BLOCKED', details: observed.dirtyPaths });
+    }
     const missionWt = await this.worktreeManager.ensureMissionWorktree(project, mission);
     const missionHead = (await git(missionWt.path, ['rev-parse', 'HEAD'])).stdout.trim();
     if (live.head === mission.baseSourceIdentity.head) {
-      return { ok: true, sourceDrift: false, sourceHead: live.head, sourceBranch: live.branch, missionHead, candidateHead: missionHead, mergeTree: null };
+      return {
+        ok: true,
+        sourceDrift: false,
+        sourceHead: live.head,
+        sourceBranch: live.branch,
+        sourceAuthority,
+        missionHead,
+        candidateHead: missionHead,
+        mergeTree: null
+      };
     }
     const merge = await git(project.repoPath, ['merge-tree', '--write-tree', live.head, missionHead], { allowFailure: true });
     const mergeTree = parseMergeTree(merge.stdout);
@@ -46,6 +85,7 @@ export class CandidateService {
       sourceDrift: true,
       sourceHead: live.head,
       sourceBranch: live.branch,
+      sourceAuthority,
       missionHead,
       mergeTree,
       conflictOutput: merge.code === 0 ? null : `${merge.stdout}\n${merge.stderr}`.slice(0, 8000)
@@ -73,6 +113,7 @@ export class CandidateService {
       ref,
       sourceHead: preflight.sourceHead,
       sourceBranch: preflight.sourceBranch || null,
+      sourceAuthority: preflight.sourceAuthority || null,
       missionHead: preflight.missionHead,
       sourceDrift: preflight.sourceDrift,
       reason,
