@@ -1,0 +1,193 @@
+name: Release
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - ".github/release-intent.json"
+      - ".codex-plugin/plugin.json"
+      - "package.json"
+      - "package-lock.json"
+      - "src/constants.mjs"
+      - "scripts/release-contract.mjs"
+      - "scripts/release-candidate.mjs"
+      - "tests/release-contract.test.mjs"
+      - "skills/runtime-regression-debugger/**"
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+    paths:
+      - ".github/release-intent.json"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  dry-run:
+    name: Release candidate dry run
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --include=optional
+      - name: Validate release authorities
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f .github/release-intent.json ]; then
+            node scripts/release-contract.mjs --intent .github/release-intent.json
+          else
+            node scripts/release-contract.mjs
+          fi
+      - name: Run full validation
+        run: npm run check
+      - name: Build reproducible release candidate
+        run: node scripts/release-candidate.mjs --output dist --commit "$GITHUB_SHA"
+      - name: Verify release candidate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          for checksum in veteran-engineer-*.sha256; do
+            sha256sum -c "$checksum"
+          done
+
+  publish:
+    name: Publish release
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout exact release source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --include=optional
+      - name: Resolve release trigger
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "VETERAN_RELEASE_TAG=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+            echo "VETERAN_RELEASE_INTENT=" >> "$GITHUB_ENV"
+            echo "VETERAN_RELEASE_CREATE_TAG=false" >> "$GITHUB_ENV"
+          else
+            test -f .github/release-intent.json
+            VERSION="$(node -e "const fs=require('fs'); const v=JSON.parse(fs.readFileSync('.github/release-intent.json','utf8')).version; if(typeof v!=='string'||!v) process.exit(1); process.stdout.write(v)")"
+            echo "VETERAN_RELEASE_TAG=v$VERSION" >> "$GITHUB_ENV"
+            echo "VETERAN_RELEASE_INTENT=.github/release-intent.json" >> "$GITHUB_ENV"
+            echo "VETERAN_RELEASE_CREATE_TAG=true" >> "$GITHUB_ENV"
+          fi
+      - name: Validate tag and release authorities
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "$VETERAN_RELEASE_INTENT" ]; then
+            node scripts/release-contract.mjs --tag "$VETERAN_RELEASE_TAG" --intent "$VETERAN_RELEASE_INTENT"
+          else
+            node scripts/release-contract.mjs --tag "$VETERAN_RELEASE_TAG"
+          fi
+      - name: Run full validation
+        run: npm run check
+      - name: Build reproducible release candidate
+        run: node scripts/release-candidate.mjs --output dist --tag "$VETERAN_RELEASE_TAG" --commit "$GITHUB_SHA"
+      - name: Verify local candidate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          for checksum in veteran-engineer-*.sha256; do
+            sha256sum -c "$checksum"
+          done
+      - name: Create or repair draft release
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="$VETERAN_RELEASE_TAG"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            test "$(gh release view "$TAG" --json isDraft --jq '.isDraft')" = "true"
+            git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+            test "$(git rev-list -n 1 "$TAG")" = "$GITHUB_SHA"
+            gh release upload "$TAG" dist/* --clobber
+          elif git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+            test "$(git rev-list -n 1 "$TAG")" = "$GITHUB_SHA"
+            gh release create "$TAG" dist/* \
+              --verify-tag \
+              --draft \
+              --generate-notes \
+              --title "Veteran Engineer ${TAG#v}"
+          elif [ "$VETERAN_RELEASE_CREATE_TAG" = "true" ]; then
+            gh release create "$TAG" dist/* \
+              --target "$GITHUB_SHA" \
+              --draft \
+              --generate-notes \
+              --title "Veteran Engineer ${TAG#v}"
+          else
+            echo "Expected release tag $TAG does not exist" >&2
+            exit 1
+          fi
+      - name: Verify draft assets before publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf verify-release
+          mkdir verify-release
+          gh release download "$VETERAN_RELEASE_TAG" --dir verify-release --pattern 'veteran-engineer-*'
+          cd verify-release
+          for checksum in veteran-engineer-*.sha256; do
+            sha256sum -c "$checksum"
+          done
+          cmp veteran-engineer-release-manifest.json ../dist/veteran-engineer-release-manifest.json
+      - name: Publish release
+        run: gh release edit "$VETERAN_RELEASE_TAG" --draft=false --latest
+      - name: Verify public release bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          verify_public() {
+            local release_json
+            release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VETERAN_RELEASE_TAG")"
+            jq -e '.draft == false and .prerelease == false' <<<"$release_json" >/dev/null
+            rm -rf public-release
+            mkdir public-release
+            while IFS=$'\t' read -r name url; do
+              curl --fail --silent --show-error --location --retry 5 --retry-delay 2 "$url" -o "public-release/$name"
+            done < <(jq -r '.assets[] | select(.name | startswith("veteran-engineer-")) | [.name, .browser_download_url] | @tsv' <<<"$release_json")
+            (
+              cd public-release
+              for checksum in veteran-engineer-*.sha256; do
+                sha256sum -c "$checksum"
+              done
+            )
+            cmp public-release/veteran-engineer-release-manifest.json dist/veteran-engineer-release-manifest.json
+          }
+          if ! verify_public; then
+            gh release edit "$VETERAN_RELEASE_TAG" --draft || true
+            exit 1
+          fi
