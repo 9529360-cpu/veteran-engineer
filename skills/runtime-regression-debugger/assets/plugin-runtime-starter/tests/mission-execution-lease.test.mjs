@@ -3,7 +3,7 @@ import test from 'node:test';
 import { createVeteranApp } from '../src/app.mjs';
 import { cleanup, createGitRepo } from './helpers.mjs';
 
-test('mission execution lease fences restart reconciliation across runtime instances', async () => {
+test('mission execution lease fences restart reconciliation and advance across runtime instances', async () => {
   const fixture = await createGitRepo({ files: { 'src/a.txt': 'a\n' } });
   let lease = null;
   try {
@@ -16,7 +16,7 @@ test('mission execution lease fences restart reconciliation across runtime insta
       requestId: 'execution-lease-plan',
       projectId: project.id,
       goal: 'keep one runtime authoritative for mission execution',
-      doneDefinition: 'a second runtime cannot run restart reconciliation while execution authority is leased',
+      doneDefinition: 'a second runtime cannot reconcile or advance execution while authority is leased',
       tasks: [{ id: 'T1', contract: 'own src/a.txt', owner: 'src/a.txt', dependencies: [], writeSet: ['src/a.txt'], risk: 'low' }]
     });
     const missionId = planned.mission.id;
@@ -35,6 +35,16 @@ test('mission execution lease fences restart reconciliation across runtime insta
         assert.equal(error?.details?.backendKind, 'local-json');
         return true;
       }
+    );
+    await assert.rejects(
+      app2.callTool('mission_advance', {
+        requestId: 'execution-lease-advance-blocked',
+        missionId,
+        runWorkers: false
+      }),
+      (error) => error?.code === 'MISSION_EXECUTION_ACTIVE'
+        && error?.details?.missionId === missionId
+        && error?.details?.operation === 'mission-advance-execution'
     );
 
     const blockedStatus = await app2.services.missionService.status({ missionId });

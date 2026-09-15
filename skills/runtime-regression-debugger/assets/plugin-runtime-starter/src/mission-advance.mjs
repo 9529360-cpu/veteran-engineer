@@ -1,5 +1,6 @@
 import { nowIso, randomId } from './util.mjs';
 import { git } from './git.mjs';
+import { MissionExecutionLeaseManager } from './mission-execution-lease.mjs';
 
 function proofFreshForCandidate(mission, candidate) {
   return ['passed', 'skipped'].includes(mission.validation.status)
@@ -23,6 +24,7 @@ function proposalMatches(proposal, { missionId, candidate, preflight }) {
 export class MissionAdvanceService {
   constructor({ store, projectService, missionService, worktreeManager, workerOrchestrator, validationService, reviewService, candidateService, evidenceService }) {
     Object.assign(this, { store, projectService, missionService, worktreeManager, workerOrchestrator, validationService, reviewService, candidateService, evidenceService });
+    this.missionExecutionLeaseManager = new MissionExecutionLeaseManager({ store });
   }
 
   async ensureMergeProposalEvidence({ proposal, project, preflight }) {
@@ -47,9 +49,14 @@ export class MissionAdvanceService {
     if (mission.status === 'cancelled') throw Object.assign(new Error('Mission is cancelled'), { code: 'MISSION_CANCELLED' });
     if (mission.interruption?.requiresReconciliation) throw Object.assign(new Error('Mission requires interruption reconciliation before advance'), { code: 'RECONCILIATION_REQUIRED' });
     if (mission.phase === 'execution') {
-      const result = await this.workerOrchestrator.execute({ missionId, runWorkers });
-      const after = (await this.missionService.status({ missionId })).mission;
-      return { action: 'execution', result, nextPhase: after.phase };
+      const executionLease = await this.missionExecutionLeaseManager.acquire({ missionId, operation: 'mission-advance-execution' });
+      try {
+        const result = await this.workerOrchestrator.execute({ missionId, runWorkers });
+        const after = (await this.missionService.status({ missionId })).mission;
+        return { action: 'execution', result, nextPhase: after.phase };
+      } finally {
+        await executionLease.release();
+      }
     }
     const project = await this.projectService.get(mission.projectId);
     const candidateId = mission.activeCandidateId;
