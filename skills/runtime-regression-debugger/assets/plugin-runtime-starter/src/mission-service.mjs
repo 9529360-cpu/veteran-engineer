@@ -1,5 +1,15 @@
+import path from 'node:path';
 import { RISK_LEVELS } from './constants.mjs';
-import { allowlistedProcessEnvironment, runProcess, sourceIdentity, writeSetsConflict } from './git.mjs';
+import {
+  allowlistedProcessEnvironment,
+  repositorySourceAuthority,
+  runProcess,
+  sameSourceAuthorityLineage,
+  sourceIdentity,
+  sourceIdentityFromAuthority,
+  withDetachedWorktree,
+  writeSetsConflict
+} from './git.mjs';
 import { normalizeTaskCapabilityContract, runtimeResourcesConflict } from './capability-plane.mjs';
 import {
   assessTaskRisk,
@@ -160,78 +170,111 @@ export class MissionService {
     if (!RISK_LEVELS.includes(riskEnvelope)) throw new Error(`Invalid mission risk envelope: ${riskEnvelope}`);
     if (!String(goal || '').trim() || !String(doneDefinition || '').trim()) throw new Error('goal and doneDefinition are required');
 
+    const missionId = randomId('mission');
     const project = await this.projectService.snapshot({ projectId });
-    const live = project.sourceIdentity || await sourceIdentity(project.repoPath);
-    if (live.dirty) {
-      const error = new Error('Cannot plan a mission from a dirty source checkout; HEAD alone is not complete source identity.');
+    const observed = project.sourceIdentity || await sourceIdentity(project.repoPath);
+    const sourceAuthority = project.sourceAuthority || await repositorySourceAuthority(project.repoPath, { observedIdentity: observed });
+    const baseSourceIdentity = sourceIdentityFromAuthority(sourceAuthority);
+    if (sourceAuthority.scope === 'checkout' && baseSourceIdentity.dirty) {
+      const error = new Error('Cannot plan a mission from a dirty checkout when no stronger repository source authority is available.');
       error.code = 'DIRTY_SOURCE_BLOCKED';
-      error.details = live.dirtyPaths;
+      error.details = baseSourceIdentity.dirtyPaths;
       throw error;
     }
 
     const projectState = await this.store.read();
-    const continuity = buildProjectContinuitySnapshot({ state: projectState, projectId, liveHead: live.head });
+    const continuity = buildProjectContinuitySnapshot({ state: projectState, projectId, liveHead: baseSourceIdentity.head });
     const experience = this.experienceService
-      ? await this.experienceService.route({ projectId, sourceHead: live.head, role: 'planner', limit: 8 })
+      ? await this.experienceService.route({ projectId, sourceHead: baseSourceIdentity.head, role: 'planner', limit: 8 })
       : { role: 'planner', items: [], excludedConflicts: 0, precedence: 'Current repository/runtime evidence outranks project experience.' };
     let proposedTasks = tasks;
     let plannerEvidenceId = null;
     if (!Array.isArray(proposedTasks) || proposedTasks.length === 0) {
       const provider = project.plannerProvider || null;
       if (!provider?.command) throw new Error('mission requires at least one task or an operator-configured plannerProvider');
-      const payload = {
-        protocol: 'veteran-planner-v1',
-        project: { id: project.id, repoPath: project.repoPath, sourceIdentity: live },
-        mission: { goal: String(goal).trim(), doneDefinition: String(doneDefinition).trim(), nonGoals: nonGoals.map(String), riskEnvelope, riskEnvelopeSource },
-        projectAwareness: plannerProjectAwareness(project, continuity),
-        projectExperience: experience.items,
-        experiencePrecedence: experience.precedence,
-        limits: { maxTasks: 64 }
-      };
-      const providerEnv = allowlistedProcessEnvironment(provider.envAllowlist || []);
-      const providerSecrets = (provider.envAllowlist || [])
-        .map((key) => providerEnv[key.trim()])
-        .filter((value) => typeof value === 'string' && value.length > 0);
-      const result = await runProcess(provider.command, provider.args || [], {
-        cwd: project.repoPath,
-        env: providerEnv,
-        inheritEnv: false,
-        input: JSON.stringify(payload),
-        allowFailure: true,
-        timeoutMs: provider.timeoutMs || 180_000
-      });
-      let parsed = null;
-      try { parsed = redactKnownSecrets(JSON.parse(result.stdout), providerSecrets); } catch { }
-      const safeStderr = redactKnownSecrets(result.stderr, providerSecrets);
-      if (result.code !== 0 || !Array.isArray(parsed?.tasks) || parsed.tasks.length === 0 || parsed.tasks.length > 64) {
-        const error = new Error('Planner provider failed or returned an invalid task graph');
-        error.code = 'PLANNER_PROVIDER_FAILED';
-        error.details = { exitCode: result.code, stderr: safeStderr.slice(0, 2000), taskCount: Array.isArray(parsed?.tasks) ? parsed.tasks.length : null };
-        throw error;
-      }
-      proposedTasks = parsed.tasks;
-      if (this.evidenceService) {
-        const evidence = await this.evidenceService.record({
-          projectId,
-          type: 'planner-provider',
-          summary: {
-            exitCode: result.code,
-            taskCount: proposedTasks.length,
-            experienceIds: experience.items.map((item) => item.id),
-            activeProjectMissionCount: continuity.activeMissionCount
+
+      const invokePlanner = async (plannerRepoPath) => {
+        const plannerProject = {
+          ...project,
+          repoPath: plannerRepoPath,
+          sourceIdentity: baseSourceIdentity,
+          sourceAuthority
+        };
+        const payload = {
+          protocol: 'veteran-planner-v1',
+          project: {
+            id: project.id,
+            repoPath: plannerRepoPath,
+            checkoutRepoPath: project.repoPath,
+            sourceIdentity: baseSourceIdentity,
+            sourceAuthority,
+            observedSourceIdentity: observed
           },
-          sourceIdentity: live,
-          artifact: `${JSON.stringify(parsed, null, 2)}\n--- stderr ---\n${safeStderr}`
+          mission: { goal: String(goal).trim(), doneDefinition: String(doneDefinition).trim(), nonGoals: nonGoals.map(String), riskEnvelope, riskEnvelopeSource },
+          projectAwareness: plannerProjectAwareness(plannerProject, continuity),
+          projectExperience: experience.items,
+          experiencePrecedence: experience.precedence,
+          limits: { maxTasks: 64 }
+        };
+        const providerEnv = allowlistedProcessEnvironment(provider.envAllowlist || []);
+        const providerSecrets = (provider.envAllowlist || [])
+          .map((key) => providerEnv[key.trim()])
+          .filter((value) => typeof value === 'string' && value.length > 0);
+        const result = await runProcess(provider.command, provider.args || [], {
+          cwd: plannerRepoPath,
+          env: providerEnv,
+          inheritEnv: false,
+          input: JSON.stringify(payload),
+          allowFailure: true,
+          timeoutMs: provider.timeoutMs || 180_000
         });
-        plannerEvidenceId = evidence.id;
-      }
+        let parsed = null;
+        try { parsed = redactKnownSecrets(JSON.parse(result.stdout), providerSecrets); } catch { }
+        const safeStderr = redactKnownSecrets(result.stderr, providerSecrets);
+        if (result.code !== 0 || !Array.isArray(parsed?.tasks) || parsed.tasks.length === 0 || parsed.tasks.length > 64) {
+          const error = new Error('Planner provider failed or returned an invalid task graph');
+          error.code = 'PLANNER_PROVIDER_FAILED';
+          error.details = { exitCode: result.code, stderr: safeStderr.slice(0, 2000), taskCount: Array.isArray(parsed?.tasks) ? parsed.tasks.length : null };
+          throw error;
+        }
+        let evidenceId = null;
+        if (this.evidenceService) {
+          const evidence = await this.evidenceService.record({
+            projectId,
+            type: 'planner-provider',
+            summary: {
+              exitCode: result.code,
+              taskCount: parsed.tasks.length,
+              experienceIds: experience.items.map((item) => item.id),
+              activeProjectMissionCount: continuity.activeMissionCount,
+              sourceAuthorityScope: sourceAuthority.scope,
+              sourceAuthorityRef: sourceAuthority.ref
+            },
+            sourceIdentity: baseSourceIdentity,
+            artifact: `${JSON.stringify(parsed, null, 2)}\n--- stderr ---\n${safeStderr}`
+          });
+          evidenceId = evidence.id;
+        }
+        return { tasks: parsed.tasks, evidenceId };
+      };
+
+      const plannerResult = sourceAuthority.scope === 'remote-default' && !sourceAuthority.aligned
+        ? await withDetachedWorktree(
+          project.repoPath,
+          baseSourceIdentity.head,
+          path.join(this.store.root, 'planning', missionId),
+          invokePlanner
+        )
+        : await invokePlanner(project.repoPath);
+      proposedTasks = plannerResult.tasks;
+      plannerEvidenceId = plannerResult.evidenceId;
     }
     if (proposedTasks.length > 64) throw Object.assign(new Error('Mission plan exceeds the 64-task safety bound'), { code: 'MISSION_PLAN_TOO_LARGE' });
     const normalized = proposedTasks.map(validateTask);
     topo(normalized);
     const waves = computeWaves(normalized);
-    const executionStrategy = compileMissionExecutionStrategy({ tasks: normalized, waves, project, riskEnvelope, riskEnvelopeSource, continuity });
-    const missionId = randomId('mission');
+    const strategyProject = { ...project, sourceIdentity: baseSourceIdentity, sourceAuthority };
+    const executionStrategy = compileMissionExecutionStrategy({ tasks: normalized, waves, project: strategyProject, riskEnvelope, riskEnvelopeSource, continuity });
     const createdAt = nowIso();
     const mission = {
       id: missionId,
@@ -242,8 +285,10 @@ export class MissionService {
       riskEnvelope,
       executionStrategy,
       projectContinuity: continuity,
-      baseSourceIdentity: live,
-      currentSourceIdentity: live,
+      baseSourceIdentity: baseSourceIdentity,
+      baseSourceAuthority: sourceAuthority,
+      observedSourceIdentityAtPlan: observed,
+      currentSourceIdentity: baseSourceIdentity,
       status: 'ready',
       phase: 'execution',
       waves,
@@ -287,13 +332,26 @@ export class MissionService {
         type: 'mission_planned',
         missionId,
         at: createdAt,
-        baseHead: live.head,
+        baseHead: baseSourceIdentity.head,
+        sourceAuthorityScope: sourceAuthority.scope,
+        sourceAuthorityRef: sourceAuthority.ref,
+        observedHead: observed.head,
         taskClass: executionStrategy.taskClass,
         executionMode: executionStrategy.executionMode,
         activeProjectMissionCount: continuity.activeMissionCount
       });
       return { mission, tasks: taskRecords };
-    }, { missionId, projectId, baseHead: live.head, taskCount: taskRecords.length, taskClass: executionStrategy.taskClass, executionMode: executionStrategy.executionMode });
+    }, {
+      missionId,
+      projectId,
+      baseHead: baseSourceIdentity.head,
+      sourceAuthorityScope: sourceAuthority.scope,
+      sourceAuthorityRef: sourceAuthority.ref,
+      observedHead: observed.head,
+      taskCount: taskRecords.length,
+      taskClass: executionStrategy.taskClass,
+      executionMode: executionStrategy.executionMode
+    });
   }
 
   async status({ missionId }) {
@@ -315,9 +373,31 @@ export class MissionService {
   async readiness({ missionId }) {
     const { mission, tasks, mergeProposals } = await this.status({ missionId });
     const project = await this.projectService.get(mission.projectId);
-    const live = await sourceIdentity(project.repoPath);
+    const observed = await sourceIdentity(project.repoPath);
+    const currentAuthority = mission.baseSourceAuthority
+      ? await repositorySourceAuthority(project.repoPath, { observedIdentity: observed })
+      : null;
+    const authoritativeSource = currentAuthority ? sourceIdentityFromAuthority(currentAuthority) : observed;
     const blockers = [];
-    if (live.dirty && ['execution', 'candidate', 'finalize'].includes(mission.phase)) blockers.push({ code: 'DIRTY_SOURCE_BLOCKED', details: live.dirtyPaths });
+    const checkoutIsAuthority = !mission.baseSourceAuthority || mission.baseSourceAuthority.scope === 'checkout';
+    if (checkoutIsAuthority && observed.dirty && ['execution', 'candidate', 'finalize'].includes(mission.phase)) {
+      blockers.push({ code: 'DIRTY_SOURCE_BLOCKED', details: observed.dirtyPaths });
+    }
+    if (mission.baseSourceAuthority && !sameSourceAuthorityLineage(mission.baseSourceAuthority, currentAuthority)) {
+      blockers.push({
+        code: 'SOURCE_AUTHORITY_CHANGED',
+        expected: {
+          scope: mission.baseSourceAuthority.scope,
+          remote: mission.baseSourceAuthority.remote || null,
+          ref: mission.baseSourceAuthority.ref || null
+        },
+        actual: {
+          scope: currentAuthority?.scope || null,
+          remote: currentAuthority?.remote || null,
+          ref: currentAuthority?.ref || null
+        }
+      });
+    }
     if (mission.status === 'cancelled') blockers.push({ code: 'MISSION_CANCELLED' });
     const interruptedTaskIds = tasks.filter((task) => task.status === 'interrupted').map((task) => task.id);
     if (mission.interruption?.requiresReconciliation || interruptedTaskIds.length) {
@@ -345,13 +425,13 @@ export class MissionService {
         blockers.push({ code: 'MERGE_PROPOSAL_NOT_ACTIVE', mergeProposalId: proposal.id, status: proposal.status || null });
       } else if (!proposal.expectedSourceHead) {
         blockers.push({ code: 'MERGE_PROPOSAL_SOURCE_IDENTITY_MISSING', mergeProposalId: proposal.id });
-      } else if (proposal.expectedSourceHead !== live.head) {
+      } else if (proposal.expectedSourceHead !== authoritativeSource.head) {
         proposalSourceStale = true;
         blockers.push({
           code: 'MERGE_PROPOSAL_SOURCE_STALE',
           mergeProposalId: proposal.id,
           expectedSourceHead: proposal.expectedSourceHead,
-          liveSourceHead: live.head
+          liveSourceHead: authoritativeSource.head
         });
       }
     }
@@ -366,7 +446,9 @@ export class MissionService {
       ready,
       phase: mission.phase,
       status: mission.status,
-      liveSourceIdentity: live,
+      liveSourceIdentity: observed,
+      sourceAuthority: currentAuthority,
+      authoritativeSourceIdentity: authoritativeSource,
       executionStrategy: mission.executionStrategy || null,
       projectContinuity: mission.projectContinuity || null,
       blockers,

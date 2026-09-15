@@ -1,5 +1,13 @@
 import path from 'node:path';
-import { assertPathsWithinScope, changedPaths, git, sourceIdentity } from './git.mjs';
+import {
+  assertPathsWithinScope,
+  changedPaths,
+  git,
+  repositorySourceAuthority,
+  sameSourceAuthorityLineage,
+  sourceIdentity,
+  sourceIdentityFromAuthority
+} from './git.mjs';
 import { MissionService } from './mission-service.mjs';
 import { missionExecutionCapacity } from './adaptive-mission-strategy.mjs';
 import { nowIso, randomId } from './util.mjs';
@@ -38,8 +46,14 @@ function runtimeFeedbackForPacket(mission, waveBase) {
 function packetFor(project, mission, task, waveBase, experience = { items: [], precedence: 'Current repository/runtime evidence outranks project experience.' }) {
   return {
     protocol: 'veteran-worker-v1',
-    project: { id: project.id, repoPath: project.repoPath },
-    mission: { id: mission.id, goal: mission.goal, doneDefinition: mission.doneDefinition, baseHead: mission.baseSourceIdentity.head },
+    project: { id: project.id, repoPath: project.repoPath, sourceAuthority: mission.baseSourceAuthority || project.sourceAuthority || null },
+    mission: {
+      id: mission.id,
+      goal: mission.goal,
+      doneDefinition: mission.doneDefinition,
+      baseHead: mission.baseSourceIdentity.head,
+      sourceAuthority: mission.baseSourceAuthority || null
+    },
     task: {
       id: task.id,
       contract: task.contract,
@@ -111,15 +125,58 @@ export class WorkerOrchestrator {
     if (mission.status === 'cancelled') throw Object.assign(new Error('Mission is cancelled'), { code: 'MISSION_CANCELLED' });
     if (mission.phase !== 'execution') return { missionId, phase: mission.phase, message: 'Execution phase already complete' };
     let project = await this.projectService.get(mission.projectId);
-    const live = await sourceIdentity(project.repoPath);
-    if (live.dirty) throw Object.assign(new Error('Dirty source checkout blocks first dispatch/execution'), { code: 'DIRTY_SOURCE_BLOCKED', details: live.dirtyPaths });
-    if (mission.nextWaveIndex === 0 && live.head !== mission.baseSourceIdentity.head) {
-      throw Object.assign(new Error('Mission base is stale before first dispatch'), { code: 'MISSION_BASE_STALE', details: { planned: mission.baseSourceIdentity.head, live: live.head } });
+    const observed = await sourceIdentity(project.repoPath);
+    const currentAuthority = mission.baseSourceAuthority
+      ? await repositorySourceAuthority(project.repoPath, { observedIdentity: observed })
+      : null;
+    const authoritativeSource = currentAuthority ? sourceIdentityFromAuthority(currentAuthority) : observed;
+    const checkoutIsAuthority = !mission.baseSourceAuthority || mission.baseSourceAuthority.scope === 'checkout';
+    if (checkoutIsAuthority && observed.dirty) {
+      throw Object.assign(new Error('Dirty source checkout blocks first dispatch/execution'), { code: 'DIRTY_SOURCE_BLOCKED', details: observed.dirtyPaths });
+    }
+    if (mission.baseSourceAuthority && !sameSourceAuthorityLineage(mission.baseSourceAuthority, currentAuthority)) {
+      throw Object.assign(new Error('Repository source authority changed after the mission was planned'), {
+        code: 'SOURCE_AUTHORITY_CHANGED',
+        details: {
+          expected: {
+            scope: mission.baseSourceAuthority.scope,
+            remote: mission.baseSourceAuthority.remote || null,
+            ref: mission.baseSourceAuthority.ref || null
+          },
+          actual: {
+            scope: currentAuthority?.scope || null,
+            remote: currentAuthority?.remote || null,
+            ref: currentAuthority?.ref || null
+          }
+        }
+      });
+    }
+    if (mission.nextWaveIndex === 0 && authoritativeSource.head !== mission.baseSourceIdentity.head) {
+      throw Object.assign(new Error('Mission base is stale before first dispatch'), {
+        code: 'MISSION_BASE_STALE',
+        details: {
+          planned: mission.baseSourceIdentity.head,
+          live: authoritativeSource.head,
+          observedCheckoutHead: observed.head,
+          authorityRef: currentAuthority?.ref || 'HEAD'
+        }
+      });
     }
     if (normalizedBootstrapAuthorization) {
+      if (observed.dirty || observed.head !== mission.baseSourceIdentity.head) {
+        throw Object.assign(new Error('Bootstrap requires the project checkout to be clean and aligned with the frozen mission source authority'), {
+          code: 'BOOTSTRAP_SOURCE_AUTHORITY_CHECKOUT_MISMATCH',
+          details: {
+            missionBaseHead: mission.baseSourceIdentity.head,
+            checkoutHead: observed.head,
+            dirty: observed.dirty,
+            authorityRef: mission.baseSourceAuthority?.ref || 'HEAD'
+          }
+        });
+      }
       project = await this.projectService.snapshot({ projectId: project.id });
-      if (project.sourceIdentity.dirty || project.sourceIdentity.head !== live.head) {
-        throw Object.assign(new Error('Project environment snapshot changed source identity before bootstrap execution'), { code: 'BOOTSTRAP_SOURCE_IDENTITY_STALE', details: { expectedHead: live.head, actualHead: project.sourceIdentity.head, dirty: project.sourceIdentity.dirty } });
+      if (project.sourceIdentity.dirty || project.sourceIdentity.head !== observed.head) {
+        throw Object.assign(new Error('Project environment snapshot changed source identity before bootstrap execution'), { code: 'BOOTSTRAP_SOURCE_IDENTITY_STALE', details: { expectedHead: observed.head, actualHead: project.sourceIdentity.head, dirty: project.sourceIdentity.dirty } });
       }
     }
     const waveIds = mission.waves[mission.nextWaveIndex] || [];
