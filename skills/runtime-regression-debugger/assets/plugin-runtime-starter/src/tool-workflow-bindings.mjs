@@ -8,6 +8,7 @@ export const TOOL_WORKFLOW_BINDINGS_SCHEMA = 'veteran-tool-workflow-bindings-v1'
 const SOURCE_KINDS = new Set(['arguments', 'structuredContent']);
 const IDENTITY_KEYS = new Set(['projectId', 'missionId', 'taskId', 'candidateId', 'evidenceId', 'experienceId']);
 const TRANSFORMS = new Set(['identity', 'singleton-array']);
+const BINDING_AVAILABILITY = new Set(['guaranteed', 'conditional']);
 const SELECTION_CARDINALITIES = new Set(['one', 'many']);
 const FILTER_OPERATORS = new Set(['equals', 'in']);
 
@@ -222,6 +223,25 @@ function schemaHasPointer(schema, pointer) {
   return schemasAtPointer(schema, pointer).length > 0;
 }
 
+function schemaPathGuaranteed(schema, segments) {
+  if (Array.isArray(schema?.anyOf) && schema.anyOf.length) {
+    return schema.anyOf.every((variant) => schemaPathGuaranteed(variant, segments));
+  }
+  if (segments.length === 0) return schema?.type !== 'null' && schema?.type !== undefined;
+  if (schema?.type !== 'object') return false;
+  const [segment, ...rest] = segments;
+  if (!(schema.required || []).includes(segment)) return false;
+  const child = schema.properties?.[segment];
+  if (!child) return false;
+  return schemaPathGuaranteed(child, rest);
+}
+
+function schemaPointerAvailability(schema, pointer) {
+  const segments = pointerSegments(pointer);
+  if (!segments) return 'conditional';
+  return schemaPathGuaranteed(schema, segments) ? 'guaranteed' : 'conditional';
+}
+
 function sourceSchema(toolName, descriptor) {
   if (descriptor.source === 'arguments') return toolInputJsonSchema(toolName);
   if (descriptor.source === 'structuredContent') return toolOutputJsonSchema(toolName);
@@ -249,6 +269,25 @@ function selectionsFor(sourceTool, edge) {
   return RELATION_SELECTIONS[relationKey(sourceTool, edge.tool, edge.kind)] || [];
 }
 
+function bindingAvailability(sourceTool, descriptor) {
+  return schemaPointerAvailability(sourceSchema(sourceTool, descriptor), descriptor.pointer);
+}
+
+function requiredCoverage(targetSchema, bindings, selections) {
+  const byTarget = new Map(bindings.map((binding) => [binding.target, binding]));
+  const selectionTargets = new Set(selections.filter((item) => item.requiredForRelation === true).map((item) => item.target));
+  const coverage = { guaranteed: [], conditional: [], selection: [], unbound: [] };
+  for (const required of targetSchema.required || []) {
+    const binding = byTarget.get(required);
+    if (binding) coverage[binding.availability].push(required);
+    else if (selectionTargets.has(required)) coverage.selection.push(required);
+    else coverage.unbound.push(required);
+  }
+  return Object.freeze(Object.fromEntries(
+    Object.entries(coverage).map(([key, values]) => [key, Object.freeze(values)])
+  ));
+}
+
 function compileRelation(sourceTool, edge) {
   const targetSchema = toolInputJsonSchema(edge.tool);
   const targetProperties = targetSchema.properties || {};
@@ -260,7 +299,8 @@ function compileRelation(sourceTool, edge) {
       source: descriptor.source,
       pointer: descriptor.pointer,
       mode: 'if-present-non-null',
-      transform: 'identity'
+      transform: 'identity',
+      availability: bindingAvailability(sourceTool, descriptor)
     }));
   }
   for (const descriptor of explicitBindingsFor(sourceTool, edge)) {
@@ -269,7 +309,8 @@ function compileRelation(sourceTool, edge) {
       source: descriptor.source,
       pointer: descriptor.pointer,
       mode: 'if-present-non-null',
-      transform: descriptor.transform
+      transform: descriptor.transform,
+      availability: bindingAvailability(sourceTool, descriptor)
     }));
   }
   const boundTargets = new Set(bindings.map((binding) => binding.target));
@@ -280,6 +321,7 @@ function compileRelation(sourceTool, edge) {
     kind: edge.kind,
     bindings: Object.freeze(bindings),
     selections,
+    requiredCoverage: requiredCoverage(targetSchema, bindings, selections),
     unboundRequired: Object.freeze(unboundRequired)
   });
 }
@@ -290,7 +332,7 @@ export const TOOL_WORKFLOW_BINDINGS = Object.freeze(Object.fromEntries(
     return [name, Object.freeze({
       schema: TOOL_WORKFLOW_BINDINGS_SCHEMA,
       sourceTool: name,
-      copyPolicy: 'Copy a deterministic binding only when its source pointer resolves to a non-null value. Apply declared transforms exactly. Never synthesize requestId or non-identity business inputs.',
+      copyPolicy: 'Copy a deterministic binding only when its source pointer resolves to a non-null value. availability=guaranteed means the source schema requires a non-null value on every path; conditional means runtime resolution may still be absent. Apply declared transforms exactly. Never synthesize requestId or non-identity business inputs.',
       selectionPolicy: 'Selections are not automatic bindings. A client or operator must choose values from the declared source collection after applying any filter.',
       relations: Object.freeze(workflow.relations.map((edge) => compileRelation(name, edge)))
     })];
@@ -300,11 +342,14 @@ export const TOOL_WORKFLOW_BINDINGS = Object.freeze(Object.fromEntries(
 function assertBindingDescriptor(sourceTool, targetTool, descriptor, seenTargets) {
   if (!SOURCE_KINDS.has(descriptor.source)) throw new Error(`Unknown workflow binding source for ${sourceTool} -> ${targetTool}.${descriptor.target}: ${descriptor.source}`);
   if (!TRANSFORMS.has(descriptor.transform)) throw new Error(`Unknown workflow binding transform for ${sourceTool} -> ${targetTool}.${descriptor.target}: ${descriptor.transform}`);
+  if (!BINDING_AVAILABILITY.has(descriptor.availability)) throw new Error(`Unknown workflow binding availability for ${sourceTool} -> ${targetTool}.${descriptor.target}: ${descriptor.availability}`);
   if (seenTargets.has(descriptor.target)) throw new Error(`Duplicate workflow binding target ${sourceTool} -> ${targetTool}.${descriptor.target}`);
   seenTargets.add(descriptor.target);
   const sourceContract = sourceSchema(sourceTool, descriptor);
   const sourceCandidates = schemasAtPointer(sourceContract, descriptor.pointer);
   if (!sourceCandidates.length) throw new Error(`Workflow binding source pointer does not exist for ${sourceTool} -> ${targetTool}.${descriptor.target}: ${descriptor.source}${descriptor.pointer}`);
+  const expectedAvailability = schemaPointerAvailability(sourceContract, descriptor.pointer);
+  if (descriptor.availability !== expectedAvailability) throw new Error(`Workflow binding availability drift for ${sourceTool} -> ${targetTool}.${descriptor.target}: expected ${expectedAvailability}, got ${descriptor.availability}`);
   const targetSchema = toolInputJsonSchema(targetTool).properties?.[descriptor.target];
   if (!targetSchema) throw new Error(`Workflow binding targets unknown input ${sourceTool} -> ${targetTool}.${descriptor.target}`);
   if (descriptor.transform === 'singleton-array' && targetSchema.type !== 'array') {
@@ -382,6 +427,8 @@ function assertBindingContract() {
       const targetSchema = toolInputJsonSchema(edge.tool);
       const expectedUnbound = (targetSchema.required || []).filter((required) => !seenTargets.has(required));
       if (JSON.stringify(expectedUnbound) !== JSON.stringify(bindingEdge.unboundRequired)) throw new Error(`Workflow unbound-required drift for ${name} -> ${edge.tool}`);
+      const expectedCoverage = requiredCoverage(targetSchema, bindingEdge.bindings, bindingEdge.selections);
+      if (JSON.stringify(expectedCoverage) !== JSON.stringify(bindingEdge.requiredCoverage)) throw new Error(`Workflow required-coverage drift for ${name} -> ${edge.tool}`);
     }
   }
 }
