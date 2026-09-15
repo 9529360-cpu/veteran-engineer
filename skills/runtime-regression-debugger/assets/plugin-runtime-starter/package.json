@@ -15,6 +15,7 @@
     "test:cli": "node --test tests/cli.test.mjs",
     "test:container-smoke": "node scripts/container-smoke.mjs",
     "test:postgres": "node --test tests/postgres-state-backend.integration.mjs",
+    "test:electron": "node --test tests/electron-validation.integration.mjs",
     "check": "node scripts/check.mjs && npm test",
     "mcp:handshake": "node scripts/mcp-handshake.mjs",
     "mcp:handshake:modern": "node scripts/mcp-handshake.mjs --require-sdk --require-server-sdk --mode modern-pinned --stateful"
@@ -26,6 +27,7 @@
     "@modelcontextprotocol/client": "2.0.0",
     "@modelcontextprotocol/core": "2.0.0",
     "@modelcontextprotocol/server": "2.0.0",
+    "playwright-core": "1.63.0",
     "zod": "4.2.0"
   }
 }

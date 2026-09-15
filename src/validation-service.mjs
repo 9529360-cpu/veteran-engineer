@@ -11,6 +11,7 @@ import {
 import { normalizeValidationArtifacts, collectValidationArtifacts } from './validation-artifact-collector.mjs';
 import { normalizeBrowserValidation, runBrowserValidation } from './browser-validation-provider.mjs';
 import { BrowserValidationSessionManager } from './browser-validation-session-manager.mjs';
+import { normalizeElectronValidation, runElectronValidation } from './electron-validation-provider.mjs';
 import { CredentialBroker } from './credential-broker.mjs';
 import { normalizeObservabilityValidation, runObservabilityValidation } from './observability-validation-provider.mjs';
 import { LiveValidationSessionManager } from './live-validation-session-manager.mjs';
@@ -37,12 +38,13 @@ async function withWorktreeAdminLock(repoPath, operation) {
 function normalizeCapability(raw) {
   if (!raw || typeof raw !== 'object' || !raw.name) return null;
   const browser = normalizeBrowserValidation(raw.browser);
+  const electron = normalizeElectronValidation(raw.electron);
   const observability = normalizeObservabilityValidation(raw.observability);
   const hasCommand = Array.isArray(raw.command) && raw.command.length > 0;
-  const modes = [hasCommand, Boolean(browser), Boolean(observability)].filter(Boolean).length;
+  const modes = [hasCommand, Boolean(browser), Boolean(electron), Boolean(observability)].filter(Boolean).length;
   if (modes === 0) return null;
   if (modes > 1) {
-    throw Object.assign(new Error('Validation capability must choose exactly one of command, browser, or observability execution'), { code: 'VALIDATION_CAPABILITY_AMBIGUOUS' });
+    throw Object.assign(new Error('Validation capability must choose exactly one of command, browser, electron, or observability execution'), { code: 'VALIDATION_CAPABILITY_AMBIGUOUS' });
   }
   const service = normalizeProductService(raw.service);
   if (browser && !browser.baseUrl && !service?.readiness?.url) {
@@ -56,6 +58,7 @@ function normalizeCapability(raw) {
     timeoutMs: Number.isFinite(Number(raw.timeoutMs ?? 120_000)) ? Math.max(1000, Number(raw.timeoutMs ?? 120_000)) : 120_000,
     service,
     browser,
+    electron,
     observability,
     artifacts: normalizeValidationArtifacts(raw.artifacts)
   };
@@ -198,7 +201,7 @@ export class ValidationService {
         throw error;
       }
       if (!Array.isArray(rawCommand) || rawCommand.length === 0) throw new Error('rawCommand must be a non-empty argv array');
-      selected = { name: 'raw', description: 'Explicit raw validation', command: rawCommand.map(String), cwd: '.', timeoutMs: 120_000, service: null, browser: null, observability: null, artifacts: [] };
+      selected = { name: 'raw', description: 'Explicit raw validation', command: rawCommand.map(String), cwd: '.', timeoutMs: 120_000, service: null, browser: null, electron: null, observability: null, artifacts: [] };
     }
     if (!selected) throw Object.assign(new Error(`Unknown validation capability: ${capability}`), { code: 'VALIDATION_CAPABILITY_NOT_FOUND' });
 
@@ -286,6 +289,8 @@ export class ValidationService {
     let liveSourceCheck = null;
     let failureStage = null;
     let browserSummary = null;
+    let electronSummary = null;
+    let electronAttachments = [];
     let observabilitySummary = null;
     let artifactCollection = { attachments: [], summary: null };
     let artifactCollectionError = null;
@@ -390,6 +395,33 @@ export class ValidationService {
             result = { code: 1, signal: null, stdout: '', stderr: browserSummary.failureCode };
             failureStage = 'browser-validation';
           }
+        } else if (selected.electron) {
+          try {
+            const electronCwd = await resolveWorktreeCwd(wt, selected.electron.cwd, 'Electron validation');
+            const electronRun = await runElectronValidation(selected.electron, { cwd: electronCwd });
+            const { attachments = [], ...summary } = electronRun;
+            electronAttachments = attachments;
+            electronSummary = summary;
+            result = {
+              code: electronSummary.passed ? 0 : 1,
+              signal: null,
+              stdout: electronSummary.summary || '',
+              stderr: electronSummary.passed ? '' : (electronSummary.failureCode || 'Electron validation failed')
+            };
+            if (!electronSummary.passed) failureStage = 'electron-validation';
+          } catch (error) {
+            electronSummary = {
+              contract: selected.electron.contract,
+              passed: false,
+              failureCode: error?.code || 'ELECTRON_VALIDATION_FAILED',
+              summary: String(error?.message || error).slice(0, 1000),
+              assertions: [],
+              surfaces: { windows: [], webviews: [] },
+              diagnostics: null
+            };
+            result = { code: 1, signal: null, stdout: '', stderr: electronSummary.failureCode };
+            failureStage = 'electron-validation';
+          }
         } else {
           const [command, ...args] = selected.command;
           result = await runProcess(command, args, { cwd, timeoutMs: selected.timeoutMs, allowFailure: true });
@@ -478,10 +510,10 @@ export class ValidationService {
       projectId,
       missionId: mission?.id || null,
       type: purpose === 'runtime-feedback' ? 'runtime-feedback-observation' : 'validation',
-      summary: { purpose, capability: selected.name, passed, exitCode: result.code, commitSha, failureStage, service: serviceSummary, browser: browserSummary, observability: observabilitySummary, artifacts: artifactSummary },
+      summary: { purpose, capability: selected.name, passed, exitCode: result.code, commitSha, failureStage, service: serviceSummary, browser: browserSummary, electron: electronSummary, observability: observabilitySummary, artifacts: artifactSummary },
       sourceIdentity: { head: commitSha },
       artifact: validationArtifact({ result, serviceRun }),
-      attachments: artifactCollection.attachments,
+      attachments: [...artifactCollection.attachments, ...electronAttachments],
       metadata: { candidateId, purpose }
     });
     if (validationMissionId && recordMissionValidation) {
@@ -494,6 +526,6 @@ export class ValidationService {
         state.runtime.timeline.push({ type: 'validation_completed', missionId: validationMissionId, at: nowIso(), passed, evidenceId: evidence.id, commitSha });
       }, { missionId: validationMissionId, passed, capability: selected.name, commitSha, failureStage });
     }
-    return { purpose, passed, capability: selected.name, commitSha, evidenceId: evidence.id, exitCode: result.code, failureStage, service: serviceSummary, browser: browserSummary, observability: observabilitySummary, artifacts: artifactSummary };
+    return { purpose, passed, capability: selected.name, commitSha, evidenceId: evidence.id, exitCode: result.code, failureStage, service: serviceSummary, browser: browserSummary, electron: electronSummary, observability: observabilitySummary, artifacts: artifactSummary };
   }
 }
