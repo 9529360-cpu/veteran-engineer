@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { CredentialBroker, normalizeCredentialReferences } from './credential-broker.mjs';
+import { normalizeLocalLogObservability, runLocalLogObservability } from './local-log-observability.mjs';
 import { signalProcessTree } from './process-lifecycle-authority.mjs';
 
 export const OBSERVABILITY_VALIDATION_CONTRACT = 'veteran-observability-validation-v1';
@@ -52,9 +53,20 @@ export function normalizeObservabilityValidation(raw) {
     throw codedError('Observability windowSeconds is outside the supported range', 'OBSERVABILITY_WINDOW_INVALID');
   }
   const timeoutMs = Number(raw.timeoutMs ?? 120_000);
+  let command = null;
+  let localLog = null;
+  if (raw.localLog !== undefined && raw.localLog !== null) {
+    if (raw.command !== undefined && raw.command !== null) {
+      throw codedError('Observability validation must choose command or localLog, not both', 'OBSERVABILITY_PROVIDER_MODE_AMBIGUOUS');
+    }
+    localLog = normalizeLocalLogObservability(raw.localLog);
+  } else {
+    command = normalizeCommand(raw.command);
+  }
   return {
     contract: OBSERVABILITY_VALIDATION_CONTRACT,
-    command: normalizeCommand(raw.command),
+    command,
+    localLog,
     cwd: raw.cwd ? String(raw.cwd) : '.',
     target,
     windowSeconds: Math.floor(windowSeconds),
@@ -216,15 +228,30 @@ async function isolatedEnvironment(credentialBroker, credentialRefs) {
 export async function runObservabilityValidation(observability, { cwd, expectedSourceHead, credentialBroker = null } = {}) {
   const broker = credentialBroker || new CredentialBroker();
   const { env, home, credentialTargets, credentialSecrets } = await isolatedEnvironment(broker, observability.credentialRefs);
-  const payload = `${JSON.stringify({
-    contract: OBSERVABILITY_VALIDATION_CONTRACT,
-    mode: 'read-only-verification',
-    target: observability.target,
-    windowSeconds: observability.windowSeconds,
-    expectedSourceHead
-  })}\n`;
-  const [command, ...args] = observability.command;
   try {
+    if (observability.localLog) {
+      const localResult = await runLocalLogObservability(observability.localLog, {
+        cwd,
+        expectedSourceHead,
+        windowSeconds: observability.windowSeconds
+      });
+      const normalized = normalizeProviderResult({
+        contract: OBSERVABILITY_VALIDATION_CONTRACT,
+        passed: localResult.passed,
+        summary: localResult.summary,
+        observedSourceHead: localResult.observedSourceHead,
+        checks: localResult.checks
+      }, { expectedSourceHead, requireSourceMatch: observability.requireSourceMatch, secrets: credentialSecrets });
+      return { ...normalized, diagnostics: localResult.diagnostics };
+    }
+    const payload = `${JSON.stringify({
+      contract: OBSERVABILITY_VALIDATION_CONTRACT,
+      mode: 'read-only-verification',
+      target: observability.target,
+      windowSeconds: observability.windowSeconds,
+      expectedSourceHead
+    })}\n`;
+    const [command, ...args] = observability.command;
     const processResult = await runProvider(command, args, { cwd, env, timeoutMs: observability.timeoutMs, input: payload });
     const diagnostics = {
       exitCode: processResult.code,
