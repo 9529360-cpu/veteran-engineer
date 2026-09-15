@@ -85,6 +85,7 @@ test('validation_run controls real BrowserWindow and webview guest and persists 
     'tests/electron/smoke.json': `${JSON.stringify(scenario, null, 2)}\n`
   } });
   try {
+    await fs.mkdir(stateRoot, { recursive: true });
     await fs.writeFile(path.join(stateRoot, 'operator.json'), `${JSON.stringify({
       defaults: {
         validationCapabilities: [{

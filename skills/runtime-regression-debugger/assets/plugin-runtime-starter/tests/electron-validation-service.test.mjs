@@ -19,6 +19,7 @@ test('Electron validation is a first-class validation mode and fails closed into
     })}\n`
   } });
   try {
+    await fs.mkdir(stateRoot, { recursive: true });
     const missingExecutable = path.join(root, 'missing-electron-binary');
     await fs.writeFile(path.join(stateRoot, 'operator.json'), `${JSON.stringify({
       defaults: {
@@ -60,6 +61,7 @@ test('Electron execution cannot be combined with another validation execution mo
     'tests/electron/smoke.json': `${JSON.stringify({ contract: ELECTRON_SCENARIO_CONTRACT, steps: [{ action: 'waitForSurface' }] })}\n`
   } });
   try {
+    await fs.mkdir(stateRoot, { recursive: true });
     await fs.writeFile(path.join(stateRoot, 'operator.json'), `${JSON.stringify({
       defaults: {
         validationCapabilities: [{
