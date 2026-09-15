@@ -1,5 +1,6 @@
 import { nowIso, randomId } from './util.mjs';
 import { git } from './git.mjs';
+import { planValidationBatches } from './validation-scheduler.mjs';
 
 function proofFreshForCandidate(mission, candidate) {
   return ['passed', 'skipped'].includes(mission.validation.status)
@@ -18,6 +19,13 @@ function proposalMatches(proposal, { missionId, candidate, preflight }) {
     && proposal.candidateCommitSha === candidate.commitSha
     && proposal.expectedSourceHead === preflight.sourceHead
     && proposal.missionHead === preflight.missionHead;
+}
+
+function conciseError(error) {
+  return {
+    code: error?.code || 'VALIDATION_EXECUTION_ERROR',
+    message: String(error?.message || error || 'Validation execution failed').slice(0, 1000)
+  };
 }
 
 export class MissionAdvanceService {
@@ -42,6 +50,140 @@ export class MissionAdvanceService {
     }, { missionId: proposal.missionId, proposalId: proposal.id, evidenceId: evidence.id });
   }
 
+  async validationCommitSha({ project, mission, candidateId }) {
+    if (candidateId) {
+      const state = await this.store.read();
+      const candidate = state.runtime.candidates?.[candidateId];
+      if (!candidate || candidate.projectId !== project.id || candidate.missionId !== mission.id || !candidate.commitSha) {
+        throw Object.assign(new Error(`Unknown candidate ${candidateId}`), { code: 'CANDIDATE_NOT_FOUND' });
+      }
+      return candidate.commitSha;
+    }
+    const missionWt = await this.worktreeManager.ensureMissionWorktree(project, mission);
+    const commitSha = (await git(missionWt.path, ['rev-parse', 'HEAD'])).stdout.trim();
+    if (!commitSha) throw Object.assign(new Error('Mission validation requires a concrete source commit'), { code: 'VALIDATION_SOURCE_IDENTITY_MISSING' });
+    return commitSha;
+  }
+
+  async validationExecutionFailure({ project, missionId, capability, commitSha, error }) {
+    const failure = conciseError(error);
+    let evidenceId = null;
+    let evidenceError = null;
+    try {
+      const evidence = await this.evidenceService.record({
+        projectId: project.id,
+        missionId,
+        type: 'validation',
+        summary: {
+          purpose: 'final-validation',
+          capability,
+          passed: false,
+          commitSha,
+          failureStage: 'validation-execution-error',
+          error: failure
+        },
+        sourceIdentity: { head: commitSha },
+        metadata: { capability, scheduler: 'mission-validation' }
+      });
+      evidenceId = evidence.id;
+    } catch (recordError) {
+      evidenceError = conciseError(recordError);
+    }
+    return {
+      purpose: 'final-validation',
+      passed: false,
+      capability,
+      commitSha,
+      evidenceId,
+      exitCode: null,
+      failureStage: 'validation-execution-error',
+      error: failure,
+      evidenceError
+    };
+  }
+
+  async runValidationCapability({ project, missionId, candidateId, capability, commitSha }) {
+    try {
+      const result = await this.validationService.run({
+        projectId: project.id,
+        missionId,
+        candidateId,
+        capability,
+        sourceCommitSha: commitSha,
+        recordMissionValidation: false
+      });
+      if (result.commitSha !== commitSha) {
+        throw Object.assign(new Error(`Validation ${capability} observed ${result.commitSha || 'no commit'} instead of ${commitSha}`), {
+          code: 'VALIDATION_SOURCE_IDENTITY_MISMATCH',
+          details: { capability, expectedCommitSha: commitSha, actualCommitSha: result.commitSha || null }
+        });
+      }
+      return result;
+    } catch (error) {
+      return this.validationExecutionFailure({ project, missionId, capability, commitSha, error });
+    }
+  }
+
+  async runValidationPlan({ project, mission, candidateId, required, commitSha }) {
+    const plan = planValidationBatches({
+      required,
+      catalog: project.validationCapabilities || [],
+      maxParallel: project.validationPolicy?.maxParallel,
+      projectId: project.id,
+      missionId: mission.id
+    });
+    const resultByCapability = new Map();
+    let stoppedAfterBatch = null;
+
+    for (let batchIndex = 0; batchIndex < plan.batches.length; batchIndex += 1) {
+      const batch = plan.batches[batchIndex];
+      const batchResults = await Promise.all(batch.capabilities.map((capability) => this.runValidationCapability({
+        project,
+        missionId: mission.id,
+        candidateId,
+        capability,
+        commitSha
+      })));
+      for (const result of batchResults) resultByCapability.set(result.capability, result);
+      if (batchResults.some((result) => !result.passed)) {
+        stoppedAfterBatch = batchIndex;
+        break;
+      }
+    }
+
+    const results = required.filter((capability) => resultByCapability.has(capability)).map((capability) => resultByCapability.get(capability));
+    const deferredCapabilities = required.filter((capability) => !resultByCapability.has(capability));
+    return { plan, results, deferredCapabilities, stoppedAfterBatch };
+  }
+
+  async persistValidationAggregate({ missionId, required, commitSha, results, passed }) {
+    const evidenceIds = results.map((result) => result.evidenceId).filter(Boolean);
+    const transactionName = passed ? 'mission_validation_passed' : 'mission_validation_failed';
+    await this.store.transaction(transactionName, (state) => {
+      const target = state.missions[missionId];
+      const previous = target.validation || {};
+      const previousEvidenceIds = previous.commitSha === commitSha && Array.isArray(previous.evidenceIds) ? previous.evidenceIds : [];
+      target.validation = {
+        ...previous,
+        status: passed ? 'passed' : 'failed',
+        evidenceIds: [...new Set([...previousEvidenceIds, ...evidenceIds])],
+        commitSha
+      };
+      target.phase = passed ? 'review' : 'validation';
+      target.status = 'ready';
+      target.updatedAt = nowIso();
+      state.runtime.timeline.push({
+        type: transactionName,
+        missionId,
+        commitSha,
+        capabilities: required,
+        executedCapabilities: results.map((result) => result.capability),
+        evidenceIds,
+        at: nowIso()
+      });
+    }, { missionId, commitSha, capabilities: required, executedCapabilities: results.map((result) => result.capability), evidenceIds });
+  }
+
   async advance({ missionId, runWorkers = false }) {
     const { mission } = await this.missionService.status({ missionId });
     if (mission.status === 'cancelled') throw Object.assign(new Error('Mission is cancelled'), { code: 'MISSION_CANCELLED' });
@@ -57,14 +199,7 @@ export class MissionAdvanceService {
       const required = project.requiredValidationCapabilities || [];
       if (required.length === 0) {
         if (project.requireValidation) throw Object.assign(new Error('Validation is required but no requiredValidationCapabilities are configured'), { code: 'VALIDATION_REQUIRED_NOT_CONFIGURED' });
-        let commitSha;
-        if (candidateId) {
-          const state = await this.store.read();
-          commitSha = state.runtime.candidates?.[candidateId]?.commitSha || null;
-        } else {
-          const missionWt = await this.worktreeManager.ensureMissionWorktree(project, mission);
-          commitSha = (await git(missionWt.path, ['rev-parse', 'HEAD'])).stdout.trim();
-        }
+        const commitSha = await this.validationCommitSha({ project, mission, candidateId });
         const evidence = await this.evidenceService.record({ projectId: project.id, missionId, type: 'validation', summary: { passed: true, skipped: true, reason: 'no-required-capabilities', commitSha }, sourceIdentity: { head: commitSha } });
         await this.store.transaction('mission_validation_skipped', (state) => {
           const target = state.missions[missionId];
@@ -76,20 +211,29 @@ export class MissionAdvanceService {
         }, { missionId, evidenceId: evidence.id });
         return { action: 'validation-skipped', nextPhase: 'review', evidenceId: evidence.id };
       }
-      const results = [];
-      for (const capability of required) {
-        const result = await this.validationService.run({ projectId: project.id, missionId, candidateId, capability });
-        results.push(result);
-        if (!result.passed) return { action: 'validation', results, nextPhase: 'validation', blocked: true };
+
+      const commitSha = await this.validationCommitSha({ project, mission, candidateId });
+      const execution = await this.runValidationPlan({ project, mission, candidateId, required, commitSha });
+      const passed = execution.results.length === required.length && execution.results.every((result) => result.passed);
+      await this.persistValidationAggregate({ missionId, required, commitSha, results: execution.results, passed });
+      if (!passed) {
+        return {
+          action: 'validation',
+          results: execution.results,
+          nextPhase: 'validation',
+          blocked: true,
+          deferredCapabilities: execution.deferredCapabilities,
+          validationPlan: execution.plan,
+          cancelPolicy: 'drain-in-flight'
+        };
       }
-      await this.store.transaction('mission_validation_passed', (state) => {
-        const target = state.missions[missionId];
-        target.validation.status = 'passed';
-        target.phase = 'review';
-        target.status = 'ready';
-        target.updatedAt = nowIso();
-      }, { missionId, capabilities: required });
-      return { action: 'validation', results, nextPhase: 'review' };
+      return {
+        action: 'validation',
+        results: execution.results,
+        nextPhase: 'review',
+        validationPlan: execution.plan,
+        cancelPolicy: 'drain-in-flight'
+      };
     }
     if (mission.phase === 'review') {
       const result = await this.reviewService.deterministic({ missionId, candidateId });

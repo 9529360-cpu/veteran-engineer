@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathExists } from './util.mjs';
+import { DEFAULT_VALIDATION_MAX_PARALLEL, MAX_VALIDATION_MAX_PARALLEL } from './validation-scheduler.mjs';
 
 function invalidOperatorConfig(pathValue, expected, value) {
   const error = new Error(`Invalid operator config at ${pathValue}: expected ${expected}`);
@@ -94,6 +95,15 @@ function validateRuntimeFeedbackPolicy(raw, pathValue) {
   return raw;
 }
 
+function validateValidationPolicy(raw, pathValue) {
+  if (raw === undefined || raw === null) return null;
+  if (!isRecord(raw)) throw invalidOperatorConfig(pathValue, 'object', raw);
+  if (raw.maxParallel !== undefined && (!Number.isInteger(raw.maxParallel) || raw.maxParallel < 1 || raw.maxParallel > MAX_VALIDATION_MAX_PARALLEL)) {
+    throw invalidOperatorConfig(`${pathValue}.maxParallel`, `integer from 1 through ${MAX_VALIDATION_MAX_PARALLEL}`, raw.maxParallel);
+  }
+  return raw;
+}
+
 function validatePolicyScope(value, pathValue) {
   if (value === undefined || value === null) return {};
   if (!isRecord(value)) throw invalidOperatorConfig(pathValue, 'object', value);
@@ -104,6 +114,7 @@ function validatePolicyScope(value, pathValue) {
   assertStringArrayField(value, 'requiredValidationCapabilities', pathValue);
   assertStringArrayField(value, 'runtimeFeedbackCapabilities', pathValue);
   validateRuntimeFeedbackPolicy(value.runtimeFeedbackPolicy, `${pathValue}.runtimeFeedbackPolicy`);
+  validateValidationPolicy(value.validationPolicy, `${pathValue}.validationPolicy`);
   validateProcessProviderField(value, 'plannerProvider', pathValue);
   validateProcessProviderField(value, 'reviewerProvider', pathValue);
 
@@ -161,6 +172,11 @@ export function projectPolicy(operatorConfig, repoPath, remoteUrl = null) {
   workerPolicy.capabilities = normalizedStringArray(workerPolicy.capabilities || []);
   return {
     validationCapabilities,
+    validationPolicy: {
+      maxParallel: DEFAULT_VALIDATION_MAX_PARALLEL,
+      ...(defaults.validationPolicy || {}),
+      ...(specific.validationPolicy || {})
+    },
     runtimeFeedbackCapabilities,
     runtimeFeedbackPolicy: {
       autoRepair: false,
