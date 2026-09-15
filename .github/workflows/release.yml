@@ -1,0 +1,146 @@
+name: Release
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - ".codex-plugin/plugin.json"
+      - "package.json"
+      - "package-lock.json"
+      - "src/constants.mjs"
+      - "scripts/release-contract.mjs"
+      - "scripts/release-candidate.mjs"
+      - "tests/release-contract.test.mjs"
+      - "skills/runtime-regression-debugger/**"
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  dry-run:
+    name: Release candidate dry run
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --include=optional
+      - name: Validate release authorities
+        run: node scripts/release-contract.mjs
+      - name: Run full validation
+        run: npm run check
+      - name: Build reproducible release candidate
+        run: node scripts/release-candidate.mjs --output dist --commit "$GITHUB_SHA"
+      - name: Verify release candidate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          for checksum in veteran-engineer-*.sha256; do
+            sha256sum -c "$checksum"
+          done
+
+  publish:
+    name: Publish tagged release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --include=optional
+      - name: Validate tag and release authorities
+        run: node scripts/release-contract.mjs --tag "$GITHUB_REF_NAME"
+      - name: Run full validation
+        run: npm run check
+      - name: Build reproducible release candidate
+        run: node scripts/release-candidate.mjs --output dist --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA"
+      - name: Verify local candidate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          for checksum in veteran-engineer-*.sha256; do
+            sha256sum -c "$checksum"
+          done
+      - name: Create or repair draft release
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="$GITHUB_REF_NAME"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            test "$(gh release view "$TAG" --json isDraft --jq '.isDraft')" = "true"
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* \
+              --verify-tag \
+              --draft \
+              --generate-notes \
+              --title "Veteran Engineer ${TAG#v}"
+          fi
+      - name: Verify draft assets before publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf verify-release
+          mkdir verify-release
+          gh release download "$GITHUB_REF_NAME" --dir verify-release --pattern 'veteran-engineer-*'
+          cd verify-release
+          for checksum in veteran-engineer-*.sha256; do
+            sha256sum -c "$checksum"
+          done
+          cmp veteran-engineer-release-manifest.json ../dist/veteran-engineer-release-manifest.json
+      - name: Publish release
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false --latest
+      - name: Verify public release bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          verify_public() {
+            local release_json
+            release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME")"
+            jq -e '.draft == false and .prerelease == false' <<<"$release_json" >/dev/null
+            rm -rf public-release
+            mkdir public-release
+            while IFS=$'\t' read -r name url; do
+              curl --fail --silent --show-error --location --retry 5 --retry-delay 2 "$url" -o "public-release/$name"
+            done < <(jq -r '.assets[] | select(.name | startswith("veteran-engineer-")) | [.name, .browser_download_url] | @tsv' <<<"$release_json")
+            (
+              cd public-release
+              for checksum in veteran-engineer-*.sha256; do
+                sha256sum -c "$checksum"
+              done
+            )
+            cmp public-release/veteran-engineer-release-manifest.json dist/veteran-engineer-release-manifest.json
+          }
+          if ! verify_public; then
+            gh release edit "$GITHUB_REF_NAME" --draft || true
+            exit 1
+          fi
