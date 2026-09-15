@@ -1,8 +1,9 @@
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { signalProcessTree } from './process-lifecycle-authority.mjs';
 
 export const BROWSER_VALIDATION_CONTRACT = 'veteran-browser-validation-v1';
 export const BROWSER_SESSION_CONTRACT = 'veteran-browser-session-jsonl-v1';
@@ -215,13 +216,7 @@ function appendBounded(state, chunk, limit) {
 
 export function terminateBrowserProviderTree(child) {
   if (!child?.pid) return;
-  if (process.platform === 'win32') {
-    spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
-    return;
-  }
-  try { process.kill(-child.pid, 'SIGKILL'); } catch {
-    try { child.kill('SIGKILL'); } catch {}
-  }
+  signalProcessTree(child.pid, 'SIGKILL');
 }
 
 async function runProviderProcess(command, args, { cwd, env, timeoutMs, input }) {
