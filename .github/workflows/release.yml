@@ -46,13 +46,16 @@ jobs:
       - name: Install dependencies
         run: npm ci --include=optional
       - name: Validate release authorities
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         shell: bash
         run: |
           set -euo pipefail
-          if [ -f .github/release-intent.json ]; then
-            node scripts/release-contract.mjs --intent .github/release-intent.json
-          else
+          if git diff --quiet "$PR_BASE_SHA"...HEAD -- .github/release-intent.json; then
             node scripts/release-contract.mjs
+          else
+            test -f .github/release-intent.json
+            node scripts/release-contract.mjs --intent .github/release-intent.json
           fi
       - name: Run full validation
         run: npm run check
