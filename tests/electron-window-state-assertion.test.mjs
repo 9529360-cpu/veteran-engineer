@@ -84,6 +84,14 @@ test('assertWindowState accepts only bounded BrowserWindow expectations', () => 
     () => normalizeElectronScenario({ contract: ELECTRON_SCENARIO_CONTRACT, steps: [{ action: 'assertWindowState', state: { bounds: { width: '900' } } }] }),
     (error) => error.code === 'ELECTRON_SCENARIO_INVALID'
   );
+  assert.throws(
+    () => normalizeElectronScenario({ contract: ELECTRON_SCENARIO_CONTRACT, steps: [{ action: 'assertWindowState', state: { visible: undefined } }] }),
+    (error) => error.code === 'ELECTRON_SCENARIO_INVALID'
+  );
+  assert.throws(
+    () => normalizeElectronScenario({ contract: ELECTRON_SCENARIO_CONTRACT, steps: [{ action: 'assertWindowState', state: { bounds: { width: undefined } } }] }),
+    (error) => error.code === 'ELECTRON_SCENARIO_INVALID'
+  );
 });
 
 test('assertWindowState polls native state until the bounded expectation is satisfied', async () => {
