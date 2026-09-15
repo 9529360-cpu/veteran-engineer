@@ -79,3 +79,36 @@ setInterval(() => {}, 1000);
     await cleanup(root);
   }
 });
+
+test('product validation service keeps a POSIX process group alive when the probe outcome is unknown', {
+  skip: process.platform === 'win32'
+}, async () => {
+  const root = await tempDir('veteran-product-service-probe-');
+  const service = normalizeProductService({
+    command: [process.execPath, '-e', 'setInterval(() => {}, 1000);'],
+    readiness: { url: 'http://127.0.0.1:65535/health' },
+    shutdownGraceMs: 100
+  });
+  const originalKill = process.kill;
+  let handle = null;
+  try {
+    handle = startValidationService(service, { cwd: root });
+    const pid = handle.child.pid;
+    process.kill = (targetPid, signal) => {
+      if (targetPid === -pid && signal === 0) {
+        const error = new Error('process group probe outcome is unknown');
+        error.code = 'EIO';
+        throw error;
+      }
+      return originalKill.call(process, targetPid, signal);
+    };
+
+    const status = handle.status();
+    assert.equal(status.running, true);
+    assert.equal(status.treeRunning, true);
+  } finally {
+    process.kill = originalKill;
+    if (handle) await stopValidationService(handle, 100).catch(() => {});
+    await cleanup(root);
+  }
+});
