@@ -2,6 +2,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { probeProcessGroup, processGroupMayBeAlive } from './process-lifecycle-authority.mjs';
 
 const DEFAULT_LOG_LIMIT_BYTES = 128 * 1024;
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
@@ -81,7 +82,7 @@ function isAlive(child) {
 function managedTreeAlive(child) {
   if (!child?.pid) return false;
   if (process.platform === 'win32') return isAlive(child);
-  try { process.kill(-child.pid, 0); return true; } catch { return false; }
+  return processGroupMayBeAlive(probeProcessGroup(child.pid));
 }
 
 function terminateTree(child, signal) {
