@@ -48,7 +48,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install runtime dependencies
@@ -67,8 +67,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ELECTRON_PATH="$(node -e "process.stdout.write(require('electron'))")"
-          test -x "$ELECTRON_PATH"
+          ELECTRON_PATH="$(node -p 'require("electron")')"
+          echo "Using Electron binary: $ELECTRON_PATH"
+          ls -l "$ELECTRON_PATH"
           xvfb-run -a env VETERAN_TEST_ELECTRON_PATH="$ELECTRON_PATH" npm run test:electron
 
   container-smoke:
