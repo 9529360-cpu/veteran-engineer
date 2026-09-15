@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { git } from './git.mjs';
+import { PROCESS_LIFECYCLE_STATE, probeProcess } from './process-lifecycle-authority.mjs';
 import { nowIso, randomId, sha256, stableStringify } from './util.mjs';
 import {
   startValidationService,
@@ -49,14 +50,8 @@ function worktreeNameFor(key) {
   return `live-validation-${sha256(key).slice(0, 24)}`;
 }
 
-function pidAlive(pid) {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error?.code === 'EPERM';
-  }
+function leaseOwnerMissing(pid) {
+  return probeProcess(pid).state === PROCESS_LIFECYCLE_STATE.MISSING;
 }
 
 function liveLeaseState(state) {
@@ -74,7 +69,7 @@ function liveLeaseState(state) {
 function reapDeadLeases(leases) {
   const reapedWorktreeNames = new Set();
   for (const [key, lease] of Object.entries(leases.sessions)) {
-    if (pidAlive(lease?.pid)) continue;
+    if (!leaseOwnerMissing(lease?.pid)) continue;
     if (lease?.worktreeName) reapedWorktreeNames.add(lease.worktreeName);
     if (lease?.endpointLeaseKey && leases.endpoints[lease.endpointLeaseKey]?.sessionId === lease?.sessionId) {
       delete leases.endpoints[lease.endpointLeaseKey];
@@ -83,7 +78,7 @@ function reapDeadLeases(leases) {
   }
   for (const [key, lease] of Object.entries(leases.endpoints)) {
     const owner = lease?.sessionKey ? leases.sessions[lease.sessionKey] : null;
-    if (!owner || owner.sessionId !== lease?.sessionId || !pidAlive(lease?.pid)) delete leases.endpoints[key];
+    if (!owner || owner.sessionId !== lease?.sessionId || leaseOwnerMissing(lease?.pid)) delete leases.endpoints[key];
   }
   return reapedWorktreeNames;
 }
