@@ -5,6 +5,7 @@ import { assertTransactionalStateBackend } from './state-backend-transaction-con
 import { assertDurableOutcomeStateBackend, isStateCommitAuditOutcomeUnknown } from './state-backend-durability-contract.mjs';
 import { ProjectService } from './project-service.mjs';
 import { MissionService } from './mission-service.mjs';
+import { MissionExecutionLeaseManager } from './mission-execution-lease.mjs';
 import { ExperienceService } from './experience-service.mjs';
 import { EvidenceService } from './evidence-service.mjs';
 import { WorktreeManager } from './worktree-manager.mjs';
@@ -87,6 +88,7 @@ export async function createVeteranApp({
   const evidenceService = new EvidenceService({ store });
   const experienceService = new ExperienceService({ store });
   const missionService = new MissionService({ store, projectService, experienceService, evidenceService });
+  const missionExecutionLeaseManager = new MissionExecutionLeaseManager({ store });
   const worktreeManager = new WorktreeManager({ store });
   const workerAdapter = new WorkerAdapter();
   const liveSessionManager = new LiveValidationSessionManager({ store });
@@ -104,6 +106,7 @@ export async function createVeteranApp({
 
   async function executeMission(args) {
     const missionId = args?.missionId;
+    const executionLease = await missionExecutionLeaseManager.acquire({ missionId, operation: 'mission-execute' });
     activeMissionExecutions.set(missionId, (activeMissionExecutions.get(missionId) || 0) + 1);
     try {
       return await workerOrchestrator.execute(args);
@@ -111,6 +114,7 @@ export async function createVeteranApp({
       const remaining = (activeMissionExecutions.get(missionId) || 1) - 1;
       if (remaining > 0) activeMissionExecutions.set(missionId, remaining);
       else activeMissionExecutions.delete(missionId);
+      await executionLease.release();
     }
   }
 
@@ -135,24 +139,29 @@ export async function createVeteranApp({
     if (current.mission.status === 'cancelled') {
       throw Object.assign(new Error('Cancelled missions cannot be resumed'), { code: 'MISSION_CANCELLED' });
     }
-    const activeExecutionCalls = activeMissionExecutions.get(args.missionId) || 0;
-    const activeWorkers = workerAdapter.snapshot().filter((item) => item.missionId === args.missionId);
-    if (activeExecutionCalls || activeWorkers.length) {
-      const error = new Error('Cannot resume a mission while this runtime still owns active execution; cancel it or wait for it to finish before restart reconciliation.');
-      error.code = 'MISSION_EXECUTION_ACTIVE';
-      error.details = {
+    const executionLease = await missionExecutionLeaseManager.acquire({ missionId: args.missionId, operation: 'mission-resume' });
+    try {
+      const activeExecutionCalls = activeMissionExecutions.get(args.missionId) || 0;
+      const activeWorkers = workerAdapter.snapshot().filter((item) => item.missionId === args.missionId);
+      if (activeExecutionCalls || activeWorkers.length) {
+        const error = new Error('Cannot resume a mission while this runtime still owns active execution; cancel it or wait for it to finish before restart reconciliation.');
+        error.code = 'MISSION_EXECUTION_ACTIVE';
+        error.details = {
+          missionId: args.missionId,
+          activeExecutionCalls,
+          workers: activeWorkers.map((item) => ({ taskId: item.taskId, phase: item.phase, runtimeNamespace: item.runtimeNamespace || null }))
+        };
+        throw error;
+      }
+      const result = await missionService.resume(args);
+      const capabilityLeaseReconciliation = await workerOrchestrator.reconcileMission({
         missionId: args.missionId,
-        activeExecutionCalls,
-        workers: activeWorkers.map((item) => ({ taskId: item.taskId, phase: item.phase, runtimeNamespace: item.runtimeNamespace || null }))
-      };
-      throw error;
+        reason: 'mission-resume'
+      });
+      return { ...result, capabilityLeaseReconciliation };
+    } finally {
+      await executionLease.release();
     }
-    const result = await missionService.resume(args);
-    const capabilityLeaseReconciliation = await workerOrchestrator.reconcileMission({
-      missionId: args.missionId,
-      reason: 'mission-resume'
-    });
-    return { ...result, capabilityLeaseReconciliation };
   }
 
   async function missionReadiness(args) {
@@ -286,7 +295,7 @@ export async function createVeteranApp({
 
   return {
     store,
-    services: { projectService, missionService, evidenceService, experienceService, worktreeManager, workerAdapter, liveSessionManager, coreWorkerOrchestrator, feedbackWorkerOrchestrator, workerOrchestrator, validationService, runtimeFeedbackService, reviewService, candidateService, runtimeService, handoffService, missionAdvanceService },
+    services: { projectService, missionService, missionExecutionLeaseManager, evidenceService, experienceService, worktreeManager, workerAdapter, liveSessionManager, coreWorkerOrchestrator, feedbackWorkerOrchestrator, workerOrchestrator, validationService, runtimeFeedbackService, reviewService, candidateService, runtimeService, handoffService, missionAdvanceService },
     handlers,
     callTool,
     operatorConfigPath,
