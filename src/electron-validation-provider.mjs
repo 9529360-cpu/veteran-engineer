@@ -21,6 +21,7 @@ export {
 } from './electron-validation-contract.mjs';
 
 const MAX_DIAGNOSTIC_COUNT = 1_000_000;
+const SURFACE_PROBE_TIMEOUT_MS = 750;
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -92,14 +93,32 @@ function matchingSurfaceCount(surfaces, target) {
   return (Array.isArray(list) ? list : []).filter((surface) => targetMatches(surface, target)).length;
 }
 
+function retryableSurfaceProbeError(error) {
+  return error?.code === 'ELECTRON_BRIDGE_TIMEOUT';
+}
+
+function surfaceProbeTimeout(deadline) {
+  return Math.max(1, Math.min(SURFACE_PROBE_TIMEOUT_MS, deadline - Date.now()));
+}
+
 async function waitForSurface(session, target, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
+  let sawInventory = false;
+  let lastProbeTimeout = null;
   for (;;) {
-    const requestTimeout = Math.max(1, Math.min(1000, deadline - Date.now()));
-    const surfaces = await session.listSurfaces(requestTimeout);
-    const selected = selectTarget(surfaces, target);
-    if (selected) return selected;
-    if (Date.now() >= deadline) throw electronError('Electron target surface was not found before timeout', 'ELECTRON_SURFACE_NOT_FOUND', { target });
+    try {
+      const surfaces = await session.listSurfaces(surfaceProbeTimeout(deadline));
+      sawInventory = true;
+      const selected = selectTarget(surfaces, target);
+      if (selected) return selected;
+    } catch (error) {
+      if (!retryableSurfaceProbeError(error)) throw error;
+      lastProbeTimeout = error;
+    }
+    if (Date.now() >= deadline) {
+      if (!sawInventory && lastProbeTimeout) throw lastProbeTimeout;
+      throw electronError('Electron target surface was not found before timeout', 'ELECTRON_SURFACE_NOT_FOUND', { target });
+    }
     await delay(Math.min(50, Math.max(1, deadline - Date.now())));
   }
 }
@@ -107,11 +126,22 @@ async function waitForSurface(session, target, timeoutMs) {
 async function waitForSurfaceCount(session, target, expected, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   let observed = 0;
+  let sawInventory = false;
+  let lastProbeTimeout = null;
   for (;;) {
-    const requestTimeout = Math.max(1, Math.min(1000, deadline - Date.now()));
-    const surfaces = await session.listSurfaces(requestTimeout);
-    observed = matchingSurfaceCount(surfaces, target);
-    if (observed === expected || Date.now() >= deadline) return observed;
+    try {
+      const surfaces = await session.listSurfaces(surfaceProbeTimeout(deadline));
+      sawInventory = true;
+      observed = matchingSurfaceCount(surfaces, target);
+      if (observed === expected) return observed;
+    } catch (error) {
+      if (!retryableSurfaceProbeError(error)) throw error;
+      lastProbeTimeout = error;
+    }
+    if (Date.now() >= deadline) {
+      if (!sawInventory && lastProbeTimeout) throw lastProbeTimeout;
+      return observed;
+    }
     await delay(Math.min(50, Math.max(1, deadline - Date.now())));
   }
 }
