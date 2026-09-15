@@ -1,10 +1,11 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { fork, spawn, spawnSync } from 'node:child_process';
+import { fork, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { nowIso } from './util.mjs';
 import { buildContainerInvocation, validateContainerWorkerConfig } from './container-worker.mjs';
+import { signalProcessTree } from './process-lifecycle-authority.mjs';
 
 const SAFE_ENV_KEYS = ['PATH', 'HOME', 'USERPROFILE', 'TMP', 'TEMP', 'TMPDIR', 'SYSTEMROOT', 'COMSPEC', 'LANG', 'LC_ALL', 'SHELL'];
 const LOCAL_WORKER_TYPES = new Set(['custom', 'custom-unconfined', 'codex']);
@@ -214,24 +215,7 @@ function preSpawnCancellationResult({ startedAt, startedAtMs, packetPath, runtim
 }
 
 function terminatePidTree(pid, signal = 'SIGTERM') {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  if (process.platform === 'win32') {
-    const args = ['/PID', String(pid), '/T'];
-    if (signal === 'SIGKILL') args.push('/F');
-    const result = spawnSync('taskkill', args, { stdio: 'ignore', windowsHide: true });
-    return result.status === 0;
-  }
-  try {
-    process.kill(-pid, signal);
-    return true;
-  } catch {
-    try {
-      process.kill(pid, signal);
-      return true;
-    } catch {
-      return false;
-    }
-  }
+  return signalProcessTree(pid, signal).signalled;
 }
 
 function terminateTree(child, signal = 'SIGTERM') {
