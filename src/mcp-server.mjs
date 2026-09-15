@@ -8,6 +8,7 @@ import { TOOL_DEFINITIONS, toolInputJsonSchema, toolInputZodSchema } from './too
 import { toolOutputJsonSchema, toolOutputStructuredContent, toolOutputZodSchema } from './tool-output-contracts.mjs';
 import { toolAnnotations } from './tool-annotations.mjs';
 import { toolWorkflowMeta } from './tool-workflow-relations.mjs';
+import { toolWorkflowBindingsMeta } from './tool-workflow-bindings.mjs';
 import { inspectMcpSdkIntegrity, assertMcpSdkIntegrity } from './mcp-sdk-integrity.mjs';
 
 const runtimeRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -28,6 +29,10 @@ function errorPayload(error) {
   };
 }
 
+function toolMeta(name) {
+  return { ...toolWorkflowMeta(name), ...toolWorkflowBindingsMeta(name) };
+}
+
 async function createOfficialSdkServerFactory({ stateRoot, configPath }) {
   const [{ McpServer }, { serveStdio }, zod] = await Promise.all([
     import('@modelcontextprotocol/server'),
@@ -45,7 +50,7 @@ async function createOfficialSdkServerFactory({ stateRoot, configPath }) {
         inputSchema: toolInputZodSchema(z, tool.name),
         outputSchema: toolOutputZodSchema(z, tool.name),
         annotations: toolAnnotations(tool.name),
-        _meta: toolWorkflowMeta(tool.name)
+        _meta: toolMeta(tool.name)
       }, async (args) => {
         try {
           const result = await app.callTool(tool.name, args || {});
@@ -96,7 +101,7 @@ async function startFallback({ stateRoot, configPath }) {
             inputSchema: toolInputJsonSchema(tool.name),
             outputSchema: toolOutputJsonSchema(tool.name, { legacyEnvelope: true }),
             annotations: toolAnnotations(tool.name),
-            _meta: toolWorkflowMeta(tool.name)
+            _meta: toolMeta(tool.name)
           })) });
         } else if (message.method === 'tools/call') {
           const name = message.params?.name;
