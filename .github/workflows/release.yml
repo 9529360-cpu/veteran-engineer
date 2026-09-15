@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/release.yml"
+      - ".github/release-intent.json"
       - ".codex-plugin/plugin.json"
       - "package.json"
       - "package-lock.json"
@@ -13,8 +14,12 @@ on:
       - "tests/release-contract.test.mjs"
       - "skills/runtime-regression-debugger/**"
   push:
+    branches:
+      - main
     tags:
       - "v*"
+    paths:
+      - ".github/release-intent.json"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -41,7 +46,14 @@ jobs:
       - name: Install dependencies
         run: npm ci --include=optional
       - name: Validate release authorities
-        run: node scripts/release-contract.mjs
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f .github/release-intent.json ]; then
+            node scripts/release-contract.mjs --intent .github/release-intent.json
+          else
+            node scripts/release-contract.mjs
+          fi
       - name: Run full validation
         run: npm run check
       - name: Build reproducible release candidate
@@ -56,8 +68,8 @@ jobs:
           done
 
   publish:
-    name: Publish tagged release
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    name: Publish release
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -65,7 +77,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Checkout tagged source
+      - name: Checkout exact release source
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
@@ -76,12 +88,34 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci --include=optional
+      - name: Resolve release trigger
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "VETERAN_RELEASE_TAG=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+            echo "VETERAN_RELEASE_INTENT=" >> "$GITHUB_ENV"
+            echo "VETERAN_RELEASE_CREATE_TAG=false" >> "$GITHUB_ENV"
+          else
+            test -f .github/release-intent.json
+            VERSION="$(node -e "const fs=require('fs'); const v=JSON.parse(fs.readFileSync('.github/release-intent.json','utf8')).version; if(typeof v!=='string'||!v) process.exit(1); process.stdout.write(v)")"
+            echo "VETERAN_RELEASE_TAG=v$VERSION" >> "$GITHUB_ENV"
+            echo "VETERAN_RELEASE_INTENT=.github/release-intent.json" >> "$GITHUB_ENV"
+            echo "VETERAN_RELEASE_CREATE_TAG=true" >> "$GITHUB_ENV"
+          fi
       - name: Validate tag and release authorities
-        run: node scripts/release-contract.mjs --tag "$GITHUB_REF_NAME"
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "$VETERAN_RELEASE_INTENT" ]; then
+            node scripts/release-contract.mjs --tag "$VETERAN_RELEASE_TAG" --intent "$VETERAN_RELEASE_INTENT"
+          else
+            node scripts/release-contract.mjs --tag "$VETERAN_RELEASE_TAG"
+          fi
       - name: Run full validation
         run: npm run check
       - name: Build reproducible release candidate
-        run: node scripts/release-candidate.mjs --output dist --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA"
+        run: node scripts/release-candidate.mjs --output dist --tag "$VETERAN_RELEASE_TAG" --commit "$GITHUB_SHA"
       - name: Verify local candidate checksums
         shell: bash
         run: |
@@ -94,16 +128,29 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TAG="$GITHUB_REF_NAME"
+          TAG="$VETERAN_RELEASE_TAG"
           if gh release view "$TAG" >/dev/null 2>&1; then
             test "$(gh release view "$TAG" --json isDraft --jq '.isDraft')" = "true"
+            git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+            test "$(git rev-list -n 1 "$TAG")" = "$GITHUB_SHA"
             gh release upload "$TAG" dist/* --clobber
-          else
+          elif git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+            test "$(git rev-list -n 1 "$TAG")" = "$GITHUB_SHA"
             gh release create "$TAG" dist/* \
               --verify-tag \
               --draft \
               --generate-notes \
               --title "Veteran Engineer ${TAG#v}"
+          elif [ "$VETERAN_RELEASE_CREATE_TAG" = "true" ]; then
+            gh release create "$TAG" dist/* \
+              --target "$GITHUB_SHA" \
+              --draft \
+              --generate-notes \
+              --title "Veteran Engineer ${TAG#v}"
+          else
+            echo "Expected release tag $TAG does not exist" >&2
+            exit 1
           fi
       - name: Verify draft assets before publication
         shell: bash
@@ -111,21 +158,21 @@ jobs:
           set -euo pipefail
           rm -rf verify-release
           mkdir verify-release
-          gh release download "$GITHUB_REF_NAME" --dir verify-release --pattern 'veteran-engineer-*'
+          gh release download "$VETERAN_RELEASE_TAG" --dir verify-release --pattern 'veteran-engineer-*'
           cd verify-release
           for checksum in veteran-engineer-*.sha256; do
             sha256sum -c "$checksum"
           done
           cmp veteran-engineer-release-manifest.json ../dist/veteran-engineer-release-manifest.json
       - name: Publish release
-        run: gh release edit "$GITHUB_REF_NAME" --draft=false --latest
+        run: gh release edit "$VETERAN_RELEASE_TAG" --draft=false --latest
       - name: Verify public release bytes
         shell: bash
         run: |
           set -euo pipefail
           verify_public() {
             local release_json
-            release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME")"
+            release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VETERAN_RELEASE_TAG")"
             jq -e '.draft == false and .prerelease == false' <<<"$release_json" >/dev/null
             rm -rf public-release
             mkdir public-release
@@ -141,6 +188,6 @@ jobs:
             cmp public-release/veteran-engineer-release-manifest.json dist/veteran-engineer-release-manifest.json
           }
           if ! verify_public; then
-            gh release edit "$GITHUB_REF_NAME" --draft || true
+            gh release edit "$VETERAN_RELEASE_TAG" --draft || true
             exit 1
           fi

@@ -23,3 +23,8 @@ test('release version contract rejects drift across authorities', () => {
 test('release version contract rejects a tag that does not match package version', () => {
   assert.throws(() => validateReleaseVersions({ ...base, tag: 'v0.4.1' }));
 });
+
+test('release version contract rejects a release intent for another version', () => {
+  assert.equal(validateReleaseVersions({ ...base, intentVersion: '0.4.0' }), '0.4.0');
+  assert.throws(() => validateReleaseVersions({ ...base, intentVersion: '0.4.1' }));
+});
