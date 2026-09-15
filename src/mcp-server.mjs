@@ -9,6 +9,7 @@ import { toolOutputJsonSchema, toolOutputStructuredContent, toolOutputZodSchema 
 import { toolAnnotations } from './tool-annotations.mjs';
 import { toolWorkflowMeta } from './tool-workflow-relations.mjs';
 import { toolWorkflowBindingsMeta } from './tool-workflow-bindings.mjs';
+import { toolWorkflowSuggestionsMeta } from './tool-workflow-suggestions.mjs';
 import { inspectMcpSdkIntegrity, assertMcpSdkIntegrity } from './mcp-sdk-integrity.mjs';
 
 const runtimeRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -56,7 +57,8 @@ async function createOfficialSdkServerFactory({ stateRoot, configPath }) {
           const result = await app.callTool(tool.name, args || {});
           return {
             content: [{ type: 'text', text: jsonSafe(result) }],
-            structuredContent: toolOutputStructuredContent(tool.name, result)
+            structuredContent: toolOutputStructuredContent(tool.name, result),
+            _meta: toolWorkflowSuggestionsMeta(tool.name, args || {}, result)
           };
         } catch (error) {
           return { isError: true, content: [{ type: 'text', text: jsonSafe(errorPayload(error)) }] };
@@ -110,7 +112,8 @@ async function startFallback({ stateRoot, configPath }) {
             const result = await app.callTool(name, args);
             success(message.id, {
               content: [{ type: 'text', text: jsonSafe(result) }],
-              structuredContent: toolOutputStructuredContent(name, result, { legacyEnvelope: true })
+              structuredContent: toolOutputStructuredContent(name, result, { legacyEnvelope: true }),
+              _meta: toolWorkflowSuggestionsMeta(name, args, result)
             });
           } catch (error) {
             success(message.id, { isError: true, content: [{ type: 'text', text: jsonSafe(errorPayload(error)) }] });
