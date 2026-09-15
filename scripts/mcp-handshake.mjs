@@ -114,10 +114,14 @@ async function legacyProbe(args, stateRoot) {
     child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })}\n`);
     const tools = await request('tools/list', {});
     assert.equal(tools.tools.length, args.expectTools, `expected ${args.expectTools} tools, got ${tools.tools.length}`);
+    assert.equal(tools.tools.every((tool) => tool.outputSchema?.type === 'object'), true, 'legacy fallback must publish object-root output schemas');
+    const timeline = tools.tools.find((tool) => tool.name === 'mission_timeline');
+    assert.equal(timeline?.outputSchema?.properties?.result?.type, 'array', 'legacy fallback must wrap natural array outputs under result');
     const healthResult = await request('tools/call', { name: 'runtime_health', arguments: {} });
     const health = parseToolText(healthResult);
     assert.ok(health?.mcp, 'runtime_health did not return MCP capability');
-    return { ok: true, client: 'manual-legacy', era: 'legacy', protocolVersion: init.protocolVersion, toolCount: tools.tools.length, runtime: health };
+    assert.deepEqual(healthResult.structuredContent, health, 'legacy fallback structuredContent must match object text JSON');
+    return { ok: true, client: 'manual-legacy', era: 'legacy', protocolVersion: init.protocolVersion, toolCount: tools.tools.length, outputContracts: true, runtime: health };
   } finally {
     for (const item of pending.values()) clearTimeout(item.timer);
     pending.clear();
@@ -172,9 +176,14 @@ async function sdkProbe(args, stateRoot) {
     if (args.mode === 'legacy') assert.equal(era, 'legacy');
     const tools = await client.listTools();
     assert.equal(tools.tools.length, args.expectTools, `expected ${args.expectTools} tools, got ${tools.tools.length}`);
+    assert.equal(tools.tools.every((tool) => Boolean(tool.outputSchema)), true, 'official SDK must publish outputSchema for every Veteran tool');
+    const timeline = tools.tools.find((tool) => tool.name === 'mission_timeline');
+    if (era === 'modern') assert.equal(timeline?.outputSchema?.type, 'array', 'modern MCP should expose the natural timeline array schema');
+    else assert.equal(timeline?.outputSchema?.properties?.result?.type, 'array', 'legacy SDK codec should wrap the timeline array schema');
     const healthResult = await client.callTool({ name: 'runtime_health', arguments: {} });
     const health = parseToolText(healthResult);
     assert.ok(health?.mcp, 'runtime_health did not return MCP capability');
+    assert.deepEqual(healthResult.structuredContent, health, 'official SDK structuredContent must match object text JSON');
     let stateful = null;
     if (args.stateful) {
       statefulRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'veteran-handshake-repo-'));
@@ -195,9 +204,14 @@ async function sdkProbe(args, stateRoot) {
         throw error;
       }
       assert.ok(opened?.id, 'official modern stateful project_open did not persist a project');
-      stateful = { tool: 'project_open', projectId: opened.id };
+      assert.equal(openResult.structuredContent?.id, opened.id, 'project_open structuredContent must expose the chainable project id');
+      const capabilitiesResult = await client.callTool({ name: 'validation_capabilities', arguments: { projectId: opened.id } });
+      const capabilitiesText = parseToolText(capabilitiesResult);
+      assert.ok(Array.isArray(capabilitiesText), 'validation_capabilities text result must remain a natural array');
+      assert.ok(Array.isArray(capabilitiesResult.structuredContent), 'modern structuredContent must preserve natural array outputs');
+      stateful = { tool: 'project_open', projectId: opened.id, structuredOutput: true };
     }
-    return { ok: true, client: `official-sdk-${version}`, sdk: { client: version, server: serverVersion, integrity }, era, toolCount: tools.tools.length, stateful, runtime: health };
+    return { ok: true, client: `official-sdk-${version}`, sdk: { client: version, server: serverVersion, integrity }, era, toolCount: tools.tools.length, outputContracts: true, stateful, runtime: health };
   } catch (error) {
     if (stderr.trim()) error.message += `\nserver stderr:\n${stderr.slice(-4000)}`;
     throw error;
