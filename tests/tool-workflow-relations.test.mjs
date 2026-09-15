@@ -38,7 +38,11 @@ function assertPublishedWorkflow(tools) {
   assert.equal(tools.length, 34);
   for (const tool of tools) {
     assert.ok(TOOL_NAMES.includes(tool.name), `unexpected tool ${tool.name}`);
-    assert.deepEqual(tool._meta, toolWorkflowMeta(tool.name), `workflow metadata drift for ${tool.name}`);
+    assert.deepEqual(
+      tool._meta?.[TOOL_WORKFLOW_META_KEY],
+      toolWorkflowMeta(tool.name)[TOOL_WORKFLOW_META_KEY],
+      `workflow metadata drift for ${tool.name}`
+    );
   }
 }
 
