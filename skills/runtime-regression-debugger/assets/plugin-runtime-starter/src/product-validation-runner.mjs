@@ -1,8 +1,8 @@
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { probeProcessGroup, processGroupMayBeAlive } from './process-lifecycle-authority.mjs';
+import { probeProcessGroup, processGroupMayBeAlive, signalProcessTree } from './process-lifecycle-authority.mjs';
 
 const DEFAULT_LOG_LIMIT_BYTES = 128 * 1024;
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
@@ -87,14 +87,11 @@ function managedTreeAlive(child) {
 
 function terminateTree(child, signal) {
   if (!child?.pid) return;
-  if (process.platform === 'win32') {
-    if (signal === 'SIGKILL') spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
-    else { try { child.kill(); } catch {} }
+  if (process.platform === 'win32' && signal !== 'SIGKILL') {
+    try { child.kill(); } catch {}
     return;
   }
-  try { process.kill(-child.pid, signal); } catch {
-    try { child.kill(signal); } catch {}
-  }
+  signalProcessTree(child.pid, signal);
 }
 
 function delay(ms) {
