@@ -7,6 +7,7 @@ import { MCP_TRANSPORT_MODES } from './mcp-protocol-capability.mjs';
 import { TOOL_DEFINITIONS, toolInputJsonSchema, toolInputZodSchema } from './tool-catalog.mjs';
 import { toolOutputJsonSchema, toolOutputStructuredContent, toolOutputZodSchema } from './tool-output-contracts.mjs';
 import { toolAnnotations } from './tool-annotations.mjs';
+import { toolWorkflowMeta } from './tool-workflow-relations.mjs';
 import { inspectMcpSdkIntegrity, assertMcpSdkIntegrity } from './mcp-sdk-integrity.mjs';
 
 const runtimeRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -43,7 +44,8 @@ async function createOfficialSdkServerFactory({ stateRoot, configPath }) {
         description: tool.description,
         inputSchema: toolInputZodSchema(z, tool.name),
         outputSchema: toolOutputZodSchema(z, tool.name),
-        annotations: toolAnnotations(tool.name)
+        annotations: toolAnnotations(tool.name),
+        _meta: toolWorkflowMeta(tool.name)
       }, async (args) => {
         try {
           const result = await app.callTool(tool.name, args || {});
@@ -93,7 +95,8 @@ async function startFallback({ stateRoot, configPath }) {
             description: tool.description,
             inputSchema: toolInputJsonSchema(tool.name),
             outputSchema: toolOutputJsonSchema(tool.name, { legacyEnvelope: true }),
-            annotations: toolAnnotations(tool.name)
+            annotations: toolAnnotations(tool.name),
+            _meta: toolWorkflowMeta(tool.name)
           })) });
         } else if (message.method === 'tools/call') {
           const name = message.params?.name;
