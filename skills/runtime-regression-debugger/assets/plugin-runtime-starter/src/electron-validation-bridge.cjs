@@ -309,7 +309,6 @@ async function invoke(target, operation, params = {}) {
   const contents = surface.contents;
   if (operation === 'inventory') return { ok: true, surface: publicSurface(surface) };
   if (operation === 'url') return { ok: true, url: surface.url };
-  if (operation === 'windowState') return readWindowState(surface);
   if (operation === 'inspect') return { ok: true, ...(await runDom(contents, 'inspect', params)) };
   if (operation === 'click') {
     const inspected = await runDom(contents, 'inspect', params);
@@ -364,6 +363,11 @@ rl.on('line', (line) => {
     }
     if (message.operation === 'diagnostics') {
       reply({ id: message.id, ok: true, diagnostics: diagnosticsSnapshot() });
+      return;
+    }
+    if (message.operation === 'windowState') {
+      const surface = resolveTarget(message.target);
+      reply({ id: message.id, ...(surface ? readWindowState(surface) : { ok: false, code: 'ELECTRON_SURFACE_NOT_FOUND' }) });
       return;
     }
     if (message.operation === 'quit') {
