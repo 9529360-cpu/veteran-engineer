@@ -30,8 +30,8 @@ function normalizedOwner(value) {
 
 export function processOwnerFromRecord(record) {
   if (!record || typeof record !== 'object' || Array.isArray(record)) return null;
-  if (record.processOwner !== undefined) return normalizedOwner(record.processOwner);
-  return normalizedOwner({ pid: record.pid });
+  const nested = record.processOwner === undefined ? null : normalizedOwner(record.processOwner);
+  return nested || normalizedOwner({ pid: record.pid });
 }
 
 async function signalProcessState(pid) {
