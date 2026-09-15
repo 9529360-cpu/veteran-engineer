@@ -1,0 +1,47 @@
+name: Cross-platform host smoke
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  host-smoke:
+    name: ${{ matrix.os }} / Node 20 host smoke
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --include=optional
+
+      - name: Run installer contract tests
+        run: npm run test:installer
+
+      - name: Run CLI contract tests
+        run: npm run test:cli
+
+      - name: Probe host discovery
+        run: node bin/veteran-engineer.mjs hosts
