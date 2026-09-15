@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { DEFAULT_LOCK_STALE_MS, DEFAULT_LOCK_TIMEOUT_MS, STATE_SCHEMA_VERSION } from './constants.mjs';
+import { PROCESS_LIFECYCLE_STATE, probeProcess } from './process-lifecycle-authority.mjs';
 import { clone, ensureDir, nowIso, pathExists, randomId, sha256, sleep, stableStringify } from './util.mjs';
 
 function emptyState() {
@@ -22,16 +23,6 @@ function emptyState() {
       }
     }
   };
-}
-
-async function pidAlive(pid) {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error?.code === 'EPERM';
-  }
 }
 
 function auditMaterial(entry) {
@@ -152,7 +143,8 @@ export class StateStore {
           const ageMs = Date.now() - stat.mtimeMs;
           try {
             const lock = JSON.parse(raw);
-            stale = ageMs > this.lockStaleMs && !(await pidAlive(lock.pid));
+            const ownerProbe = probeProcess(lock.pid);
+            stale = ageMs > this.lockStaleMs && ownerProbe.state === PROCESS_LIFECYCLE_STATE.MISSING;
           } catch {
             // A newly created lock can be observed before its JSON payload is fully written.
             // Never delete a young malformed/partial lock; only age can make it reclaimable.
