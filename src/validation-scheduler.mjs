@@ -4,7 +4,7 @@ export const DEFAULT_VALIDATION_MAX_PARALLEL = 4;
 export const MAX_VALIDATION_MAX_PARALLEL = 16;
 
 function validationTier(capability) {
-  if (capability?.browser || capability?.observability) return 2;
+  if (capability?.browser || capability?.electron || capability?.observability) return 2;
   if (capability?.service) return 1;
   return 0;
 }
