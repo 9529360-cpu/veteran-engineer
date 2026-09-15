@@ -88,6 +88,49 @@ const guestHtml = String.raw`<!doctype html>
 </body>
 </html>`;
 
+const crashMainSource = String.raw`
+const path = require('node:path');
+const { app, BrowserWindow, ipcMain } = require('electron');
+ipcMain.on('veteran-force-crash', (event) => {
+  event.sender.forcefullyCrashRenderer();
+});
+app.whenReady().then(async () => {
+  const win = new BrowserWindow({
+    width: 700,
+    height: 500,
+    show: true,
+    webPreferences: {
+      contextIsolation: true,
+      sandbox: true,
+      preload: path.join(__dirname, 'crash-preload.cjs')
+    }
+  });
+  await win.loadFile(path.join(__dirname, 'crash.html'));
+});
+app.on('window-all-closed', () => app.quit());
+`;
+
+const crashPreloadSource = String.raw`
+const { contextBridge, ipcRenderer } = require('electron');
+contextBridge.exposeInMainWorld('veteranCrashFixture', {
+  trigger: () => ipcRenderer.send('veteran-force-crash')
+});
+`;
+
+const crashHtml = String.raw`<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Veteran Crash Fixture</title></head>
+<body>
+  <div id="crash-status">ready</div>
+  <button id="crash-button">Crash renderer</button>
+  <script>
+    document.getElementById('crash-button').addEventListener('click', () => {
+      window.veteranCrashFixture.trigger();
+    });
+  </script>
+</body>
+</html>`;
+
 function parseEvidenceSummary(evidence) {
   return JSON.parse(evidence.summary);
 }
@@ -151,6 +194,8 @@ test('validation_run controls real multi-window BrowserWindow lifecycle and webv
     assert.equal(result.electron.assertions.every((item) => item.passed), true);
     assert.ok(result.electron.assertions.some((item) => item.detail === 'expected=2 observed=2'));
     assert.ok(result.electron.assertions.some((item) => item.detail === 'expected=0 observed=0'));
+    assert.equal(result.electron.diagnostics.crashes, 0);
+    assert.equal(result.electron.diagnostics.activeUnresponsive, 0);
     assert.ok(result.electron.surfaces.windows.some((item) => item.title === 'Veteran Electron Fixture'));
     assert.equal(result.electron.surfaces.windows.some((item) => item.title === 'Veteran Secondary Fixture'), false);
     assert.ok(result.electron.surfaces.webviews.some((item) => item.title === 'Veteran Guest Fixture'));
@@ -159,12 +204,63 @@ test('validation_run controls real multi-window BrowserWindow lifecycle and webv
     const summary = parseEvidenceSummary(evidence);
     assert.equal(summary.electron.passed, true);
     assert.equal(summary.failureStage, null);
+    assert.equal(summary.electron.diagnostics.crashes, 0);
     assert.deepEqual(evidence.attachments.map((item) => [item.name, item.kind]), [
       ['electron/window.png', 'electron-screenshot'],
       ['electron/secondary.png', 'electron-screenshot'],
       ['electron/guest.png', 'electron-webview-screenshot']
     ]);
     assert.ok(evidence.attachments.every((item) => item.bytes > 0 && item.artifactHash));
+  } finally {
+    await cleanup(root);
+  }
+});
+
+test('validation_run classifies a real Electron renderer crash from render-process-gone evidence', { skip: !electronPath, timeout: 120_000 }, async () => {
+  const scenario = {
+    contract: ELECTRON_SCENARIO_CONTRACT,
+    steps: [
+      { action: 'waitForSurface', target: { type: 'window', titleIncludes: 'Veteran Crash Fixture' }, timeoutMs: 15000 },
+      { action: 'assertText', selector: '#crash-status', text: 'ready', match: 'equals' },
+      { action: 'click', selector: '#crash-button' },
+      { action: 'assertText', selector: '#crash-status', text: 'still-alive', match: 'equals', timeoutMs: 5000 }
+    ]
+  };
+  const { root, repo, stateRoot } = await createGitRepo({ files: {
+    'crash-main.cjs': crashMainSource,
+    'crash-preload.cjs': crashPreloadSource,
+    'crash.html': crashHtml,
+    'tests/electron/crash.json': `${JSON.stringify(scenario, null, 2)}\n`
+  } });
+  try {
+    await fs.mkdir(stateRoot, { recursive: true });
+    await fs.writeFile(path.join(stateRoot, 'operator.json'), `${JSON.stringify({
+      defaults: {
+        validationCapabilities: [{
+          name: 'electron-renderer-crash-smoke',
+          electron: {
+            executablePath: electronPath,
+            args: ['crash-main.cjs'],
+            scenarioFile: 'tests/electron/crash.json',
+            timeoutMs: 45_000,
+            stepTimeoutMs: 5_000
+          }
+        }]
+      }
+    }, null, 2)}\n`);
+    const app = await createVeteranApp({ stateRoot });
+    const project = await app.services.projectService.open({ repoPath: repo });
+    const result = await app.services.validationService.run({ projectId: project.id, capability: 'electron-renderer-crash-smoke' });
+    assert.equal(result.passed, false, JSON.stringify(result, null, 2));
+    assert.equal(result.failureStage, 'electron-validation');
+    assert.equal(result.electron.failureCode, 'ELECTRON_RENDERER_CRASHED');
+    assert.ok(result.electron.diagnostics.crashes >= 1, JSON.stringify(result.electron.diagnostics));
+
+    const [evidence] = await app.services.evidenceService.query({ ids: [result.evidenceId] });
+    const summary = parseEvidenceSummary(evidence);
+    assert.equal(summary.failureStage, 'electron-validation');
+    assert.equal(summary.electron.failureCode, 'ELECTRON_RENDERER_CRASHED');
+    assert.ok(summary.electron.diagnostics.crashes >= 1);
   } finally {
     await cleanup(root);
   }
