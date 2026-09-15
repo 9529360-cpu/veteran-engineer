@@ -57,6 +57,11 @@ function selectTarget(surfaces, target) {
   return list.filter((surface) => targetMatches(surface, target))[target.index] || null;
 }
 
+function matchingSurfaceCount(surfaces, target) {
+  const list = target.type === 'webview' ? surfaces?.webviews : surfaces?.windows;
+  return (Array.isArray(list) ? list : []).filter((surface) => targetMatches(surface, target)).length;
+}
+
 async function waitForSurface(session, target, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
@@ -65,6 +70,18 @@ async function waitForSurface(session, target, timeoutMs) {
     const selected = selectTarget(surfaces, target);
     if (selected) return selected;
     if (Date.now() >= deadline) throw electronError('Electron target surface was not found before timeout', 'ELECTRON_SURFACE_NOT_FOUND', { target });
+    await delay(Math.min(50, Math.max(1, deadline - Date.now())));
+  }
+}
+
+async function waitForSurfaceCount(session, target, expected, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let observed = 0;
+  for (;;) {
+    const requestTimeout = Math.max(1, Math.min(1000, deadline - Date.now()));
+    const surfaces = await session.listSurfaces(requestTimeout);
+    observed = matchingSurfaceCount(surfaces, target);
+    if (observed === expected || Date.now() >= deadline) return observed;
     await delay(Math.min(50, Math.max(1, deadline - Date.now())));
   }
 }
@@ -105,6 +122,18 @@ function assertionDetail(value) {
 async function executeStep(session, step, stepIndex, assertions, attachments) {
   if (step.action === 'waitForSurface') {
     await waitForSurface(session, step.target, step.timeoutMs);
+    return;
+  }
+
+  if (step.action === 'assertSurfaceCount') {
+    const observed = await waitForSurfaceCount(session, step.target, step.count, step.timeoutMs);
+    const passed = observed === step.count;
+    assertions.push({
+      name: assertionName(step, stepIndex),
+      passed,
+      detail: `expected=${step.count} observed=${observed}`
+    });
+    if (!passed) throw electronError(`Electron assertion failed: ${assertionName(step, stepIndex)}`, 'ELECTRON_ASSERTION_FAILED', { stepIndex });
     return;
   }
 
