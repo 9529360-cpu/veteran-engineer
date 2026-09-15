@@ -146,6 +146,29 @@ function publicSurface(surface) {
   };
 }
 
+function readWindowState(surface) {
+  if (!surface || surface.type !== 'window') return { ok: false, code: 'ELECTRON_WINDOW_STATE_TARGET_INVALID' };
+  try {
+    const owner = BrowserWindow.fromWebContents(surface.contents);
+    if (!owner || owner.isDestroyed()) return { ok: false, code: 'ELECTRON_SURFACE_NOT_FOUND' };
+    const bounds = owner.getBounds();
+    const width = Number.isInteger(bounds?.width) && bounds.width >= 0 ? bounds.width : null;
+    const height = Number.isInteger(bounds?.height) && bounds.height >= 0 ? bounds.height : null;
+    return {
+      ok: true,
+      state: {
+        visible: Boolean(owner.isVisible()),
+        minimized: Boolean(owner.isMinimized()),
+        maximized: Boolean(owner.isMaximized()),
+        fullScreen: Boolean(owner.isFullScreen()),
+        bounds: { width, height }
+      }
+    };
+  } catch {
+    return { ok: false, code: 'ELECTRON_WINDOW_STATE_UNAVAILABLE' };
+  }
+}
+
 function inventory() {
   observeCurrentWebContents();
   return {
@@ -286,6 +309,7 @@ async function invoke(target, operation, params = {}) {
   const contents = surface.contents;
   if (operation === 'inventory') return { ok: true, surface: publicSurface(surface) };
   if (operation === 'url') return { ok: true, url: surface.url };
+  if (operation === 'windowState') return readWindowState(surface);
   if (operation === 'inspect') return { ok: true, ...(await runDom(contents, 'inspect', params)) };
   if (operation === 'click') {
     const inspected = await runDom(contents, 'inspect', params);
