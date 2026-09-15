@@ -22,6 +22,26 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', () => app.quit());
 `;
 
+const menuMainSource = String.raw`
+const path = require('node:path');
+const { app, BrowserWindow, Menu } = require('electron');
+app.whenReady().then(async () => {
+  const menu = Menu.buildFromTemplate([{
+    id: 'file-menu',
+    label: 'File',
+    submenu: [
+      { id: 'open-project', label: 'Open Project', accelerator: 'CommandOrControl+O', click() {} },
+      { type: 'separator' },
+      { id: 'feature-toggle', label: 'Feature Enabled', type: 'checkbox', checked: true, enabled: false }
+    ]
+  }]);
+  Menu.setApplicationMenu(menu);
+  const win = new BrowserWindow({ width: 900, height: 700, show: true });
+  await win.loadFile(path.join(__dirname, 'index.html'));
+});
+app.on('window-all-closed', () => app.quit());
+`;
+
 const html = '<!doctype html><html><head><title>Veteran Window State Fixture</title></head><body>ready</body></html>';
 
 async function waitForWindow(session) {
@@ -117,6 +137,52 @@ test('Electron scenario asserts bounded native window state through the validati
     assert.match(result.assertions[0].detail, /"width":900/);
     assert.match(result.assertions[0].detail, /"height":700/);
   } finally {
+    await cleanup(root);
+  }
+});
+
+test('native Electron bridge exposes bounded application-menu and accelerator metadata', { skip: !electronPath, timeout: 120_000 }, async () => {
+  const { root, repo } = await createGitRepo({ files: {
+    'main.cjs': menuMainSource,
+    'index.html': html
+  } });
+  const home = path.join(root, 'electron-menu-home');
+  await fs.mkdir(home, { recursive: true });
+  let session = null;
+  try {
+    const automation = nativeElectronAutomation();
+    session = await automation.launch({
+      executablePath: electronPath,
+      args: ['main.cjs'],
+      cwd: repo,
+      env: {
+        ...process.env,
+        HOME: home,
+        USERPROFILE: home,
+        XDG_CONFIG_HOME: path.join(home, '.config'),
+        XDG_CACHE_HOME: path.join(home, '.cache')
+      },
+      timeout: 30_000,
+      chromiumSandbox: true
+    });
+    await waitForWindow(session);
+    const result = await session.command(null, 'menuInventory', {}, 5_000);
+    assert.equal(result.ok, true, JSON.stringify(result));
+    assert.equal(result.menu.truncated, false);
+    const open = result.menu.items.find((item) => item.id === 'open-project');
+    assert.ok(open, JSON.stringify(result.menu));
+    assert.equal(open.label, 'Open Project');
+    assert.equal(open.accelerator, 'CommandOrControl+O');
+    assert.equal(open.enabled, true);
+    assert.equal(open.visible, true);
+    assert.equal(Object.hasOwn(open, 'click'), false);
+    const toggle = result.menu.items.find((item) => item.id === 'feature-toggle');
+    assert.ok(toggle, JSON.stringify(result.menu));
+    assert.equal(toggle.type, 'checkbox');
+    assert.equal(toggle.checked, true);
+    assert.equal(toggle.enabled, false);
+  } finally {
+    if (session) await session.close().catch(() => {});
     await cleanup(root);
   }
 });

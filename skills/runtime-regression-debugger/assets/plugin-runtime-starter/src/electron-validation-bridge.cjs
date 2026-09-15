@@ -2,7 +2,8 @@
 
 const fs = require('node:fs');
 const readline = require('node:readline');
-const { app, BrowserWindow, webContents } = require('electron');
+const { app, BrowserWindow, Menu, webContents } = require('electron');
+const { applicationMenuInventory } = require('./electron-native-menu.cjs');
 
 const CONTRACT = 'veteran-electron-bridge-v1';
 const MAX_SURFACES = 64;
@@ -368,6 +369,10 @@ rl.on('line', (line) => {
     if (message.operation === 'windowState') {
       const surface = resolveTarget(message.target);
       reply({ id: message.id, ...(surface ? readWindowState(surface) : { ok: false, code: 'ELECTRON_SURFACE_NOT_FOUND' }) });
+      return;
+    }
+    if (message.operation === 'menuInventory') {
+      reply({ id: message.id, ok: true, menu: applicationMenuInventory(Menu.getApplicationMenu()) });
       return;
     }
     if (message.operation === 'quit') {
