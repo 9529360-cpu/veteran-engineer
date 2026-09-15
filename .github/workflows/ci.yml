@@ -54,22 +54,27 @@ jobs:
       - name: Install runtime dependencies
         run: npm ci --include=optional
 
-      - name: Install Electron fixture and Linux desktop dependencies
+      - name: Install Electron fixture and Xvfb
         shell: bash
         run: |
           set -euo pipefail
           npm install --no-save --package-lock=false electron@44.3.0
           sudo apt-get update
           sudo apt-get install -y xvfb
-          npx playwright-core install-deps chromium
 
       - name: Run real Electron desktop validation
         shell: bash
         run: |
           set -euo pipefail
           ELECTRON_PATH="$(node -p 'require("electron")' | tail -n 1)"
+          ELECTRON_DIR="$(dirname "$ELECTRON_PATH")"
           echo "Using Electron binary: $ELECTRON_PATH"
           ls -l "$ELECTRON_PATH"
+          if [ -f "$ELECTRON_DIR/chrome-sandbox" ]; then
+            sudo chown root:root "$ELECTRON_DIR/chrome-sandbox"
+            sudo chmod 4755 "$ELECTRON_DIR/chrome-sandbox"
+            ls -l "$ELECTRON_DIR/chrome-sandbox"
+          fi
           xvfb-run -a env VETERAN_TEST_ELECTRON_PATH="$ELECTRON_PATH" npm run test:electron
 
   container-smoke:

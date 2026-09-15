@@ -18,42 +18,44 @@ async function fixture() {
 }
 
 function fakeAutomation(state = {}) {
-  const locator = (selector) => ({
-    async click() { state.clicks = [...(state.clicks || []), selector]; },
-    async fill(value) { state.fills = [...(state.fills || []), [selector, value]]; },
-    async press(key) { state.keys = [...(state.keys || []), [selector, key]]; },
-    async waitFor() {},
-    async textContent() { return selector === '#status' ? 'ready' : ''; },
-    async inputValue() { return selector === '#field' ? 'abc' : ''; }
-  });
-  const page = {
-    isClosed: () => false,
-    title: async () => 'Veteran Electron Fixture',
-    url: () => 'file:///main.html?secret=redacted',
-    locator,
-    keyboard: { press: async (key) => { state.keys = [...(state.keys || []), [null, key]]; } },
-    screenshot: async () => Buffer.from('window-png'),
-    on() {}
+  const surfaces = {
+    windows: [{ index: 0, id: 1, type: 'window', title: 'Veteran Electron Fixture', url: 'file:///main.html?secret=redacted', hostId: null }],
+    webviews: [{ index: 0, id: 7, type: 'webview', title: 'Guest', url: 'file:///guest.html?token=redacted', hostId: 1 }]
   };
-  const app = {
-    windows: () => [page],
-    on() {},
-    async close() { state.closed = true; },
-    async evaluate(_fn, input) {
-      if (!input) {
-        return [{ index: 0, id: 7, type: 'webview', title: 'Guest', url: 'file:///guest.html?token=redacted', hostId: 1 }];
-      }
-      if (input.operation === 'inventory') return { ok: true, id: 7, type: 'webview', title: 'Guest', url: 'file:///guest.html', hostId: 1 };
-      if (input.operation === 'fill') { state.guestValue = input.params.value; return { ok: true }; }
-      if (input.operation === 'click') { state.guestClicked = true; return { ok: true }; }
-      if (input.operation === 'press') { state.guestKey = input.params.key; return { ok: true }; }
-      if (input.operation === 'inspect') return { ok: true, found: true, visible: true, text: 'guest-ready', value: state.guestValue || '' };
-      if (input.operation === 'url') return { ok: true, url: 'file:///guest.html?token=redacted' };
-      if (input.operation === 'screenshot') return { ok: true, pngBase64: Buffer.from('guest-png').toString('base64') };
-      throw new Error(`unexpected guest operation ${input.operation}`);
+  const command = async (target, operation, params = {}) => {
+    const webview = target?.type === 'webview';
+    if (operation === 'fill') {
+      if (webview) state.guestValue = params.value;
+      else state.windowValue = params.value;
+      return { ok: true };
+    }
+    if (operation === 'click') {
+      if (webview) state.guestClicked = true;
+      else state.windowClicked = true;
+      return { ok: true };
+    }
+    if (operation === 'press') {
+      state.lastKey = params.key;
+      return { ok: true };
+    }
+    if (operation === 'url') return { ok: true, url: webview ? surfaces.webviews[0].url : surfaces.windows[0].url };
+    if (operation === 'inspect') {
+      if (webview) return { ok: true, found: true, visible: true, text: 'guest-ready', value: state.guestValue || '' };
+      return { ok: true, found: true, visible: true, text: params.selector === '#status' ? 'ready' : '', value: params.selector === '#field' ? 'abc' : '' };
+    }
+    if (operation === 'screenshot') return { ok: true, pngBase64: Buffer.from(webview ? 'guest-png' : 'window-png').toString('base64') };
+    return { ok: false, code: 'UNEXPECTED_OPERATION' };
+  };
+  return {
+    async launch(options) {
+      state.launchOptions = options;
+      return {
+        async listSurfaces() { return surfaces; },
+        command,
+        async close() { state.closed = true; }
+      };
     }
   };
-  return { launch: async (options) => { state.launchOptions = options; return app; } };
 }
 
 test('electron validation config is bounded and rejects repository-escaping scenario paths and protected env overrides', () => {
