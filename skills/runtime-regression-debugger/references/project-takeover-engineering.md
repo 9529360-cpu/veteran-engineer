@@ -19,6 +19,7 @@ When a plugin/runtime backend is available and the operator provides an authoriz
 - Map workspace and build-graph boundaries
 - Recover validation and release topology
 - Rank unknowns by decision impact
+- Build an evidence-backed project attention queue
 - Choose the first evidence-producing change
 - Gate the first consequential mutation
 - Avoid takeover anti-patterns
@@ -234,6 +235,37 @@ Classify unknowns as:
 - **irrelevant** - does not affect the current contract.
 
 Resolve blocking and high-value unknowns with the cheapest evidence source. Do not ask the user to answer repository-discoverable questions merely to reduce model uncertainty.
+
+## Build an evidence-backed project attention queue
+
+When the operator grants broad stewardship with instructions such as "take over", "keep improving", "find what needs fixing", or "make the project stronger", do not wait for a file-level task and do not wander through the repository looking for cosmetic debt. Build a small project attention queue from current evidence, then choose the next safe action yourself.
+
+For each candidate problem, capture only the facts needed to choose among actions:
+
+- the observed signal and its evidence source;
+- the affected user/operator contract and live owner/path;
+- the concrete consequence if the problem is real and left unresolved;
+- confidence as **confirmed**, **supported**, or **hypothesis**;
+- urgency as **now**, **soon**, or **later**;
+- the next action class: **probe**, **fix**, **refactor**, **remove**, or **no-change**;
+- the cheapest falsifier or characterization evidence;
+- the smallest expected write set, validation boundary, and material dependencies.
+
+Prefer candidates in this order unless repository evidence proves a different dependency order:
+
+1. active correctness, authorization, data-integrity, money, availability, or user-visible recovery failures;
+2. duplicate/stale authority, unsafe lifecycle/concurrency/retry semantics, or broken validation/release/recovery boundaries with a concrete failure path;
+3. repeated regressions or high-churn hotspots only when they are tied to a live contract and causal pressure;
+4. capability gaps that directly block the requested product or operator outcome;
+5. maintainability cleanup only when it measurably reduces change risk, incident recurrence, validation cost, or operational toil.
+
+An unknown is not a defect. A TODO, large file, old dependency, duplicate-looking helper, low test count, or unfashionable architecture is only a lead until it is tied to a live contract and decision-relevant evidence. If the leading candidate is still a hypothesis, make the next task an evidence-producing probe or characterization instead of a speculative repair.
+
+Do not manufacture a pseudo-precise numeric health score. Use consequence first, then evidence strength, dependency order, reversibility, and available validation to break ties. Keep only a few live candidates; a giant backlog is not project understanding.
+
+For broad stewardship, select the smallest coherent set of candidates whose ordering is stable under the remaining unknowns and convert that set into a dependency-aware mission. Keep weaker candidates as hypotheses, not backlog truth. After each integrated wave or meaningful external change, refresh source/runtime authority and rebuild the attention queue before choosing the next wave. Retire candidates that current evidence disproves or makes irrelevant.
+
+A healthy project may produce no justified mutation. An evidence-backed no-change decision is better than inventing work so the engineer appears busy.
 
 ## Choose the first evidence-producing change
 
