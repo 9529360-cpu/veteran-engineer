@@ -69,7 +69,8 @@ test('error workflow suggestions retain argument-derived scope without fabricati
   const projection = meta[TOOL_WORKFLOW_SUGGESTIONS_META_KEY];
   const evidence = projection.suggestions.find((item) => item.tool === 'evidence_query');
   assert.ok(evidence);
-  assert.deepEqual(evidence.arguments, {});
+  assert.deepEqual(evidence.arguments, { missionId: 'mission-missing' });
+  assert.equal(Object.hasOwn(evidence.arguments, 'ids'), false);
   assert.deepEqual(evidence.selections, []);
 });
 
