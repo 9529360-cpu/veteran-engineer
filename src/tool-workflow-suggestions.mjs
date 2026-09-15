@@ -1,0 +1,133 @@
+import { toolInputJsonSchema } from './tool-catalog.mjs';
+import { TOOL_WORKFLOW_RELATIONS } from './tool-workflow-relations.mjs';
+import { TOOL_WORKFLOW_BINDINGS } from './tool-workflow-bindings.mjs';
+
+export const TOOL_WORKFLOW_SUGGESTIONS_META_KEY = 'io.veteran-engineer/workflow-suggestions';
+export const TOOL_WORKFLOW_SUGGESTIONS_SCHEMA = 'veteran-tool-workflow-suggestions-v1';
+
+function decodePointerSegment(segment) {
+  return segment.replace(/~1/g, '/').replace(/~0/g, '~');
+}
+
+function pointerSegments(pointer) {
+  if (pointer === '') return [];
+  if (typeof pointer !== 'string' || !pointer.startsWith('/')) return null;
+  return pointer.slice(1).split('/').map(decodePointerSegment);
+}
+
+function resolvePointer(root, pointer) {
+  const segments = pointerSegments(pointer);
+  if (!segments) return { found: false, value: undefined };
+  let current = root;
+  for (const segment of segments) {
+    if (current === null || current === undefined || (typeof current !== 'object' && typeof current !== 'function')) {
+      return { found: false, value: undefined };
+    }
+    if (!Object.hasOwn(current, segment)) return { found: false, value: undefined };
+    current = current[segment];
+  }
+  return { found: true, value: current };
+}
+
+function applyTransform(transform, value) {
+  if (transform === undefined || transform === 'identity') return value;
+  if (transform === 'singleton-array') return [value];
+  throw new Error(`Unknown workflow suggestion binding transform: ${transform}`);
+}
+
+function bindingValue(binding, args, result) {
+  const root = binding.source === 'arguments' ? args : result;
+  const resolved = resolvePointer(root, binding.pointer);
+  if (!resolved.found || resolved.value === null || resolved.value === undefined) return { found: false, value: undefined };
+  return { found: true, value: applyTransform(binding.transform, resolved.value) };
+}
+
+function matchesFilter(item, filter) {
+  if (!filter) return true;
+  const resolved = resolvePointer(item, filter.pointer);
+  if (!resolved.found) return false;
+  if (filter.operator === 'equals') return Object.is(resolved.value, filter.value);
+  if (filter.operator === 'in') return Array.isArray(filter.value) && filter.value.some((candidate) => Object.is(candidate, resolved.value));
+  throw new Error(`Unknown workflow suggestion selection filter operator: ${filter.operator}`);
+}
+
+function uniqueValues(values) {
+  const seen = new Set();
+  const output = [];
+  for (const value of values) {
+    const key = `${typeof value}:${JSON.stringify(value)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(value);
+  }
+  return output;
+}
+
+function selectionCandidates(selection, result) {
+  const values = [];
+  for (const source of selection.sources || []) {
+    if (source.source !== 'structuredContent') throw new Error(`Unsupported workflow suggestion selection source: ${source.source}`);
+    const collection = resolvePointer(result, source.collectionPointer);
+    if (!collection.found || !Array.isArray(collection.value)) continue;
+    for (const item of collection.value) {
+      if (!matchesFilter(item, source.filter)) continue;
+      const selected = resolvePointer(item, source.itemPointer);
+      if (!selected.found || selected.value === null || selected.value === undefined) continue;
+      values.push(selected.value);
+    }
+  }
+  return uniqueValues(values);
+}
+
+function resolvedSelection(selection, result) {
+  return Object.freeze({
+    target: selection.target,
+    cardinality: selection.cardinality,
+    requiredForRelation: selection.requiredForRelation === true,
+    candidates: Object.freeze(selectionCandidates(selection, result)),
+    reason: selection.reason
+  });
+}
+
+function suggestionFor(sourceTool, index, args, result) {
+  const edge = TOOL_WORKFLOW_RELATIONS[sourceTool].relations[index];
+  const bindingEdge = TOOL_WORKFLOW_BINDINGS[sourceTool].relations[index];
+  if (edge.tool !== bindingEdge.tool || edge.kind !== bindingEdge.kind) {
+    throw new Error(`Workflow suggestion relation drift for ${sourceTool} at index ${index}`);
+  }
+
+  const targetSchema = toolInputJsonSchema(edge.tool);
+  const partialArguments = {};
+  for (const binding of bindingEdge.bindings) {
+    const resolved = bindingValue(binding, args, result);
+    if (resolved.found) partialArguments[binding.target] = resolved.value;
+  }
+  const missingRequired = (targetSchema.required || []).filter((name) => !Object.hasOwn(partialArguments, name));
+  const selections = (bindingEdge.selections || []).map((item) => resolvedSelection(item, result));
+
+  return Object.freeze({
+    tool: edge.tool,
+    kind: edge.kind,
+    when: edge.when,
+    arguments: Object.freeze(partialArguments),
+    missingRequired: Object.freeze(missingRequired),
+    argumentsComplete: missingRequired.length === 0,
+    selections: Object.freeze(selections)
+  });
+}
+
+export function toolWorkflowSuggestions(sourceTool, args = {}, result = {}) {
+  const workflow = TOOL_WORKFLOW_RELATIONS[sourceTool];
+  const bindings = TOOL_WORKFLOW_BINDINGS[sourceTool];
+  if (!workflow || !bindings) throw new Error(`Unknown public tool workflow suggestion source: ${sourceTool}`);
+  return Object.freeze({
+    schema: TOOL_WORKFLOW_SUGGESTIONS_SCHEMA,
+    sourceTool,
+    invocationPolicy: 'Suggestions are partial call arguments only. Apply the relation condition before use, supply every missing required input, explicitly choose any declared selection, create a fresh requestId for mutating calls, and never treat a suggestion as authorization to invoke a tool.',
+    suggestions: Object.freeze(workflow.relations.map((_edge, index) => suggestionFor(sourceTool, index, args || {}, result)))
+  });
+}
+
+export function toolWorkflowSuggestionsMeta(sourceTool, args = {}, result = {}) {
+  return Object.freeze({ [TOOL_WORKFLOW_SUGGESTIONS_META_KEY]: toolWorkflowSuggestions(sourceTool, args, result) });
+}
