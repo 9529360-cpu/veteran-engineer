@@ -73,31 +73,71 @@ function topo(tasks) {
   return order;
 }
 
+function waveTasksConflict(left, right) {
+  return writeSetsConflict(left.writeSet || [], right.writeSet || [])
+    || runtimeResourcesConflict(
+      left.runtimeResources || [],
+      right.runtimeResources || [],
+      { taskId: left.id },
+      { taskId: right.id }
+    );
+}
+
+function directDependentCounts(tasks) {
+  const counts = new Map(tasks.map((task) => [task.id, 0]));
+  for (const task of tasks) {
+    for (const dependency of task.dependencies || []) {
+      if (counts.has(dependency)) counts.set(dependency, counts.get(dependency) + 1);
+    }
+  }
+  return counts;
+}
+
+function riskRank(task) {
+  const index = RISK_LEVELS.indexOf(task.risk);
+  return index >= 0 ? index : 0;
+}
+
+function compareWaveCandidates(left, right, available, dependentCounts) {
+  const conflictDegree = (task) => available.reduce((count, other) => (
+    other.id !== task.id && waveTasksConflict(task, other) ? count + 1 : count
+  ), 0);
+  const leftConflicts = conflictDegree(left);
+  const rightConflicts = conflictDegree(right);
+  if (leftConflicts !== rightConflicts) return leftConflicts - rightConflicts;
+  const leftChildren = dependentCounts.get(left.id) || 0;
+  const rightChildren = dependentCounts.get(right.id) || 0;
+  if (leftChildren !== rightChildren) return rightChildren - leftChildren;
+  const riskDelta = riskRank(left) - riskRank(right);
+  if (riskDelta !== 0) return riskDelta;
+  return left.id.localeCompare(right.id);
+}
+
 export function computeWaves(tasks) {
   const remaining = new Map(tasks.map((task) => [task.id, task]));
   const done = new Set();
   const waves = [];
+  const dependentCounts = directDependentCounts(tasks);
   while (remaining.size) {
     const ready = [...remaining.values()].filter((task) => task.dependencies.every((dep) => done.has(dep))).sort((a, b) => a.id.localeCompare(b.id));
     if (!ready.length) throw new Error('Unable to compute mission waves');
+    const pending = new Map(ready.map((task) => [task.id, task]));
     const wave = [];
-    for (const task of ready) {
-      const conflicts = wave.some((selected) =>
-        writeSetsConflict(selected.writeSet, task.writeSet)
-        || runtimeResourcesConflict(
-          selected.runtimeResources || [],
-          task.runtimeResources || [],
-          { taskId: selected.id },
-          { taskId: task.id }
-        )
-      );
-      if (!conflicts) wave.push(task);
+    while (pending.size) {
+      const available = [...pending.values()];
+      const eligible = available.filter((task) => !wave.some((selected) => waveTasksConflict(selected, task)));
+      if (!eligible.length) break;
+      eligible.sort((left, right) => compareWaveCandidates(left, right, available, dependentCounts));
+      const chosen = eligible[0];
+      wave.push(chosen);
+      pending.delete(chosen.id);
     }
     if (!wave.length) wave.push(ready[0]);
-    waves.push(wave.map((task) => task.id));
-    for (const task of wave) {
-      remaining.delete(task.id);
-      done.add(task.id);
+    const waveIds = wave.map((task) => task.id).sort((left, right) => left.localeCompare(right));
+    waves.push(waveIds);
+    for (const id of waveIds) {
+      remaining.delete(id);
+      done.add(id);
     }
   }
   return waves;
