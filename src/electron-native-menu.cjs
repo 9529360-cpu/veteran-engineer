@@ -46,7 +46,6 @@ function applicationMenuInventory(menu, options = {}) {
         hasSubmenu: submenuItems.length > 0
       });
       if (submenuItems.length > 0) visit(submenuItems, index, depth + 1);
-      if (items.length >= maxItems && submenuItems.length > 0) truncated = true;
     }
   }
 
