@@ -1,6 +1,35 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { nowIso, randomId } from './util.mjs';
+import { renderHandoffMarkdown, renderHandoffWorkspaceHtml } from './handoff-workspace.mjs';
+
+function contentSha256(content) {
+  return crypto.createHash('sha256').update(content).digest('hex');
+}
+
+async function writeBundle(artifactsDir, files) {
+  const written = [];
+  try {
+    await fs.mkdir(artifactsDir, { recursive: true });
+    for (const file of files) {
+      const full = path.join(artifactsDir, file.filename);
+      await fs.writeFile(full, file.content, { mode: 0o600, flag: 'wx' });
+      written.push(full);
+    }
+  } catch (error) {
+    await Promise.allSettled(written.map((file) => fs.rm(file, { force: true })));
+    throw error;
+  }
+}
+
+function descriptor(filename, mediaType, content) {
+  return {
+    artifactPointer: `artifacts/${filename}`,
+    mediaType,
+    sha256: contentSha256(content)
+  };
+}
 
 export class HandoffService {
   constructor({ store, missionService }) {
@@ -29,9 +58,22 @@ export class HandoffService {
       nextSafeAction: readiness.nextAction || (readiness.ready ? mission.phase : null)
     };
     const id = randomId('handoff');
-    const filename = `${id}.json`;
-    const full = path.join(this.store.artifactsDir, filename);
-    await fs.writeFile(full, `${JSON.stringify(handoff, null, 2)}\n`, { mode: 0o600 });
-    return { id, artifactPointer: `artifacts/${filename}`, handoff };
+    const jsonFilename = `${id}.json`;
+    const markdownFilename = `${id}.md`;
+    const workspaceFilename = `${id}.html`;
+    const jsonContent = `${JSON.stringify(handoff, null, 2)}\n`;
+    const markdownContent = renderHandoffMarkdown(handoff);
+    const workspaceContent = renderHandoffWorkspaceHtml(handoff);
+    await writeBundle(this.store.artifactsDir, [
+      { filename: jsonFilename, content: jsonContent },
+      { filename: markdownFilename, content: markdownContent },
+      { filename: workspaceFilename, content: workspaceContent }
+    ]);
+    const artifacts = {
+      json: descriptor(jsonFilename, 'application/json', jsonContent),
+      markdown: descriptor(markdownFilename, 'text/markdown; charset=utf-8', markdownContent),
+      workspace: descriptor(workspaceFilename, 'text/html; charset=utf-8', workspaceContent)
+    };
+    return { id, artifactPointer: artifacts.json.artifactPointer, artifacts, handoff };
   }
 }
