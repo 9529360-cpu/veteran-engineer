@@ -390,9 +390,9 @@ export class LiveValidationSessionManager {
         });
       }
       if (Object.keys(leases.sessions).length >= this.maxSessions) {
-        throw Object.assign(new Error(`Persistent live validation session limit reached (${this.maxSessions})`, {
+        throw Object.assign(new Error(`Persistent live validation session limit reached (${this.maxSessions})`), {
           code: 'LIVE_VALIDATION_SESSION_LIMIT_REACHED'
-        }));
+        });
       }
       const reservation = {
         key,
