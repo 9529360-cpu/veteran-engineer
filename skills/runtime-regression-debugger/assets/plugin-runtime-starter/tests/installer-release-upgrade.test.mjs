@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { RUNTIME_VERSION } from '../src/constants.mjs';
 import { VeteranInstaller } from '../src/installer/index.mjs';
 import { buildRuntimeBundle, materializeRuntimeBundle } from '../src/installer/runtime-bundle.mjs';
 import { tempDir, cleanup } from './helpers.mjs';
@@ -12,7 +13,7 @@ const distributionRoot = path.resolve(here, '..');
 const envFor = (home) => ({ ...process.env, HOME: home, USERPROFILE: home });
 
 async function materializedTarget(target) {
-  await materializeRuntimeBundle(await buildRuntimeBundle({ root: distributionRoot, version: '0.4.0' }), target);
+  await materializeRuntimeBundle(await buildRuntimeBundle({ root: distributionRoot, version: RUNTIME_VERSION }), target);
 }
 
 test('verified remote upgrade swaps runtime atomically, preserves installed capabilities, and records target version', async () => {
@@ -77,7 +78,7 @@ test('remote upgrade rejects dependency graph changes before replacing runtime',
     lock.packages[''].optionalDependencies ||= {};
     lock.packages[''].optionalDependencies['future-runtime-dependency'] = '1.0.0';
     await fs.writeFile(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
-    const installer = new VeteranInstaller({ distributionRoot, home, env: envFor(home), releaseSource: { async stage() { return { root: target, version: '0.5.0', tag: 'v0.5.0', commit: 'c'.repeat(40), releaseId: 5, runtimeSha256: 'd'.repeat(64), async cleanup() { cleaned = true; } }; } } });
+    const installer = new VeteranInstaller({ distributionRoot, home, env: envFor(home), releaseSource: { async stage() { return { root: target, version: RUNTIME_VERSION, tag: `v${RUNTIME_VERSION}`, commit: 'c'.repeat(40), releaseId: 5, runtimeSha256: 'd'.repeat(64), async cleanup() { cleaned = true; } }; } } });
     await assert.rejects(installer.upgrade({ release: 'latest' }), (error) => error.code === 'RELEASE_DEPENDENCY_GRAPH_CHANGED');
     assert.deepEqual(await fs.readFile(path.join(installer.runtimeRoot, 'README.md')), before);
     assert.equal(cleaned, true);
