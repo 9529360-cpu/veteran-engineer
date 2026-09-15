@@ -62,6 +62,8 @@ Treat write sets as forecasts, not truth. Recompute conflicts after each wave be
 
 The objective is not "maximum number of simultaneous agents." The objective is maximum useful throughput while preserving coherent authority and integration safety.
 
+Mission size by itself is not a reason to throttle independent coding work. Once authority-defining decisions are stable, low- and medium-risk tasks with disjoint owners/write sets should consume the available structural parallelism up to the operator/runtime capacity. Reduce concurrency because evidence shows elevated risk, shared authority, write/resource conflict, downstream capacity, or unstable contracts — not merely because the mission contains many tasks. Keep high-risk work deliberately bounded and consequential/critical work serial unless a stronger domain-specific proof justifies otherwise.
+
 Good parallel candidates:
 
 - independent packages with stable interfaces;
