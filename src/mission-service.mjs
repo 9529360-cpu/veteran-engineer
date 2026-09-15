@@ -21,6 +21,35 @@ import { normalizePathList, nowIso, randomId, redactKnownSecrets } from './util.
 
 const TERMINAL_TASKS = new Set(['done', 'failed', 'cancelled', 'blocked', 'superseded']);
 const SUCCESS_TASKS = new Set(['done']);
+export const MISSION_PROJECT_TRUTH_CONTRACT = 'veteran-mission-project-truth-v1';
+
+function cloneTruthValue(value) {
+  return value == null ? value : structuredClone(value);
+}
+
+function snapshotMissionProjectTruth(project, baseSourceIdentity, sourceAuthority, capturedAt) {
+  const environmentSourceIdentity = project.environmentSourceIdentity || baseSourceIdentity;
+  if (!environmentSourceIdentity?.head || environmentSourceIdentity.head !== baseSourceIdentity.head) {
+    const error = new Error('Project environment truth is not bound to the Mission source authority.');
+    error.code = 'PROJECT_TRUTH_SOURCE_MISMATCH';
+    error.details = {
+      missionSourceHead: baseSourceIdentity.head,
+      environmentSourceHead: environmentSourceIdentity?.head || null,
+      authorityRef: sourceAuthority?.ref || 'HEAD'
+    };
+    throw error;
+  }
+  return {
+    contract: MISSION_PROJECT_TRUTH_CONTRACT,
+    capturedAt,
+    sourceIdentity: cloneTruthValue(baseSourceIdentity),
+    sourceAuthority: cloneTruthValue(sourceAuthority),
+    environmentSourceIdentity: cloneTruthValue(environmentSourceIdentity),
+    environmentProfile: cloneTruthValue(project.environmentProfile),
+    environmentReadiness: cloneTruthValue(project.environmentReadiness),
+    bootstrapPlan: cloneTruthValue(project.bootstrapPlan)
+  };
+}
 
 function validateTask(raw, index) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error(`tasks[${index}] must be an object`);
@@ -181,6 +210,8 @@ export class MissionService {
       error.details = baseSourceIdentity.dirtyPaths;
       throw error;
     }
+    const truthCapturedAt = nowIso();
+    const projectTruth = snapshotMissionProjectTruth(project, baseSourceIdentity, sourceAuthority, truthCapturedAt);
 
     const projectState = await this.store.read();
     const continuity = buildProjectContinuitySnapshot({ state: projectState, projectId, liveHead: baseSourceIdentity.head });
@@ -197,8 +228,12 @@ export class MissionService {
         const plannerProject = {
           ...project,
           repoPath: plannerRepoPath,
-          sourceIdentity: baseSourceIdentity,
-          sourceAuthority
+          sourceIdentity: projectTruth.sourceIdentity,
+          sourceAuthority: projectTruth.sourceAuthority,
+          environmentSourceIdentity: projectTruth.environmentSourceIdentity,
+          environmentProfile: projectTruth.environmentProfile,
+          environmentReadiness: projectTruth.environmentReadiness,
+          bootstrapPlan: projectTruth.bootstrapPlan
         };
         const payload = {
           protocol: 'veteran-planner-v1',
@@ -206,11 +241,12 @@ export class MissionService {
             id: project.id,
             repoPath: plannerRepoPath,
             checkoutRepoPath: project.repoPath,
-            sourceIdentity: baseSourceIdentity,
-            sourceAuthority,
+            sourceIdentity: projectTruth.sourceIdentity,
+            sourceAuthority: projectTruth.sourceAuthority,
+            environmentSourceIdentity: projectTruth.environmentSourceIdentity,
             observedSourceIdentity: observed
           },
-          mission: { goal: String(goal).trim(), doneDefinition: String(doneDefinition).trim(), nonGoals: nonGoals.map(String), riskEnvelope, riskEnvelopeSource },
+          mission: { goal: String(goal).trim(), doneDefinition: String(doneDefinition).trim(), nonGoals: nonGoals.map(String), riskEnvelope, riskEnvelopeSource, projectTruthContract: projectTruth.contract },
           projectAwareness: plannerProjectAwareness(plannerProject, continuity),
           projectExperience: experience.items,
           experiencePrecedence: experience.precedence,
@@ -248,7 +284,8 @@ export class MissionService {
               experienceIds: experience.items.map((item) => item.id),
               activeProjectMissionCount: continuity.activeMissionCount,
               sourceAuthorityScope: sourceAuthority.scope,
-              sourceAuthorityRef: sourceAuthority.ref
+              sourceAuthorityRef: sourceAuthority.ref,
+              projectTruthContract: projectTruth.contract
             },
             sourceIdentity: baseSourceIdentity,
             artifact: `${JSON.stringify(parsed, null, 2)}\n--- stderr ---\n${safeStderr}`
@@ -273,9 +310,17 @@ export class MissionService {
     const normalized = proposedTasks.map(validateTask);
     topo(normalized);
     const waves = computeWaves(normalized);
-    const strategyProject = { ...project, sourceIdentity: baseSourceIdentity, sourceAuthority };
+    const strategyProject = {
+      ...project,
+      sourceIdentity: projectTruth.sourceIdentity,
+      sourceAuthority: projectTruth.sourceAuthority,
+      environmentSourceIdentity: projectTruth.environmentSourceIdentity,
+      environmentProfile: projectTruth.environmentProfile,
+      environmentReadiness: projectTruth.environmentReadiness,
+      bootstrapPlan: projectTruth.bootstrapPlan
+    };
     const executionStrategy = compileMissionExecutionStrategy({ tasks: normalized, waves, project: strategyProject, riskEnvelope, riskEnvelopeSource, continuity });
-    const createdAt = nowIso();
+    const createdAt = truthCapturedAt;
     const mission = {
       id: missionId,
       projectId,
@@ -285,6 +330,7 @@ export class MissionService {
       riskEnvelope,
       executionStrategy,
       projectContinuity: continuity,
+      projectTruth,
       baseSourceIdentity: baseSourceIdentity,
       baseSourceAuthority: sourceAuthority,
       observedSourceIdentityAtPlan: observed,
@@ -335,6 +381,8 @@ export class MissionService {
         baseHead: baseSourceIdentity.head,
         sourceAuthorityScope: sourceAuthority.scope,
         sourceAuthorityRef: sourceAuthority.ref,
+        projectTruthContract: projectTruth.contract,
+        projectTruthSourceHead: projectTruth.sourceIdentity.head,
         observedHead: observed.head,
         taskClass: executionStrategy.taskClass,
         executionMode: executionStrategy.executionMode,
@@ -347,6 +395,8 @@ export class MissionService {
       baseHead: baseSourceIdentity.head,
       sourceAuthorityScope: sourceAuthority.scope,
       sourceAuthorityRef: sourceAuthority.ref,
+      projectTruthContract: projectTruth.contract,
+      projectTruthSourceHead: projectTruth.sourceIdentity.head,
       observedHead: observed.head,
       taskCount: taskRecords.length,
       taskClass: executionStrategy.taskClass,
@@ -396,6 +446,13 @@ export class MissionService {
           remote: currentAuthority?.remote || null,
           ref: currentAuthority?.ref || null
         }
+      });
+    }
+    if (mission.projectTruth?.sourceIdentity?.head && mission.projectTruth.sourceIdentity.head !== mission.baseSourceIdentity.head) {
+      blockers.push({
+        code: 'MISSION_PROJECT_TRUTH_CORRUPT',
+        projectTruthSourceHead: mission.projectTruth.sourceIdentity.head,
+        missionBaseHead: mission.baseSourceIdentity.head
       });
     }
     if (mission.status === 'cancelled') blockers.push({ code: 'MISSION_CANCELLED' });
@@ -449,6 +506,7 @@ export class MissionService {
       liveSourceIdentity: observed,
       sourceAuthority: currentAuthority,
       authoritativeSourceIdentity: authoritativeSource,
+      projectTruth: mission.projectTruth || null,
       executionStrategy: mission.executionStrategy || null,
       projectContinuity: mission.projectContinuity || null,
       blockers,

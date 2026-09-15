@@ -52,7 +52,8 @@ function packetFor(project, mission, task, waveBase, experience = { items: [], p
       goal: mission.goal,
       doneDefinition: mission.doneDefinition,
       baseHead: mission.baseSourceIdentity.head,
-      sourceAuthority: mission.baseSourceAuthority || null
+      sourceAuthority: mission.baseSourceAuthority || null,
+      projectTruth: mission.projectTruth || null
     },
     task: {
       id: task.id,
@@ -125,6 +126,16 @@ export class WorkerOrchestrator {
     if (mission.status === 'cancelled') throw Object.assign(new Error('Mission is cancelled'), { code: 'MISSION_CANCELLED' });
     if (mission.phase !== 'execution') return { missionId, phase: mission.phase, message: 'Execution phase already complete' };
     let project = await this.projectService.get(mission.projectId);
+    if (mission.projectTruth?.sourceIdentity?.head && mission.projectTruth.sourceIdentity.head !== mission.baseSourceIdentity.head) {
+      throw Object.assign(new Error('Mission project truth no longer matches its frozen source base'), {
+        code: 'MISSION_PROJECT_TRUTH_CORRUPT',
+        details: {
+          projectTruthSourceHead: mission.projectTruth.sourceIdentity.head,
+          missionBaseHead: mission.baseSourceIdentity.head
+        }
+      });
+    }
+    const frozenBootstrapPlan = mission.projectTruth?.bootstrapPlan || project.bootstrapPlan;
     const observed = await sourceIdentity(project.repoPath);
     const currentAuthority = mission.baseSourceAuthority
       ? await repositorySourceAuthority(project.repoPath, { observedIdentity: observed })
@@ -253,11 +264,11 @@ export class WorkerOrchestrator {
         let bootstrapEvidenceId = null;
         if (normalizedBootstrapAuthorization) {
           try {
-            bootstrap = await this.bootstrapExecutor.prepare({ worktreePath: worktree.path, plan: project.bootstrapPlan, authorization: normalizedBootstrapAuthorization });
+            bootstrap = await this.bootstrapExecutor.prepare({ worktreePath: worktree.path, plan: frozenBootstrapPlan, authorization: normalizedBootstrapAuthorization });
             const evidence = await this.evidenceService.record({
               projectId: project.id, missionId, taskId: task.id, type: 'bootstrap',
               summary: bootstrap, sourceIdentity: { head: waveBase },
-              metadata: { planContract: project.bootstrapPlan?.contract || null }
+              metadata: { planContract: frozenBootstrapPlan?.contract || null, projectTruthContract: mission.projectTruth?.contract || null }
             });
             bootstrapEvidenceId = evidence.id;
           } catch (error) {
@@ -265,7 +276,7 @@ export class WorkerOrchestrator {
             const evidence = await this.evidenceService.record({
               projectId: project.id, missionId, taskId: task.id, type: 'bootstrap-failure',
               summary: { code: error?.code || 'BOOTSTRAP_FAILED', message: String(error?.message || error).slice(0, 500), details: safeDetails },
-              sourceIdentity: { head: waveBase }, metadata: { planContract: project.bootstrapPlan?.contract || null }
+              sourceIdentity: { head: waveBase }, metadata: { planContract: frozenBootstrapPlan?.contract || null, projectTruthContract: mission.projectTruth?.contract || null }
             });
             error.bootstrapEvidenceId = evidence.id;
             throw error;
