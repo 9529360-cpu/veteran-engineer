@@ -26,6 +26,17 @@ function semanticAcceptanceCriteria(mission, tasks) {
   ];
 }
 
+function normalizeFindingIndexes(raw, taskId) {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    throw Object.assign(new Error(`Remediation task ${taskId} requires sourceFindingIndexes`), { code: 'REMEDIATION_FINDING_BINDING_REQUIRED', details: { taskId } });
+  }
+  const indexes = [...new Set(raw)];
+  if (indexes.some((value) => !Number.isInteger(value) || value < 0)) {
+    throw Object.assign(new Error(`Remediation task ${taskId} sourceFindingIndexes must contain non-negative integers`), { code: 'REMEDIATION_FINDING_BINDING_INVALID', details: { taskId, sourceFindingIndexes: raw } });
+  }
+  return indexes;
+}
+
 function normalizeRemediationTask(raw, index) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw Object.assign(new Error(`tasks[${index}] must be an object`), { code: 'REMEDIATION_TASK_INVALID' });
   const id = String(raw.id || `R${index + 1}`).trim();
@@ -36,6 +47,7 @@ function normalizeRemediationTask(raw, index) {
   const writeSet = normalizePathList(raw.writeSet || []);
   const capabilityContract = normalizeTaskCapabilityContract(raw, id);
   const validationCapability = raw.validationCapability || null;
+  const sourceFindingIndexes = normalizeFindingIndexes(raw.sourceFindingIndexes, id);
   const riskAssessment = assessTaskRisk({
     explicitRisk: raw.risk,
     writeSet,
@@ -59,6 +71,7 @@ function normalizeRemediationTask(raw, index) {
     validationCapability,
     worker: raw.worker || 'default',
     notes: raw.notes || null,
+    sourceFindingIndexes,
     ...capabilityContract
   };
 }
@@ -71,6 +84,12 @@ function failedReviewHead(mission) {
     return { kind: 'deterministic-review', head: mission.review.commitSha };
   }
   return null;
+}
+
+function authoritativeReviewFindings(mission) {
+  if (mission.semanticReview?.status === 'failed') return mission.semanticReview.findings || [];
+  if (mission.review?.status === 'failed') return mission.review.findings || [];
+  return [];
 }
 
 export class ReviewService {
@@ -230,7 +249,12 @@ export class ReviewService {
   async remediationPlan({ missionId, findings = null, maxTasks = 8, apply = false, tasks = null }) {
     const snapshot = await this.missionService.status({ missionId });
     const { mission, tasks: existingTasks } = snapshot;
-    const source = findings || [...(mission.review.findings || []), ...(mission.semanticReview.findings || [])];
+    if (apply && findings !== null) {
+      throw Object.assign(new Error('Applied remediation must use the current failed review findings; caller-supplied finding overrides are not allowed'), { code: 'REMEDIATION_FINDINGS_OVERRIDE_FORBIDDEN' });
+    }
+    const source = apply
+      ? authoritativeReviewFindings(mission)
+      : (findings || [...(mission.review.findings || []), ...(mission.semanticReview.findings || [])]);
     const boundedLimit = Math.max(1, Math.min(maxTasks, 8));
     const bounded = source.filter((item) => ['medium', 'high', 'critical'].includes(item.severity || 'high')).slice(0, boundedLimit);
     const planId = randomId('remediation');
@@ -247,6 +271,7 @@ export class ReviewService {
           contract: finding.requirement
             ? `Implement missing requirement: ${finding.requirement}`
             : `Resolve ${finding.code || 'review finding'} without expanding mission scope`,
+          sourceFindingIndexes: [index],
           sourceFinding: finding,
           status: 'proposed'
         }))
@@ -261,6 +286,9 @@ export class ReviewService {
       return plan;
     }
 
+    if (!bounded.length) {
+      throw Object.assign(new Error('Applying remediation requires at least one current medium/high/critical review finding'), { code: 'REMEDIATION_FINDINGS_REQUIRED' });
+    }
     if (!Array.isArray(tasks) || tasks.length === 0) {
       throw Object.assign(new Error('Applying remediation requires explicit executable task specs'), { code: 'REMEDIATION_TASKS_REQUIRED' });
     }
@@ -282,6 +310,15 @@ export class ReviewService {
     if (!proof) throw Object.assign(new Error('Remediation apply requires a failed source-bound review'), { code: 'REMEDIATION_FAILED_REVIEW_REQUIRED' });
 
     const normalized = tasks.map(normalizeRemediationTask);
+    for (const task of normalized) {
+      const invalidFindingIndexes = task.sourceFindingIndexes.filter((index) => index >= bounded.length);
+      if (invalidFindingIndexes.length) {
+        throw Object.assign(new Error(`Remediation task ${task.id} references findings outside the authoritative remediation set`), {
+          code: 'REMEDIATION_FINDING_BINDING_INVALID',
+          details: { taskId: task.id, sourceFindingIndexes: task.sourceFindingIndexes, findingCount: bounded.length }
+        });
+      }
+    }
     const existingIds = new Set(existingTasks.map((task) => task.id));
     const newIds = new Set();
     for (const task of normalized) {
@@ -358,6 +395,10 @@ export class ReviewService {
       if (liveExisting.some((task) => task.status !== 'done')) throw Object.assign(new Error('Mission task state changed before remediation apply'), { code: 'REMEDIATION_TASK_STATE_STALE' });
       const liveProof = failedReviewHead(target);
       if (!liveProof || liveProof.head !== proof.head || liveProof.kind !== proof.kind) throw Object.assign(new Error('Review authority changed before remediation apply'), { code: 'REMEDIATION_REVIEW_STALE' });
+      const liveFindings = authoritativeReviewFindings(target).filter((item) => ['medium', 'high', 'critical'].includes(item.severity || 'high')).slice(0, boundedLimit);
+      if (JSON.stringify(liveFindings) !== JSON.stringify(bounded)) {
+        throw Object.assign(new Error('Authoritative review findings changed before remediation apply'), { code: 'REMEDIATION_FINDINGS_STALE' });
+      }
       if (target.waves.length !== mission.waves.length || target.nextWaveIndex !== mission.waves.length) {
         throw Object.assign(new Error('Mission wave state changed before remediation apply'), { code: 'REMEDIATION_WAVE_STATE_STALE' });
       }
