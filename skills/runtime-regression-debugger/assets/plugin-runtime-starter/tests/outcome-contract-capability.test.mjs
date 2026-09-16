@@ -82,11 +82,14 @@ test('outcome contract gate passes only after every required request clause has 
   assert.equal(result.parsed.delivered_requirements, 2);
 });
 
-test('outcome fulfillment reference encodes clause preservation and real runtime verification', { skip: !skillCapabilityAvailable }, async () => {
+test('outcome fulfillment reference encodes clause preservation, runtime proof, and continuation after failed review', { skip: !skillCapabilityAvailable }, async () => {
   const text = await fs.readFile(reference, 'utf8');
   assert.match(text, /Related work is not substitute work/);
   assert.match(text, /Codex-style workspace layout/);
   assert.match(text, /liquid-glass/);
   assert.match(text, /Do not treat the first plausible patch as the default stopping point/);
+  assert.match(text, /Review failure is a continuation state/);
+  assert.match(text, /remediation_plan.*proposal-only/);
+  assert.match(text, /Never report a remediation proposal as implemented work/);
   assert.match(text, /scripts\/outcome_contract_gate\.py/);
 });
