@@ -1,7 +1,11 @@
+import {
+  experienceReviewInvalidStateMessage,
+  experienceReviewTransition,
+  isExperienceReviewAction
+} from './experience-lifecycle.mjs';
 import { nowIso, randomId, stableStringify } from './util.mjs';
 
 const ACTIVE = new Set(['active']);
-const REVIEW_ACTIONS = new Set(['activate', 'reject', 'reactivate', 'retire']);
 
 export class ExperienceService {
   constructor({ store }) {
@@ -57,29 +61,17 @@ export class ExperienceService {
   }
 
   async review({ experienceId, action, reviewer = 'operator', evidenceIds = [] }) {
-    if (!REVIEW_ACTIONS.has(action)) throw new Error(`Unknown experience review action: ${action}`);
+    if (!isExperienceReviewAction(action)) throw new Error(`Unknown experience review action: ${action}`);
     return this.store.transaction('experience_reviewed', (state) => {
       const item = state.experiences[experienceId];
       if (!item) throw Object.assign(new Error(`Unknown experience: ${experienceId}`), { code: 'EXPERIENCE_NOT_FOUND' });
-      if (action === 'activate') {
-        if (item.status !== 'candidate') throw Object.assign(new Error('Only candidate experience can be activated'), { code: 'EXPERIENCE_STATE_INVALID' });
-        item.status = 'active';
-        item.reviewStatus = 'approved';
-        item.lastConfirmedAt = nowIso();
-      } else if (action === 'reject') {
-        if (item.status !== 'candidate') throw Object.assign(new Error('Only candidate experience can be rejected'), { code: 'EXPERIENCE_STATE_INVALID' });
-        item.status = 'retired';
-        item.reviewStatus = 'rejected';
-      } else if (action === 'reactivate') {
-        if (item.status !== 'challenged') throw Object.assign(new Error('Only challenged experience can be reactivated'), { code: 'EXPERIENCE_STATE_INVALID' });
-        item.status = 'active';
-        item.reviewStatus = 'approved-after-challenge';
-        item.lastConfirmedAt = nowIso();
-      } else if (action === 'retire') {
-        if (!['active', 'challenged'].includes(item.status)) throw Object.assign(new Error('Only active or challenged experience can be retired'), { code: 'EXPERIENCE_STATE_INVALID' });
-        item.status = 'retired';
-        item.reviewStatus = 'retired';
+      const transition = experienceReviewTransition(item.status, action);
+      if (!transition) {
+        throw Object.assign(new Error(experienceReviewInvalidStateMessage(action)), { code: 'EXPERIENCE_STATE_INVALID' });
       }
+      item.status = transition.toStatus;
+      item.reviewStatus = transition.reviewStatus;
+      if (transition.confirm) item.lastConfirmedAt = nowIso();
       item.review = { reviewer, evidenceIds: [...new Set(evidenceIds)], at: nowIso(), action };
       item.updatedAt = nowIso();
       return item;
