@@ -62,7 +62,13 @@ async function prepareFixture({ onlyRetired = false } = {}) {
   if (onlyRetired) {
     const retired = await commitExperience(app, project.id, 'retired-only');
     await app.services.experienceService.review({ experienceId: retired.id, action: 'reject' });
-    return { fixture, projectId: project.id, expectedCandidates: [], retiredIds: [retired.id] };
+    return {
+      fixture,
+      projectId: project.id,
+      expectedCandidates: [],
+      expectedActions: {},
+      retiredIds: [retired.id]
+    };
   }
 
   const candidate = await commitExperience(app, project.id, 'candidate');
@@ -81,11 +87,16 @@ async function prepareFixture({ onlyRetired = false } = {}) {
     fixture,
     projectId: project.id,
     expectedCandidates: [candidate.id, active.id, challenged.id],
+    expectedActions: {
+      [candidate.id]: ['activate', 'reject'],
+      [active.id]: ['retire'],
+      [challenged.id]: ['reactivate', 'retire']
+    },
     retiredIds: [retired.id]
   };
 }
 
-function assertReviewSelection(meta, expectedCandidates, retiredIds = []) {
+function assertReviewSelection(meta, expectedCandidates, expectedActions, retiredIds = []) {
   const projection = meta?.[TOOL_WORKFLOW_SUGGESTIONS_META_KEY];
   assert.equal(projection?.sourceTool, 'experience_audit');
   assert.equal(projection?.sourceOutcome, 'success');
@@ -95,16 +106,28 @@ function assertReviewSelection(meta, expectedCandidates, retiredIds = []) {
   assert.equal(Object.hasOwn(next.arguments, 'experienceId'), false);
   assert.equal(Object.hasOwn(next.arguments, 'requestId'), false);
   assert.equal(Object.hasOwn(next.arguments, 'action'), false);
-  assert.deepEqual([...next.selections[0].candidates].sort(), [...expectedCandidates].sort());
-  for (const retiredId of retiredIds) assert.equal(next.selections[0].candidates.includes(retiredId), false);
+
+  const experienceSelection = next.selections.find((item) => item.target === 'experienceId');
+  const actionSelection = next.selections.find((item) => item.target === 'action');
+  assert.ok(experienceSelection);
+  assert.ok(actionSelection);
+  assert.deepEqual([...experienceSelection.candidates].sort(), [...expectedCandidates].sort());
+  for (const retiredId of retiredIds) assert.equal(experienceSelection.candidates.includes(retiredId), false);
+
+  assert.deepEqual(actionSelection.candidates, []);
+  assert.deepEqual(actionSelection.dependsOn, { target: 'experienceId' });
+  const actionGroups = Object.fromEntries(actionSelection.candidateGroups.map((item) => [item.when.equals, [...item.candidates]]));
+  assert.deepEqual(actionGroups, expectedActions);
+  for (const retiredId of retiredIds) assert.equal(Object.hasOwn(actionGroups, retiredId), false);
+
   assert.deepEqual(next.readiness, {
     readyAfterCallerGenerated: false,
     callerGeneratedRequired: ['requestId'],
     conditionalRequired: [],
     resultRequired: [],
-    selectionRequired: ['experienceId'],
-    selectionUnavailable: expectedCandidates.length === 0 ? ['experienceId'] : [],
-    inputRequired: ['action']
+    selectionRequired: ['experienceId', 'action'],
+    selectionUnavailable: expectedCandidates.length === 0 ? ['experienceId', 'action'] : [],
+    inputRequired: []
   });
   assert.deepEqual(next.applicability, { state: 'not-declared' });
 }
@@ -199,34 +222,34 @@ test('experience audit review selection follows the authoritative lifecycle tran
   assert.equal(source.itemPointer, '/id');
 });
 
-test('fallback MCP excludes retired experiences from explicit review selection', async () => {
+test('fallback MCP publishes state-dependent review actions without auto-binding either selection', async () => {
   const seeded = await prepareFixture();
   try {
     const called = await callFallback(seeded.fixture.stateRoot, seeded.projectId);
     assert.equal(called.isError, undefined, JSON.stringify(called));
-    assertReviewSelection(called._meta, seeded.expectedCandidates, seeded.retiredIds);
+    assertReviewSelection(called._meta, seeded.expectedCandidates, seeded.expectedActions, seeded.retiredIds);
   } finally {
     await cleanup(seeded.fixture.root);
   }
 });
 
-test('fallback MCP marks experience review selection unavailable when audit contains only retired state', async () => {
+test('fallback MCP marks both review selections unavailable when audit contains only retired state', async () => {
   const seeded = await prepareFixture({ onlyRetired: true });
   try {
     const called = await callFallback(seeded.fixture.stateRoot, seeded.projectId);
     assert.equal(called.isError, undefined, JSON.stringify(called));
-    assertReviewSelection(called._meta, [], seeded.retiredIds);
+    assertReviewSelection(called._meta, [], {}, seeded.retiredIds);
   } finally {
     await cleanup(seeded.fixture.root);
   }
 });
 
-test('official SDK preserves reviewable experience selection ownership', { skip: !officialSdkAvailable }, async () => {
+test('official SDK preserves state-dependent review action selection ownership', { skip: !officialSdkAvailable }, async () => {
   const seeded = await prepareFixture();
   try {
     const called = await callOfficialSdk(seeded.fixture.stateRoot, seeded.projectId);
     assert.equal(called.isError, undefined, JSON.stringify(called));
-    assertReviewSelection(called._meta, seeded.expectedCandidates, seeded.retiredIds);
+    assertReviewSelection(called._meta, seeded.expectedCandidates, seeded.expectedActions, seeded.retiredIds);
   } finally {
     await cleanup(seeded.fixture.root);
   }
