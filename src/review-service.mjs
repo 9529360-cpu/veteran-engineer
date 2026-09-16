@@ -1,5 +1,26 @@
 import { allowlistedProcessEnvironment, runProcess, git } from './git.mjs';
 import { nowIso, randomId, redactKnownSecrets } from './util.mjs';
+import { evaluateRequirementReview } from './outcome-contract.mjs';
+
+function semanticAcceptanceCriteria(mission, tasks) {
+  return [
+    {
+      id: 'mission-goal',
+      statement: mission.goal,
+      acceptance: 'The whole change fulfills the requested Mission goal without substituting merely related work.'
+    },
+    {
+      id: 'done-definition',
+      statement: mission.doneDefinition,
+      acceptance: mission.doneDefinition
+    },
+    ...tasks.map((task) => ({
+      id: `task:${task.id}`,
+      statement: task.contract,
+      acceptance: task.contract
+    }))
+  ];
+}
 
 export class ReviewService {
   constructor({ store, projectService, missionService, worktreeManager, evidenceService, experienceService = null }) {
@@ -57,7 +78,7 @@ export class ReviewService {
   }
 
   async semantic({ missionId, candidateId = null }) {
-    const { mission } = await this.missionService.status({ missionId });
+    const { mission, tasks } = await this.missionService.status({ missionId });
     const project = await this.projectService.get(mission.projectId);
     const provider = project.reviewerProvider || null;
     let head;
@@ -86,13 +107,22 @@ export class ReviewService {
     const experience = this.experienceService
       ? await this.experienceService.route({ projectId: project.id, sourceHead: head, role: 'reviewer', limit: 8 })
       : { items: [], precedence: 'Current repository/runtime evidence outranks project experience.' };
+    const acceptanceCriteria = semanticAcceptanceCriteria(mission, tasks);
     const payload = {
       protocol: 'veteran-reviewer-v1',
       mission: { id: mission.id, goal: mission.goal, doneDefinition: mission.doneDefinition, baseHead: mission.baseSourceIdentity.head, head },
+      tasks: tasks.map((task) => ({ id: task.id, contract: task.contract, owner: task.owner, status: task.status })),
+      acceptanceCriteria,
+      requiredOutput: {
+        requirementResults: 'Return exactly one row per acceptanceCriteria id with status passed|failed|unproven and a non-empty evidence array for passed rows.'
+      },
       projectExperience: experience.items,
       experiencePrecedence: experience.precedence,
       reviewPolicy: [
         'Review the whole semantic change, not style in isolation. Look for new authorities, state machines, stores, services, wrappers, adapters, extension points, or dependencies that lack a distinct responsibility, lifecycle, or repeated semantic contract.',
+        'Treat the Mission goal, done definition, and every task contract as independent acceptance obligations. Related work is not substitute work; do not let a visual/theme change stand in for a requested layout/workflow/function change.',
+        'Decompose compound natural-language goals when judging mission-goal coverage. If one requested clause is absent or only indirectly related, mark mission-goal failed or unproven instead of passing the whole outcome.',
+        'For every acceptanceCriteria id, return one requirementResults row. A passed row requires concrete repository/runtime/test evidence tied to the current head; plausibility, intent, or code presence alone is not evidence.',
         'Flag parallel sources of truth, duplicate state machines, wrapper-on-wrapper indirection, speculative generic interfaces, and product policy hidden behind generic plumbing when a simpler existing owner can safely carry the behavior.',
         'Check negative space after the change: obsolete branches, superseded compatibility, redundant helpers, duplicate tests, old owners, and temporary scaffolding should be removed when their live consumer is gone.',
         'Do not recommend simplification that erases real authorization, concurrency, durability, failure-recovery, observability, compatibility, isolation, or cleanup guarantees.',
@@ -115,22 +145,35 @@ export class ReviewService {
     let parsed = null;
     try { parsed = redactKnownSecrets(JSON.parse(result.stdout), providerSecrets); } catch { /* handled below */ }
     const safeStderr = redactKnownSecrets(result.stderr, providerSecrets);
-    const findings = Array.isArray(parsed?.findings) ? parsed.findings.slice(0, 20) : [{ severity: 'high', code: 'SEMANTIC_REVIEWER_INVALID_OUTPUT', message: safeStderr.slice(0, 1000) }];
-    const passed = result.code === 0 && parsed?.passed === true && findings.every((item) => item.severity !== 'critical');
+    const providerFindings = Array.isArray(parsed?.findings) ? parsed.findings.slice(0, 20) : [{ severity: 'high', code: 'SEMANTIC_REVIEWER_INVALID_OUTPUT', message: safeStderr.slice(0, 1000) }];
+    const requirementReview = evaluateRequirementReview(acceptanceCriteria, parsed?.requirementResults);
+    const findings = [...providerFindings, ...requirementReview.findings];
+    const passed = result.code === 0
+      && parsed?.passed === true
+      && requirementReview.passed
+      && providerFindings.every((item) => item.severity !== 'critical');
     const artifact = parsed
       ? `${JSON.stringify(parsed, null, 2)}\n--- stderr ---\n${safeStderr}`
       : `semantic reviewer returned invalid JSON\n--- stderr ---\n${safeStderr}`;
-    const evidence = await this.evidenceService.record({ projectId: project.id, missionId, type: 'semantic-review', summary: { passed, head, findings }, sourceIdentity: { head }, artifact });
+    const evidence = await this.evidenceService.record({
+      projectId: project.id,
+      missionId,
+      type: 'semantic-review',
+      summary: { passed, head, findings, requirementResults: requirementReview.results },
+      sourceIdentity: { head },
+      artifact
+    });
     await this.store.transaction('semantic_review_completed', (state) => {
       const target = state.missions[missionId];
       target.semanticReview.status = passed ? 'passed' : 'failed';
       target.semanticReview.findings = findings;
+      target.semanticReview.requirementResults = requirementReview.results;
       target.semanticReview.evidenceIds.push(evidence.id);
       target.semanticReview.commitSha = head;
       target.updatedAt = nowIso();
       state.runtime.timeline.push({ type: 'semantic_review_completed', missionId, at: nowIso(), passed, evidenceId: evidence.id, head });
     }, { missionId, passed, head });
-    return { passed, head, findings, evidenceId: evidence.id };
+    return { passed, head, findings, requirementResults: requirementReview.results, evidenceId: evidence.id };
   }
 
   async remediationPlan({ missionId, findings = null, maxTasks = 8 }) {
