@@ -125,3 +125,59 @@ test('mission status cannot report ready while failed or cancelled execution sib
     await cleanup(fixture.root);
   }
 });
+
+test('mission_execute rejects unresolved reconciliation before capability reservation or dispatch', async () => {
+  const fixture = await createGitRepo({ files: { 'src/a.txt': 'a\n', 'src/b.txt': 'b\n' } });
+  try {
+    const app = await createVeteranApp({ stateRoot: fixture.stateRoot });
+    const project = await app.callTool('project_open', {
+      requestId: 'execution-blockers-open-reconciliation',
+      repoPath: fixture.repo
+    });
+    const planned = await planTwoTasks(app, project.id, 'reconciliation');
+    const missionId = planned.mission.id;
+
+    await app.store.transaction('test_seed_execution_reconciliation_required', (state) => {
+      const interrupted = state.tasks[`${missionId}:T1`];
+      interrupted.status = 'interrupted';
+      interrupted.updatedAt = new Date().toISOString();
+      state.missions[missionId].status = 'blocked';
+      state.missions[missionId].interruption = {
+        requiresReconciliation: true,
+        taskIds: ['T1'],
+        detectedAt: new Date().toISOString()
+      };
+    }, { missionId });
+
+    await assert.rejects(
+      app.callTool('mission_execute', {
+        requestId: 'execution-blockers-execute-before-reconciliation',
+        missionId,
+        runWorkers: false
+      }),
+      (error) => error?.code === 'RECONCILIATION_REQUIRED'
+    );
+
+    const state = await app.store.read();
+    const interrupted = state.tasks[`${missionId}:T1`];
+    const sibling = state.tasks[`${missionId}:T2`];
+    assert.equal(state.missions[missionId].status, 'blocked');
+    assert.equal(state.missions[missionId].phase, 'execution');
+    assert.equal(state.missions[missionId].interruption?.requiresReconciliation, true);
+    assert.equal(interrupted.status, 'interrupted');
+    assert.equal(sibling.status, 'planned');
+    assert.equal(sibling.capabilityLease ?? null, null);
+    assert.equal(sibling.admission ?? null, null);
+    assert.deepEqual(sibling.dispatches, []);
+    assert.equal(
+      state.runtime.timeline.some((event) => event.missionId === missionId && event.type === 'capability_execution_reserved'),
+      false
+    );
+    assert.equal(
+      state.runtime.timeline.some((event) => event.missionId === missionId && event.type === 'worker_admission_reserved'),
+      false
+    );
+  } finally {
+    await cleanup(fixture.root);
+  }
+});
