@@ -173,7 +173,6 @@ export const TOOL_WORKFLOW_RELATIONS = Object.freeze({
   candidate_status: workflow('candidate', ['missionId', 'candidateId'], [
     relation('candidate_preflight', 'inspect', 'Re-check source drift before finalization or operator handoff.'),
     relation('mission_readiness', 'next', 'Determine the next safe Mission transition for the current candidate.'),
-    relation('mission_advance', 'next', 'Advance candidate/finalize state when readiness permits.'),
     relation('handoff_export', 'next', 'Export resumable state when the candidate is awaiting operator action.')
   ]),
   experience_query: workflow('experience', ['projectId', 'experienceId'], [
