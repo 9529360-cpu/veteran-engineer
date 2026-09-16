@@ -2,6 +2,14 @@ function nonempty(value) {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+function criterionContext(criterion) {
+  return {
+    requirementId: criterion.id,
+    requirement: criterion.statement,
+    acceptance: criterion.acceptance
+  };
+}
+
 export function evaluateRequirementReview(criteria, rawResults) {
   if (!criteria.length) return { passed: true, results: [], findings: [] };
   const findings = [];
@@ -27,21 +35,22 @@ export function evaluateRequirementReview(criteria, rawResults) {
   const normalized = [];
   for (const criterion of criteria) {
     const row = byId.get(criterion.id);
+    const context = criterionContext(criterion);
     if (!row) {
-      findings.push({ severity: 'high', code: 'ACCEPTANCE_REQUIREMENT_UNREVIEWED', requirementId: criterion.id, message: `No semantic-review result for ${criterion.id}.` });
+      findings.push({ severity: 'high', code: 'ACCEPTANCE_REQUIREMENT_UNREVIEWED', ...context, message: `No semantic-review result for ${criterion.id}: ${criterion.statement}` });
       normalized.push({ id: criterion.id, status: 'unproven', evidence: [] });
       continue;
     }
     const status = String(row.status || '').trim();
     const evidence = Array.isArray(row.evidence) ? row.evidence.filter(nonempty).map((value) => value.trim()) : [];
     if (!['passed', 'failed', 'unproven'].includes(status)) {
-      findings.push({ severity: 'high', code: 'ACCEPTANCE_RESULT_STATUS_INVALID', requirementId: criterion.id, message: `Invalid acceptance result status for ${criterion.id}: ${status || 'missing'}.` });
+      findings.push({ severity: 'high', code: 'ACCEPTANCE_RESULT_STATUS_INVALID', ...context, message: `Invalid acceptance result status for ${criterion.id}: ${status || 'missing'}. Requirement: ${criterion.statement}` });
     }
     if (status !== 'passed') {
-      findings.push({ severity: 'high', code: 'ACCEPTANCE_REQUIREMENT_NOT_PROVEN', requirementId: criterion.id, message: `Acceptance criterion ${criterion.id} is ${status || 'unproven'}.` });
+      findings.push({ severity: 'high', code: 'ACCEPTANCE_REQUIREMENT_NOT_PROVEN', ...context, message: `Acceptance criterion ${criterion.id} is ${status || 'unproven'}: ${criterion.statement}` });
     }
     if (status === 'passed' && evidence.length === 0) {
-      findings.push({ severity: 'high', code: 'ACCEPTANCE_EVIDENCE_REQUIRED', requirementId: criterion.id, message: `Passed acceptance criterion ${criterion.id} requires concrete evidence.` });
+      findings.push({ severity: 'high', code: 'ACCEPTANCE_EVIDENCE_REQUIRED', ...context, message: `Passed acceptance criterion ${criterion.id} requires concrete evidence: ${criterion.statement}` });
     }
     normalized.push({ id: criterion.id, status: ['passed', 'failed', 'unproven'].includes(status) ? status : 'unproven', evidence });
   }
