@@ -200,7 +200,7 @@ export const TOOL_WORKFLOW_RELATIONS = Object.freeze({
     relation('experience_query', 'inspect', 'Confirm which reviewed experience remains usable after challenge handling.')
   ]),
   experience_audit: workflow('experience', ['projectId', 'experienceId'], [
-    relation('experience_review', 'next', 'Resolve stale, conflicted, rejected, or retired lifecycle state through explicit review.'),
+    relation('experience_review', 'next', 'Review candidate, active, or challenged lifecycle state when the audit shows an explicit decision is needed.'),
     relation('experience_compact', 'next', 'Compact exact duplicate candidates when the audit exposes redundant candidate records.'),
     relation('experience_query', 'inspect', 'Re-query the reviewed active set after lifecycle maintenance.')
   ]),

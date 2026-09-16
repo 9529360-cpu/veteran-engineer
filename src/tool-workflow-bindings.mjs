@@ -182,8 +182,11 @@ const RELATION_SELECTIONS = Object.freeze({
   ]),
   [relationKey('experience_audit', 'experience_review', 'next')]: Object.freeze([
     selection('experienceId', 'one', [
-      selectionSource('', '/id', { legacyCollectionPointer: '/result' })
-    ], 'Select the specific audited experience whose lifecycle action should be reviewed.')
+      selectionSource('', '/id', {
+        legacyCollectionPointer: '/result',
+        filter: { pointer: '/status', operator: 'in', value: ['candidate', 'active', 'challenged'] }
+      })
+    ], 'Select one candidate, active, or challenged experience whose lifecycle state supports an explicit review action.')
   ]),
   [relationKey('experience_compact', 'experience_review', 'next')]: Object.freeze([
     selection('experienceId', 'one', [
