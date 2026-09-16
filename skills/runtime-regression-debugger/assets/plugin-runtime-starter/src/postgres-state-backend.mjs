@@ -270,6 +270,7 @@ export class PostgresStateBackend {
     const client = await this.#pool().connect();
     try {
       await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1), $2::int)', ['veteran-engineer:schema', STATE_SCHEMA_VERSION]);
       await client.query(`CREATE TABLE IF NOT EXISTS ${STATE_TABLE} (
         instance_key TEXT PRIMARY KEY,
         schema_version INTEGER NOT NULL,
