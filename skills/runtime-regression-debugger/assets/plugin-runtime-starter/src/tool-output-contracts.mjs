@@ -285,12 +285,13 @@ const TOOL_OUTPUT_CONTRACTS = Object.freeze({
   experience_challenge: OUTPUT_EXPERIENCE,
   experience_audit: outputArray('Experience lifecycle/freshness audit records.', openObject('Experience audit record.', {
     id: stringField('Experience id.', { minLength: null }),
+    projectId: stringField('Owning project id.', { minLength: null }),
     status: stringField('Lifecycle status.', { minLength: null }),
     mechanism: stringField('Mechanism.', { minLength: null }),
     freshness: stringField('Freshness classification.', { minLength: null }),
     evidenceMissing: stringArray('Missing supporting evidence ids.'),
     usage: anyField('Usage accounting projection.')
-  })),
+  }, ['id', 'projectId', 'status'])),
   experience_compact: openObject('Exact-duplicate candidate compaction result.', {
     removed: stringArray('Removed duplicate candidate experience ids.'),
     kept: stringArray('Retained canonical candidate experience ids.')
