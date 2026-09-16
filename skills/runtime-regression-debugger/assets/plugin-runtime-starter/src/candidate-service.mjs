@@ -13,6 +13,27 @@ function parseMergeTree(stdout) {
   return /^[0-9a-f]{40,64}$/.test(first) ? first : null;
 }
 
+function candidateLifecycleBlockers(mission) {
+  const blockers = [];
+  if (mission.status === 'cancelled') blockers.push({ code: 'MISSION_CANCELLED' });
+  if (mission.interruption?.requiresReconciliation) {
+    blockers.push({ code: 'RECONCILIATION_REQUIRED', taskIds: mission.interruption.taskIds || [] });
+  }
+  return blockers;
+}
+
+function assertCandidateMutationAllowed(mission) {
+  if (mission.status === 'cancelled') {
+    throw Object.assign(new Error('Mission is cancelled'), { code: 'MISSION_CANCELLED' });
+  }
+  if (mission.interruption?.requiresReconciliation) {
+    throw Object.assign(new Error('Mission requires interruption reconciliation before candidate mutation'), {
+      code: 'RECONCILIATION_REQUIRED',
+      details: { taskIds: mission.interruption.taskIds || [] }
+    });
+  }
+}
+
 function candidateRollbackError(original, cleanup, ref, commitSha) {
   const error = new Error('Candidate state did not commit and the candidate Git ref could not be rolled back safely');
   error.code = 'CANDIDATE_REF_ROLLBACK_FAILED';
@@ -37,6 +58,7 @@ export class CandidateService {
 
   async preflight({ missionId }) {
     const { mission } = await this.missionService.status({ missionId });
+    const lifecycleBlockers = candidateLifecycleBlockers(mission);
     const project = await this.projectService.get(mission.projectId);
     const observed = await sourceIdentity(project.repoPath);
     const sourceAuthority = mission.baseSourceAuthority
@@ -68,11 +90,13 @@ export class CandidateService {
     const missionHead = (await git(missionWt.path, ['rev-parse', 'HEAD'])).stdout.trim();
     const candidateId = mission.activeCandidateId || null;
     if (live.head === mission.baseSourceIdentity.head) {
+      const ready = lifecycleBlockers.length === 0;
       return {
         missionId,
         candidateId,
-        ready: true,
-        ok: true,
+        ready,
+        ok: ready,
+        blockers: lifecycleBlockers,
         sourceDrift: false,
         sourceHead: live.head,
         sourceBranch: live.branch,
@@ -84,12 +108,14 @@ export class CandidateService {
     }
     const merge = await git(project.repoPath, ['merge-tree', '--write-tree', live.head, missionHead], { allowFailure: true });
     const mergeTree = parseMergeTree(merge.stdout);
-    const ready = merge.code === 0 && Boolean(mergeTree);
+    const sourceReady = merge.code === 0 && Boolean(mergeTree);
+    const ready = sourceReady && lifecycleBlockers.length === 0;
     return {
       missionId,
       candidateId,
       ready,
       ok: ready,
+      blockers: lifecycleBlockers,
       sourceDrift: true,
       sourceHead: live.head,
       sourceBranch: live.branch,
@@ -102,9 +128,10 @@ export class CandidateService {
 
   async createOrRefresh({ missionId, reason = 'finalize' }) {
     const { mission } = await this.missionService.status({ missionId });
+    assertCandidateMutationAllowed(mission);
     const project = await this.projectService.get(mission.projectId);
     const preflight = await this.preflight({ missionId });
-    if (!preflight.ok) throw Object.assign(new Error('Candidate preflight failed due to merge conflict'), { code: 'CANDIDATE_PREFLIGHT_FAILED', details: preflight });
+    if (!preflight.ok) throw Object.assign(new Error('Candidate preflight is not ready'), { code: 'CANDIDATE_PREFLIGHT_FAILED', details: preflight });
     let commitSha = preflight.missionHead;
     if (preflight.sourceDrift) {
       const message = `Veteran candidate refresh ${missionId}\n\nSource: ${preflight.sourceHead}\nMission: ${preflight.missionHead}`;
@@ -146,10 +173,11 @@ export class CandidateService {
       await git(project.repoPath, ['update-ref', ref, commitSha, '0000000000000000000000000000000000000000']);
       refCreated = true;
       await this.store.transaction('candidate_created', (state) => {
+        const target = state.missions[missionId];
+        assertCandidateMutationAllowed(target);
         this.evidenceService.attachPreparedRecord(state, evidence);
         state.runtime.candidates ||= {};
         state.runtime.candidates[candidateId] = candidate;
-        const target = state.missions[missionId];
         if (target.activeMergeProposalId) {
           const prior = state.runtime.mergeProposals?.[target.activeMergeProposalId];
           if (prior && prior.status === 'proposed') {
