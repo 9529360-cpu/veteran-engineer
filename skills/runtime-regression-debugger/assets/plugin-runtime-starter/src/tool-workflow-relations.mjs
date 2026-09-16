@@ -192,7 +192,7 @@ export const TOOL_WORKFLOW_RELATIONS = Object.freeze({
   experience_review: workflow('experience', ['experienceId', 'evidenceId'], [
     relation('experience_query', 'inspect', 'Confirm whether reviewed experience is now eligible for advisory use.'),
     relation('experience_audit', 'inspect', 'Audit lifecycle/freshness after activation, retirement, rejection, or reactivation.'),
-    relation('experience_challenge', 'recover', 'Record contrary evidence against an active experience instead of silently overwriting it.')
+    relation('experience_challenge', 'recover', 'Record contrary evidence against an active experience instead of silently overwriting it.', condition('/status', 'equals', 'active'))
   ]),
   experience_challenge: workflow('experience', ['experienceId', 'evidenceId'], [
     relation('experience_audit', 'inspect', 'Inspect conflicts and lifecycle state after contrary evidence is recorded.'),

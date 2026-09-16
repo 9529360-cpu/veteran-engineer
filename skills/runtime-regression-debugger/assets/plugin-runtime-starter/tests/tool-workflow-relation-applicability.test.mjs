@@ -37,6 +37,9 @@ test('workflow relations publish structured conditions only for result gates wit
   assert.deepEqual(relation('candidate_preflight', 'mission_advance', 'next').condition, {
     source: 'structuredContent', pointer: '/ready', operator: 'equals', value: true
   });
+  assert.deepEqual(relation('experience_review', 'experience_challenge', 'recover').condition, {
+    source: 'structuredContent', pointer: '/status', operator: 'equals', value: 'active'
+  });
   assert.equal(Object.hasOwn(relation('mission_readiness', 'mission_status', 'inspect'), 'condition'), false);
 });
 
@@ -113,6 +116,32 @@ test('review result gates expose mutually exclusive proof and remediation applic
   const failed = { ...passed, passed: false, findings: [{ severity: 'high', code: 'x', message: 'blocked' }] };
   assert.equal(suggestion('review_run', 'semantic_review_run', 'next', failed).applicability.state, 'not-applicable');
   assert.equal(suggestion('review_run', 'remediation_plan', 'recover', failed).applicability.state, 'applicable');
+});
+
+test('experience review gates challenge recovery on the authoritative active lifecycle state', () => {
+  const active = toolWorkflowSuggestions('experience_review', { experienceId: 'experience-1' }, {
+    id: 'experience-1', status: 'active'
+  }).suggestions.find((item) => item.tool === 'experience_challenge' && item.kind === 'recover');
+  assert.ok(active);
+  assert.equal(active.applicability.state, 'applicable');
+  assert.deepEqual(active.arguments, { experienceId: 'experience-1' });
+  assert.deepEqual(active.readiness, {
+    readyAfterCallerGenerated: false,
+    callerGeneratedRequired: ['requestId'],
+    conditionalRequired: [],
+    resultRequired: [],
+    selectionRequired: [],
+    selectionUnavailable: [],
+    inputRequired: ['statement']
+  });
+
+  const retired = toolWorkflowSuggestions('experience_review', { experienceId: 'experience-1' }, {
+    id: 'experience-1', status: 'retired'
+  }).suggestions.find((item) => item.tool === 'experience_challenge' && item.kind === 'recover');
+  assert.ok(retired);
+  assert.equal(retired.applicability.state, 'not-applicable');
+  assert.deepEqual(retired.arguments, { experienceId: 'experience-1' });
+  assert.deepEqual(retired.readiness, active.readiness);
 });
 
 test('structured applicability becomes unknown on error outcomes or missing source evidence', () => {
