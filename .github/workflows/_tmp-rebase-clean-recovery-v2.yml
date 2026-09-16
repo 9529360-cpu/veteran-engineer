@@ -1,0 +1,49 @@
+name: Temporary Rebase Clean Recovery V2
+
+on:
+  push:
+    branches:
+      - feat/workflow-task-recovery-discoverability
+
+permissions:
+  contents: write
+
+jobs:
+  rebuild-clean-v2:
+    if: github.actor != 'github-actions[bot]' && contains(github.event.head_commit.message, '[rebuild-clean-v2]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout staging branch
+        uses: actions/checkout@v7
+        with:
+          ref: feat/workflow-task-recovery-discoverability
+          fetch-depth: 0
+
+      - name: Rebuild clean branch from current main
+        run: |
+          git fetch origin main feat/workflow-task-recovery-discoverability-v2
+          git show origin/feat/workflow-task-recovery-discoverability-v2:tests/tool-workflow-task-recovery-discoverability.test.mjs > /tmp/recovery.test.mjs
+          git show origin/feat/workflow-task-recovery-discoverability:.tmp/workflow-recovery-bindings.patch > /tmp/bindings.patch
+          git show origin/feat/workflow-task-recovery-discoverability:.tmp/workflow-recovery-relations.patch > /tmp/relations.patch
+          git checkout -B feat/workflow-task-recovery-discoverability-v2 origin/main
+          git apply /tmp/bindings.patch
+          git apply /tmp/relations.patch
+          cp src/tool-workflow-bindings.mjs skills/runtime-regression-debugger/assets/plugin-runtime-starter/src/tool-workflow-bindings.mjs
+          cp src/tool-workflow-relations.mjs skills/runtime-regression-debugger/assets/plugin-runtime-starter/src/tool-workflow-relations.mjs
+          cp /tmp/recovery.test.mjs tests/tool-workflow-task-recovery-discoverability.test.mjs
+          cp /tmp/recovery.test.mjs skills/runtime-regression-debugger/assets/plugin-runtime-starter/tests/tool-workflow-task-recovery-discoverability.test.mjs
+          node --check src/tool-workflow-bindings.mjs
+          node --check src/tool-workflow-relations.mjs
+          node --test tests/tool-workflow-task-recovery-discoverability.test.mjs tests/tool-workflow-bindings.test.mjs tests/tool-workflow-readiness.test.mjs
+          cmp -s src/tool-workflow-bindings.mjs skills/runtime-regression-debugger/assets/plugin-runtime-starter/src/tool-workflow-bindings.mjs
+          cmp -s src/tool-workflow-relations.mjs skills/runtime-regression-debugger/assets/plugin-runtime-starter/src/tool-workflow-relations.mjs
+          cmp -s tests/tool-workflow-task-recovery-discoverability.test.mjs skills/runtime-regression-debugger/assets/plugin-runtime-starter/tests/tool-workflow-task-recovery-discoverability.test.mjs
+
+      - name: Commit and publish clean rebased branch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/tool-workflow-bindings.mjs src/tool-workflow-relations.mjs tests/tool-workflow-task-recovery-discoverability.test.mjs skills/runtime-regression-debugger/assets/plugin-runtime-starter/src/tool-workflow-bindings.mjs skills/runtime-regression-debugger/assets/plugin-runtime-starter/src/tool-workflow-relations.mjs skills/runtime-regression-debugger/assets/plugin-runtime-starter/tests/tool-workflow-task-recovery-discoverability.test.mjs
+          git commit -m 'feat(workflow): surface per-task recovery candidates'
+          git push --force-with-lease origin HEAD:refs/heads/feat/workflow-task-recovery-discoverability-v2
