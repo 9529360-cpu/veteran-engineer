@@ -138,20 +138,19 @@ export const TOOL_WORKFLOW_RELATIONS = Object.freeze({
   validation_run: workflow('validation', ['projectId', 'missionId', 'candidateId', 'evidenceId'], [
     relation('evidence_query', 'inspect', 'Inspect the durable validation evidence created by the run.'),
     relation('mission_status', 'inspect', 'Inspect Mission proof state after Mission-scoped validation.'),
-    relation('mission_readiness', 'next', 'Re-evaluate whether a Mission-scoped proof run allows progress.'),
-    relation('mission_advance', 'alternate', 'Prefer Mission advance for the normal orchestrated final-validation sequence.')
+    relation('mission_readiness', 'next', 'Re-enter Mission progression through a fresh readiness check after an independent Mission-scoped proof run.')
   ]),
   review_run: workflow('review', ['missionId', 'candidateId', 'evidenceId'], [
     relation('evidence_query', 'inspect', 'Inspect deterministic review evidence and artifacts.'),
+    relation('mission_readiness', 'next', 'Re-enter Mission progression through a fresh readiness check after independent deterministic review.'),
     relation('semantic_review_run', 'next', 'Run independent semantic review after deterministic review passes when driving proof explicitly.', condition('/passed', 'equals', true)),
-    relation('remediation_plan', 'recover', 'Create bounded remediation work when findings block progress.', condition('/passed', 'equals', false)),
-    relation('mission_advance', 'alternate', 'Prefer Mission advance for the normal orchestrated review sequence.')
+    relation('remediation_plan', 'recover', 'Create bounded remediation work when findings block progress.', condition('/passed', 'equals', false))
   ]),
   semantic_review_run: workflow('review', ['missionId', 'candidateId', 'evidenceId'], [
     relation('evidence_query', 'inspect', 'Inspect semantic review evidence and provider output.'),
+    relation('mission_readiness', 'next', 'Re-enter Mission progression through a fresh readiness check after independent semantic review.'),
     relation('candidate_preflight', 'next', 'Check source/candidate safety after semantic review passes when driving proof explicitly.', condition('/passed', 'equals', true)),
-    relation('remediation_plan', 'recover', 'Create bounded remediation work when semantic findings block progress.', condition('/passed', 'equals', false)),
-    relation('mission_advance', 'alternate', 'Prefer Mission advance for the normal orchestrated semantic-review sequence.')
+    relation('remediation_plan', 'recover', 'Create bounded remediation work when semantic findings block progress.', condition('/passed', 'equals', false))
   ]),
   remediation_plan: workflow('review', ['missionId'], [
     relation('mission_status', 'inspect', 'Inspect Mission review state alongside the proposed remediation tasks.'),
