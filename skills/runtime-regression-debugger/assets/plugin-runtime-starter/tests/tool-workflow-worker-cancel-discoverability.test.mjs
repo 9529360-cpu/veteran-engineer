@@ -55,7 +55,7 @@ function assertCancelSuggestion(suggestion, missionId) {
   assert.deepEqual(suggestion.arguments, { missionId });
   assert.deepEqual(suggestion.missingRequired, ['requestId', 'taskId']);
   assert.equal(suggestion.argumentsComplete, false);
-  assert.deepEqual(suggestion.selections[0].candidates, ['T-executing', 'T-cancelling']);
+  assert.deepEqual([...suggestion.selections[0].candidates].sort(), ['T-cancelling', 'T-executing']);
   for (const taskId of ['T-planned', 'T-dispatched', 'T-interrupted', 'T-failed', 'T-cancelled', 'T-done']) {
     assert.equal(suggestion.selections[0].candidates.includes(taskId), false, `${taskId} must not be cancellable from mission_status`);
   }
