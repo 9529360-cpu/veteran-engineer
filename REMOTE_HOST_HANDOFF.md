@@ -22,9 +22,11 @@ Active Remote Host branch:
 
 `feat/remote-host-control-plane-v1-final`
 
-Current known branch head at handoff creation:
+Current known branch head immediately before this handoff-refresh commit:
 
-`db0bd13434b733d0660535f7a68e2ab66ef8b6c3`
+`e92a9e50818220589eb011d3ca602dee127b6417`
+
+The act of refreshing this document creates one newer documentation-only commit. Always refresh the branch before editing rather than treating the SHA above as immutable authority.
 
 Open PR:
 
@@ -34,7 +36,7 @@ Base branch:
 
 `feat/remediation-reentry`
 
-Important: refresh the branch, PR, and workflow state before making further changes. Do not assume this SHA is still current.
+Important: refresh the branch, PR, and workflow state before making further changes.
 
 ## Why this work exists
 
@@ -210,7 +212,7 @@ At the point of this handoff:
 
 - PR #457 exists.
 - Initial Actions were triggered for an earlier head.
-- Root/starter mirror changes were then added and branch head advanced to `db0bd13434b733d0660535f7a68e2ab66ef8b6c3`.
+- Root/starter mirror changes were then added and the branch advanced beyond that initially tested head.
 - The latest head's workflow runs had not yet appeared when the user requested this handoff.
 
 Therefore **do not claim Remote Host v1 is green yet**.
