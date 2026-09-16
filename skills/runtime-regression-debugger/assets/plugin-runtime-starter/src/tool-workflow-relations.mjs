@@ -4,11 +4,26 @@ export const TOOL_WORKFLOW_META_KEY = 'io.veteran-engineer/workflow';
 export const TOOL_WORKFLOW_SCHEMA = 'veteran-tool-workflow-v1';
 
 const RELATION_KINDS = new Set(['next', 'inspect', 'recover', 'refresh', 'alternate']);
+const RELATION_CONDITION_OPERATORS = new Set(['equals', 'in']);
 const WORKFLOW_GROUPS = new Set(['project', 'mission', 'worker', 'evidence', 'validation', 'review', 'candidate', 'experience', 'runtime', 'handoff']);
 const SCOPE_KEYS = new Set(['projectId', 'missionId', 'taskId', 'candidateId', 'evidenceId', 'experienceId']);
 
-function relation(tool, kind, when) {
-  return Object.freeze({ tool, kind, when });
+function condition(pointer, operator, value) {
+  return Object.freeze({
+    source: 'structuredContent',
+    pointer,
+    operator,
+    value: Array.isArray(value) ? Object.freeze([...value]) : value
+  });
+}
+
+function relation(tool, kind, when, machineCondition = null) {
+  return Object.freeze({
+    tool,
+    kind,
+    when,
+    ...(machineCondition ? { condition: machineCondition } : {})
+  });
 }
 
 function workflow(group, scopeKeys, relations) {
@@ -66,7 +81,7 @@ export const TOOL_WORKFLOW_RELATIONS = Object.freeze({
     relation('handoff_export', 'next', 'Export a resumable handoff when finalization reaches operator action.')
   ]),
   mission_readiness: workflow('mission', ['missionId'], [
-    relation('mission_advance', 'next', 'Perform the next authoritative transition when readiness reports ready.'),
+    relation('mission_advance', 'next', 'Perform the next authoritative transition when readiness reports ready.', condition('/ready', 'equals', true)),
     relation('mission_execute', 'alternate', 'Use explicit execution control when the current phase is execution.'),
     relation('mission_status', 'inspect', 'Inspect full Mission/task state behind a readiness decision.'),
     relation('mission_timeline', 'inspect', 'Inspect durable history when a blocker needs causal context.'),
@@ -131,14 +146,14 @@ export const TOOL_WORKFLOW_RELATIONS = Object.freeze({
   ]),
   review_run: workflow('review', ['missionId', 'candidateId', 'evidenceId'], [
     relation('evidence_query', 'inspect', 'Inspect deterministic review evidence and artifacts.'),
-    relation('semantic_review_run', 'next', 'Run independent semantic review after deterministic review passes when driving proof explicitly.'),
-    relation('remediation_plan', 'recover', 'Create bounded remediation work when findings block progress.'),
+    relation('semantic_review_run', 'next', 'Run independent semantic review after deterministic review passes when driving proof explicitly.', condition('/passed', 'equals', true)),
+    relation('remediation_plan', 'recover', 'Create bounded remediation work when findings block progress.', condition('/passed', 'equals', false)),
     relation('mission_advance', 'alternate', 'Prefer Mission advance for the normal orchestrated review sequence.')
   ]),
   semantic_review_run: workflow('review', ['missionId', 'candidateId', 'evidenceId'], [
     relation('evidence_query', 'inspect', 'Inspect semantic review evidence and provider output.'),
-    relation('candidate_preflight', 'next', 'Check source/candidate safety after semantic review passes when driving proof explicitly.'),
-    relation('remediation_plan', 'recover', 'Create bounded remediation work when semantic findings block progress.'),
+    relation('candidate_preflight', 'next', 'Check source/candidate safety after semantic review passes when driving proof explicitly.', condition('/passed', 'equals', true)),
+    relation('remediation_plan', 'recover', 'Create bounded remediation work when semantic findings block progress.', condition('/passed', 'equals', false)),
     relation('mission_advance', 'alternate', 'Prefer Mission advance for the normal orchestrated semantic-review sequence.')
   ]),
   remediation_plan: workflow('review', ['missionId'], [
@@ -240,6 +255,12 @@ function assertWorkflowContract() {
       if (!TOOL_NAMES.includes(edge.tool)) throw new Error(`Unknown workflow relation target from ${name}: ${edge.tool}`);
       if (!RELATION_KINDS.has(edge.kind)) throw new Error(`Unknown workflow relation kind from ${name} to ${edge.tool}: ${edge.kind}`);
       if (typeof edge.when !== 'string' || edge.when.length === 0) throw new Error(`Workflow relation from ${name} to ${edge.tool} requires a condition`);
+      if (edge.condition) {
+        if (edge.condition.source !== 'structuredContent') throw new Error(`Workflow relation condition source must be structuredContent for ${name} -> ${edge.tool}`);
+        if (typeof edge.condition.pointer !== 'string' || !edge.condition.pointer.startsWith('/')) throw new Error(`Workflow relation condition pointer must be a JSON pointer for ${name} -> ${edge.tool}`);
+        if (!RELATION_CONDITION_OPERATORS.has(edge.condition.operator)) throw new Error(`Unknown workflow relation condition operator for ${name} -> ${edge.tool}: ${edge.condition.operator}`);
+        if (edge.condition.operator === 'in' && !Array.isArray(edge.condition.value)) throw new Error(`Workflow relation in-condition requires an array value for ${name} -> ${edge.tool}`);
+      }
       const key = `${edge.kind}:${edge.tool}`;
       if (seen.has(key)) throw new Error(`Duplicate workflow relation for ${name}: ${key}`);
       seen.add(key);
