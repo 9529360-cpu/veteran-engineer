@@ -1,0 +1,36 @@
+name: Temporary Workflow Recovery Patch
+
+on:
+  push:
+    branches:
+      - feat/workflow-task-recovery-discoverability
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    if: github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[workflow-recovery-applied]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@v7
+        with:
+          ref: feat/workflow-task-recovery-discoverability
+          fetch-depth: 0
+
+      - name: Apply exact binding patch
+        run: |
+          git apply .tmp/workflow-recovery-bindings.patch
+          cp src/tool-workflow-bindings.mjs skills/runtime-regression-debugger/assets/plugin-runtime-starter/src/tool-workflow-bindings.mjs
+          node --check src/tool-workflow-bindings.mjs
+          cmp -s src/tool-workflow-bindings.mjs skills/runtime-regression-debugger/assets/plugin-runtime-starter/src/tool-workflow-bindings.mjs
+
+      - name: Commit materialized binding
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/tool-workflow-bindings.mjs skills/runtime-regression-debugger/assets/plugin-runtime-starter/src/tool-workflow-bindings.mjs
+          git commit -m 'chore: materialize workflow recovery binding [workflow-recovery-applied]'
+          git push origin HEAD:refs/heads/feat/workflow-task-recovery-discoverability
