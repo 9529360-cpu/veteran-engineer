@@ -28,6 +28,14 @@ function conciseError(error) {
   };
 }
 
+function assertAdvanceMutationAuthority(mission) {
+  if (!mission) throw Object.assign(new Error('Mission no longer exists'), { code: 'MISSION_NOT_FOUND' });
+  if (mission.status === 'cancelled') throw Object.assign(new Error('Mission is cancelled'), { code: 'MISSION_CANCELLED' });
+  if (mission.interruption?.requiresReconciliation) {
+    throw Object.assign(new Error('Mission requires interruption reconciliation before advance'), { code: 'RECONCILIATION_REQUIRED' });
+  }
+}
+
 function validationTierQueues(plan) {
   const tiers = new Map();
   for (const batch of plan.batches) {
@@ -219,6 +227,7 @@ export class MissionAdvanceService {
     const transactionName = passed ? 'mission_validation_passed' : 'mission_validation_failed';
     await this.store.transaction(transactionName, (state) => {
       const target = state.missions[missionId];
+      assertAdvanceMutationAuthority(target);
       const previous = target.validation || {};
       const previousEvidenceIds = previous.commitSha === commitSha && Array.isArray(previous.evidenceIds) ? previous.evidenceIds : [];
       target.validation = {
@@ -244,8 +253,7 @@ export class MissionAdvanceService {
 
   async advance({ missionId, runWorkers = false }) {
     const { mission } = await this.missionService.status({ missionId });
-    if (mission.status === 'cancelled') throw Object.assign(new Error('Mission is cancelled'), { code: 'MISSION_CANCELLED' });
-    if (mission.interruption?.requiresReconciliation) throw Object.assign(new Error('Mission requires interruption reconciliation before advance'), { code: 'RECONCILIATION_REQUIRED' });
+    assertAdvanceMutationAuthority(mission);
     if (mission.phase === 'execution') {
       const result = await this.workerOrchestrator.execute({ missionId, runWorkers });
       const after = (await this.missionService.status({ missionId })).mission;
@@ -261,6 +269,7 @@ export class MissionAdvanceService {
         const evidence = await this.evidenceService.record({ projectId: project.id, missionId, type: 'validation', summary: { passed: true, skipped: true, reason: 'no-required-capabilities', commitSha }, sourceIdentity: { head: commitSha } });
         await this.store.transaction('mission_validation_skipped', (state) => {
           const target = state.missions[missionId];
+          assertAdvanceMutationAuthority(target);
           target.validation = { status: 'skipped', evidenceIds: [evidence.id], commitSha };
           target.phase = 'review';
           target.status = 'ready';
@@ -298,6 +307,7 @@ export class MissionAdvanceService {
       if (!result.passed) return { action: 'review', result, nextPhase: 'review', blocked: true };
       await this.store.transaction('mission_review_passed', (state) => {
         const target = state.missions[missionId];
+        assertAdvanceMutationAuthority(target);
         target.phase = 'semantic-review';
         target.status = 'ready';
         target.updatedAt = nowIso();
@@ -309,6 +319,7 @@ export class MissionAdvanceService {
       if (!result.passed) return { action: 'semantic-review', result, nextPhase: 'semantic-review', blocked: true };
       await this.store.transaction('mission_semantic_review_passed', (state) => {
         const target = state.missions[missionId];
+        assertAdvanceMutationAuthority(target);
         target.phase = 'candidate';
         target.status = 'ready';
         target.updatedAt = nowIso();
@@ -329,6 +340,7 @@ export class MissionAdvanceService {
         if (proofFreshForCandidate(mission, candidate)) {
           await this.store.transaction('mission_candidate_ready', (working) => {
             const target = working.missions[missionId];
+            assertAdvanceMutationAuthority(target);
             target.phase = 'finalize';
             target.status = 'candidate-ready';
             target.updatedAt = nowIso();
@@ -391,8 +403,9 @@ export class MissionAdvanceService {
       };
 
       const persisted = await this.store.transaction('mission_finalize_proposed', (state) => {
-        state.runtime.mergeProposals ||= {};
         const target = state.missions[missionId];
+        assertAdvanceMutationAuthority(target);
+        state.runtime.mergeProposals ||= {};
         const current = state.runtime.mergeProposals[target.activeMergeProposalId];
         if (proposalMatches(current, { missionId, candidate, preflight })) return { proposal: current, reused: true };
         state.runtime.mergeProposals[proposalId] = proposal;
