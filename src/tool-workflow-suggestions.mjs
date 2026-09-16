@@ -1,6 +1,7 @@
 import { toolInputJsonSchema, toolRequiresRequestId } from './tool-catalog.mjs';
 import { TOOL_WORKFLOW_RELATIONS } from './tool-workflow-relations.mjs';
 import { TOOL_WORKFLOW_BINDINGS } from './tool-workflow-bindings.mjs';
+import { dependentWorkflowSelections } from './tool-workflow-dependent-selections.mjs';
 
 export const TOOL_WORKFLOW_SUGGESTIONS_META_KEY = 'io.veteran-engineer/workflow-suggestions';
 export const TOOL_WORKFLOW_SUGGESTIONS_SCHEMA = 'veteran-tool-workflow-suggestions-v1';
@@ -121,6 +122,12 @@ function resolvedSelection(selection, result) {
   });
 }
 
+function selectionHasCandidates(selection) {
+  if (Array.isArray(selection.candidates) && selection.candidates.length > 0) return true;
+  return Array.isArray(selection.candidateGroups)
+    && selection.candidateGroups.some((group) => Array.isArray(group?.candidates) && group.candidates.length > 0);
+}
+
 function callerGeneratedRequiredTargets(targetTool, targetSchema) {
   if (!toolRequiresRequestId(targetTool)) return new Set();
   if (!(targetSchema.required || []).includes('requestId')) {
@@ -159,7 +166,7 @@ function invocationReadiness(targetSchema, bindingEdge, partialArguments, missin
     .filter((selection) => !Object.hasOwn(partialArguments, selection.target))
     .map((selection) => selection.target);
   const selectionUnavailable = requiredSelections
-    .filter((selection) => selectionRequired.includes(selection.target) && selection.candidates.length === 0)
+    .filter((selection) => selectionRequired.includes(selection.target) && !selectionHasCandidates(selection))
     .map((selection) => selection.target);
 
   const requiredNames = new Set(targetSchema.required || []);
@@ -195,7 +202,10 @@ function suggestionFor(sourceTool, index, args, result, sourceOutcome) {
     if (resolved.found) partialArguments[binding.target] = resolved.value;
   }
   const missingRequired = (targetSchema.required || []).filter((name) => !Object.hasOwn(partialArguments, name));
-  const selections = (bindingEdge.selections || []).map((item) => resolvedSelection(item, result));
+  const selections = Object.freeze([
+    ...(bindingEdge.selections || []).map((item) => resolvedSelection(item, result)),
+    ...dependentWorkflowSelections(sourceTool, edge, result)
+  ]);
   const readiness = invocationReadiness(targetSchema, bindingEdge, partialArguments, missingRequired, selections);
   const applicability = relationApplicability(edge, result, sourceOutcome);
 
@@ -207,7 +217,7 @@ function suggestionFor(sourceTool, index, args, result, sourceOutcome) {
     arguments: Object.freeze(partialArguments),
     missingRequired: Object.freeze(missingRequired),
     argumentsComplete: missingRequired.length === 0,
-    selections: Object.freeze(selections),
+    selections,
     readiness,
     applicability
   });
@@ -231,7 +241,7 @@ export function toolWorkflowSuggestions(sourceTool, args = {}, result = {}, { so
     sourceTool,
     sourceOutcome: outcome.sourceOutcome,
     ...(outcome.sourceErrorCode ? { sourceErrorCode: outcome.sourceErrorCode } : {}),
-    invocationPolicy: 'Suggestions are partial call arguments only. Apply the relation condition before use, supply every missing required input, explicitly choose any declared selection, create a fresh requestId for mutating calls, and never treat a suggestion as authorization to invoke a tool. applicability.state is machine-evaluated only when the relation declares a structured condition: applicable means the observed source result satisfies it, not-applicable means it does not, unknown means authoritative source evidence is unavailable, and not-declared means only the human-readable when condition is published. readiness.readyAfterCallerGenerated means all non-caller-generated relation inputs are currently resolved; it is independent from applicability and does not grant authorization. callerGeneratedRequired values still must be freshly created. conditionalRequired identifies absent optional/conditional source bindings; resultRequired identifies a normally guaranteed result-derived identity that is unavailable, such as after an error outcome. Error outcomes have no authoritative structured result, so result-derived bindings, selections, and structured applicability conditions may be unavailable.',
+    invocationPolicy: 'Suggestions are partial call arguments only. Apply the relation condition before use, supply every missing required input, explicitly choose any declared selection, create a fresh requestId for mutating calls, and never treat a suggestion as authorization to invoke a tool. Dependent selections publish candidateGroups keyed by an earlier explicit selection; they do not auto-bind either selection. applicability.state is machine-evaluated only when the relation declares a structured condition: applicable means the observed source result satisfies it, not-applicable means it does not, unknown means authoritative source evidence is unavailable, and not-declared means only the human-readable when condition is published. readiness.readyAfterCallerGenerated means all non-caller-generated relation inputs are currently resolved; it is independent from applicability and does not grant authorization. callerGeneratedRequired values still must be freshly created. conditionalRequired identifies absent optional/conditional source bindings; resultRequired identifies a normally guaranteed result-derived identity that is unavailable, such as after an error outcome. Error outcomes have no authoritative structured result, so result-derived bindings, selections, and structured applicability conditions may be unavailable.',
     suggestions: Object.freeze(workflow.relations.map((_edge, index) => suggestionFor(sourceTool, index, args || {}, result, outcome.sourceOutcome)))
   });
 }
