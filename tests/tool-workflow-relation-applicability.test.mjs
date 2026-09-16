@@ -16,6 +16,12 @@ test('workflow relations publish structured conditions only for result gates wit
   assert.deepEqual(relation('mission_readiness', 'mission_advance', 'next').condition, {
     source: 'structuredContent', pointer: '/ready', operator: 'equals', value: true
   });
+  assert.deepEqual(relation('mission_readiness', 'mission_execute', 'alternate').condition, {
+    source: 'structuredContent', pointer: '/phase', operator: 'equals', value: 'execution'
+  });
+  assert.deepEqual(relation('mission_readiness', 'candidate_preflight', 'inspect').condition, {
+    source: 'structuredContent', pointer: '/phase', operator: 'in', value: ['candidate', 'finalize']
+  });
   assert.deepEqual(relation('review_run', 'semantic_review_run', 'next').condition, {
     source: 'structuredContent', pointer: '/passed', operator: 'equals', value: true
   });
@@ -51,6 +57,26 @@ test('workflow suggestions keep structural readiness independent from relation a
     missionId: 'mission-1', ready: false
   });
   assert.deepEqual(inspect.applicability, { state: 'not-declared' });
+});
+
+test('mission readiness phase gates phase-specific relations without replacing transition readiness', () => {
+  const execution = {
+    missionId: 'mission-1', ready: false, phase: 'execution', status: 'ready', blockers: [], operatorActionRequired: false
+  };
+  assert.equal(suggestion('mission_readiness', 'mission_execute', 'alternate', execution).applicability.state, 'applicable');
+  assert.equal(suggestion('mission_readiness', 'candidate_preflight', 'inspect', execution).applicability.state, 'not-applicable');
+
+  const candidate = { ...execution, phase: 'candidate' };
+  assert.equal(suggestion('mission_readiness', 'mission_execute', 'alternate', candidate).applicability.state, 'not-applicable');
+  assert.equal(suggestion('mission_readiness', 'candidate_preflight', 'inspect', candidate).applicability.state, 'applicable');
+
+  const finalize = { ...execution, phase: 'finalize' };
+  assert.equal(suggestion('mission_readiness', 'candidate_preflight', 'inspect', finalize).applicability.state, 'applicable');
+
+  const validation = { ...execution, ready: true, phase: 'validation' };
+  assert.equal(suggestion('mission_readiness', 'mission_execute', 'alternate', validation).applicability.state, 'not-applicable');
+  assert.equal(suggestion('mission_readiness', 'candidate_preflight', 'inspect', validation).applicability.state, 'not-applicable');
+  assert.equal(suggestion('mission_readiness', 'mission_advance', 'next', validation).applicability.state, 'applicable');
 });
 
 test('candidate preflight gates direct Mission advance on authoritative readiness', () => {
