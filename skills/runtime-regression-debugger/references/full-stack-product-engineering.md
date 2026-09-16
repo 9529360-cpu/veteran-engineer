@@ -2,6 +2,8 @@
 
 Use this for feature/product work, especially sparse requests or changes that cross UI, API, auth, data, async, runtime, or delivery boundaries. Own one product contract across every specialist layer.
 
+For natural-language outcome requests, broad product changes, or any request with multiple independently visible clauses, read `outcome-fulfillment-contract.md` before implementation. Preserve each material user clause as an independently testable acceptance row; related work is not substitute work. Use `scripts/outcome_contract_gate.py` when a structured closure manifest will prevent partial relevance from being reported as completion.
+
 ## Contents
 
 - Compile the product contract
@@ -37,6 +39,8 @@ Capture only what changes the engineering decision:
 - material latency, accessibility, privacy, durability, operability, or cost constraints.
 
 Acceptance criteria describe observable behavior, not implementation trivia. "Return 200" or "add a hook" is insufficient when the user-visible contract extends beyond it.
+
+For a multi-clause request, do not collapse those acceptance criteria back into one vague sentence after compiling them. Keep a clause-to-delivery map through implementation and final review so a locally successful change cannot erase an unimplemented part of the original request.
 
 ## Separate requirement sources
 
@@ -187,6 +191,8 @@ Use the lowest-cost test that can falsify the changed owner, then cross the real
 
 Use `scripts/delivery_slice_gate.py` only when a structured closure record reduces omissions. Within a delivery slice, `transition`, `companion`, and `consumer` names are trace-link identities: names must be unique inside each kind so a requirements-to-delivery link cannot ambiguously target multiple rows. The same text may appear in different kinds because the trace identity is the pair `(kind, name)`. Treat malformed scalar/container values in these deterministic delivery/trace manifests as structured validation failures rather than letting Python collection operations decide behavior or escape as tracebacks; a gate is useful to automation only when bad input still produces a stable fail-closed verdict.
 
+For requests whose main risk is omission rather than transition correctness, prefer `scripts/outcome_contract_gate.py`. It checks that each material user-request clause still has an explicit delivered row and validation evidence, and that visible/runtime requirements are not upgraded beyond the boundary actually observed.
+
 ## Finish at the visible boundary
 
 A feature is not done because code exists, an endpoint returns success, a row commits, or one layer's tests pass.
@@ -196,6 +202,8 @@ Distinguish:
 `code exists -> active caller wired -> focused behavior passes -> failure/compatibility passes -> integration/E2E passes -> release candidate passes -> deployed -> production-visible contract verified`
 
 Re-check the compiled contract after implementation. If discovered evidence changed an inferred requirement, exposed a missing companion, or revealed a real product decision, resolve that drift before claiming completion.
+
+When the request includes visible layout, visual-style, interaction, responsive, accessibility-presentation, or user-workflow clauses and a real browser/desktop/runtime boundary is available, observe that boundary before reporting the corresponding clause complete. A successful build is not a rendered result.
 
 ## Evidence-backed no-change
 
