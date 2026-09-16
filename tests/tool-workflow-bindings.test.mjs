@@ -166,7 +166,7 @@ test('workflow required coverage distinguishes guaranteed, conditional, selected
     selection: ['taskId'],
     unbound: ['requestId']
   });
-  assert.deepEqual(edge.unboundRequired, ['requestId', 'taskId']);
+  assert.deepEqual(relation('mission_execute', 'worker_retry', 'recover').unboundRequired, ['requestId', 'taskId']);
 
   edge = relation('experience_commit', 'experience_review', 'next');
   assert.deepEqual(edge.requiredCoverage, {
@@ -257,6 +257,30 @@ test('standalone fallback publishes workflow bindings for all public tools', asy
     for (const item of pending.values()) clearTimeout(item.timer);
     child.stdin.end();
     child.kill('SIGTERM');
+    await fs.rm(stateRoot, { recursive: true, force: true });
+  }
+});
+
+test('official SDK publishes the same workflow bindings', { skip: !officialSdkAvailable }, async () => {
+  const stateRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'veteran-tool-workflow-bindings-sdk-'));
+  const [{ Client }, { StdioClientTransport }] = await Promise.all([
+    import('@modelcontextprotocol/client'),
+    import('@modelcontextprotocol/client/stdio')
+  ]);
+  const client = new Client({ name: 'workflow-bindings-test', version: '1.0.0' });
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [server],
+    cwd: root,
+    env: { ...process.env, VETERAN_ENGINEER_STATE_DIR: stateRoot, VETERAN_MCP_REQUIRE_SDK: '1' },
+    stderr: 'pipe'
+  });
+  try {
+    await client.connect(transport);
+    const listed = await client.listTools();
+    assertPublishedBindings(listed.tools);
+  } finally {
+    await client.close().catch(() => {});
     await fs.rm(stateRoot, { recursive: true, force: true });
   }
 });
