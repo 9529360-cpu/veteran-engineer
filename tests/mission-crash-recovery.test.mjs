@@ -3,7 +3,6 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
-import { pathToFileURL } from 'node:url';
 import { createVeteranApp } from '../src/app.mjs';
 import { cleanup, createGitRepo } from './helpers.mjs';
 
@@ -58,7 +57,7 @@ test('runtime crash releases stale mission lease before persisted executing work
       state.missions[missionId].status = 'executing';
     }, { missionId });
 
-    const appUrl = pathToFileURL(path.resolve('src/app.mjs')).href;
+    const appUrl = new URL('../src/app.mjs', import.meta.url).href;
     const childSource = `
       import fs from 'node:fs/promises';
       import { createVeteranApp } from ${JSON.stringify(appUrl)};
