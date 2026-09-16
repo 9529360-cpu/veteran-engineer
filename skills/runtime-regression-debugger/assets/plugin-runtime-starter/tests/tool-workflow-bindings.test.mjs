@@ -134,7 +134,7 @@ test('workflow bindings carry deterministic identities and transformed evidence 
   });
 
   assert.deepEqual(binding('experience_commit', 'experience_review', 'experienceId', 'next'), {
-    target: 'experienceId', source: 'structuredContent', pointer: '/id', mode: 'if-present-non-null', transform: 'identity', availability: 'conditional'
+    target: 'experienceId', source: 'structuredContent', pointer: '/id', mode: 'if-present-non-null', transform: 'identity', availability: 'guaranteed'
   });
   assert.deepEqual(relation('experience_commit', 'experience_review', 'next').unboundRequired, ['requestId', 'action']);
 });
@@ -170,8 +170,8 @@ test('workflow required coverage distinguishes guaranteed, conditional, selected
 
   edge = relation('experience_commit', 'experience_review', 'next');
   assert.deepEqual(edge.requiredCoverage, {
-    guaranteed: [],
-    conditional: ['experienceId'],
+    guaranteed: ['experienceId'],
+    conditional: [],
     selection: [],
     unbound: ['requestId', 'action']
   });
