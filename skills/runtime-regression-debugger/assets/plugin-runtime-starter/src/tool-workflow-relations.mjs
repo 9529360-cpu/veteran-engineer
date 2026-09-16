@@ -82,10 +82,10 @@ export const TOOL_WORKFLOW_RELATIONS = Object.freeze({
   ]),
   mission_readiness: workflow('mission', ['missionId'], [
     relation('mission_advance', 'next', 'Perform the next authoritative transition when readiness reports ready.', condition('/ready', 'equals', true)),
-    relation('mission_execute', 'alternate', 'Use explicit execution control when the current phase is execution.'),
+    relation('mission_execute', 'alternate', 'Use explicit execution control when the current phase is execution.', condition('/phase', 'equals', 'execution')),
     relation('mission_status', 'inspect', 'Inspect full Mission/task state behind a readiness decision.'),
     relation('mission_timeline', 'inspect', 'Inspect durable history when a blocker needs causal context.'),
-    relation('candidate_preflight', 'inspect', 'Check source drift explicitly during candidate or finalize work.'),
+    relation('candidate_preflight', 'inspect', 'Check source drift explicitly during candidate or finalize work.', condition('/phase', 'in', ['candidate', 'finalize'])),
     relation('mission_resume', 'recover', 'Reconcile an interruption before trying to advance again.')
   ]),
   mission_timeline: workflow('mission', ['missionId'], [
