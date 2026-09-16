@@ -117,6 +117,13 @@ export async function createVeteranApp({
   async function executeMission(args) {
     const missionId = args?.missionId;
     return withMissionExecutionLease(args, 'mission-execute', async () => {
+      const current = await missionService.status({ missionId });
+      if (current.mission.status === 'cancelled') {
+        throw Object.assign(new Error('Cancelled missions cannot execute'), { code: 'MISSION_CANCELLED' });
+      }
+      if (current.mission.interruption?.requiresReconciliation) {
+        throw Object.assign(new Error('Mission requires interruption reconciliation before execution'), { code: 'RECONCILIATION_REQUIRED' });
+      }
       activeMissionExecutions.set(missionId, (activeMissionExecutions.get(missionId) || 0) + 1);
       try {
         return await workerOrchestrator.execute(args);
