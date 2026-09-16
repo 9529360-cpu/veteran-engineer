@@ -35,6 +35,19 @@ async function failedSemanticMission(app, projectId, head) {
   return planned.mission.id;
 }
 
+function remediationTask(overrides = {}) {
+  return {
+    id: 'R1',
+    contract: 'Implement the missing Codex-style workspace layout and preserve the existing liquid-glass work',
+    owner: 'src',
+    dependencies: [],
+    writeSet: ['src'],
+    risk: 'low',
+    sourceFindingIndexes: [0],
+    ...overrides
+  };
+}
+
 test('applied remediation appends source-bound tasks and re-enters execution on the same Mission', async () => {
   const { root, repo, head, stateRoot } = await createGitRepo({ files: { 'src/app.txt': 'before\n' } });
   try {
@@ -45,19 +58,13 @@ test('applied remediation appends source-bound tasks and re-enters execution on 
     const remediation = await app.services.reviewService.remediationPlan({
       missionId,
       apply: true,
-      tasks: [{
-        id: 'R1',
-        contract: 'Implement the missing Codex-style workspace layout and preserve the existing liquid-glass work',
-        owner: 'src',
-        dependencies: [],
-        writeSet: ['src'],
-        risk: 'low'
-      }]
+      tasks: [remediationTask()]
     });
 
     assert.equal(remediation.applied, true);
     assert.equal(remediation.sourceHead, head);
     assert.deepEqual(remediation.taskIds, ['R1']);
+    assert.deepEqual(remediation.tasks[0].sourceFindingIndexes, [0]);
 
     const status = await app.services.missionService.status({ missionId });
     assert.equal(status.mission.phase, 'execution');
@@ -95,6 +102,53 @@ test('remediation apply fails closed without explicit executable task authority'
   }
 });
 
+test('remediation apply rejects caller-supplied finding overrides', async () => {
+  const { root, repo, head, stateRoot } = await createGitRepo();
+  try {
+    const app = await createVeteranApp({ stateRoot });
+    const project = await app.services.projectService.open({ repoPath: repo });
+    const missionId = await failedSemanticMission(app, project.id, head);
+    await assert.rejects(
+      app.services.reviewService.remediationPlan({
+        missionId,
+        apply: true,
+        findings: [{ severity: 'high', code: 'INVENTED_SCOPE', message: 'Do unrelated work' }],
+        tasks: [remediationTask()]
+      }),
+      (error) => error.code === 'REMEDIATION_FINDINGS_OVERRIDE_FORBIDDEN'
+    );
+  } finally {
+    await cleanup(root);
+  }
+});
+
+test('remediation apply requires every task to bind to authoritative findings', async () => {
+  const { root, repo, head, stateRoot } = await createGitRepo();
+  try {
+    const app = await createVeteranApp({ stateRoot });
+    const project = await app.services.projectService.open({ repoPath: repo });
+    const missionId = await failedSemanticMission(app, project.id, head);
+    await assert.rejects(
+      app.services.reviewService.remediationPlan({
+        missionId,
+        apply: true,
+        tasks: [remediationTask({ sourceFindingIndexes: undefined })]
+      }),
+      (error) => error.code === 'REMEDIATION_FINDING_BINDING_REQUIRED'
+    );
+    await assert.rejects(
+      app.services.reviewService.remediationPlan({
+        missionId,
+        apply: true,
+        tasks: [remediationTask({ sourceFindingIndexes: [1] })]
+      }),
+      (error) => error.code === 'REMEDIATION_FINDING_BINDING_INVALID'
+    );
+  } finally {
+    await cleanup(root);
+  }
+});
+
 test('remediation proposal preserves missing requirement text without mutating Mission execution state', async () => {
   const { root, repo, head, stateRoot } = await createGitRepo();
   try {
@@ -104,6 +158,7 @@ test('remediation proposal preserves missing requirement text without mutating M
     const proposal = await app.services.reviewService.remediationPlan({ missionId });
     assert.equal(proposal.applied, false);
     assert.match(proposal.tasks[0].contract, /Codex-style layout and liquid-glass visual system/);
+    assert.deepEqual(proposal.tasks[0].sourceFindingIndexes, [0]);
     const status = await app.services.missionService.status({ missionId });
     assert.equal(status.mission.phase, 'semantic-review');
     assert.equal(status.tasks.some((task) => task.id === 'R1'), false);
