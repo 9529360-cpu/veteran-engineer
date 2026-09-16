@@ -46,13 +46,11 @@ test('workflow relations publish structured conditions only for result gates wit
   assert.deepEqual(relation('candidate_preflight', 'candidate_refresh', 'recover').condition, {
     source: 'structuredContent', pointer: '/ready', operator: 'equals', value: true
   });
-  assert.deepEqual(relation('candidate_preflight', 'mission_advance', 'next').condition, {
-    source: 'structuredContent', pointer: '/ready', operator: 'equals', value: true
-  });
   assert.deepEqual(relation('experience_review', 'experience_challenge', 'recover').condition, {
     source: 'structuredContent', pointer: '/status', operator: 'equals', value: 'active'
   });
   assert.equal(Object.hasOwn(relation('mission_readiness', 'mission_status', 'inspect'), 'condition'), false);
+  assert.equal(Object.hasOwn(relation('candidate_preflight', 'mission_readiness', 'next'), 'condition'), false);
 });
 
 test('workflow suggestions keep structural readiness independent from relation applicability', () => {
@@ -129,7 +127,7 @@ test('mission readiness phase gates phase-specific relations without replacing t
   assert.equal(suggestion('mission_readiness', 'mission_advance', 'next', validation).applicability.state, 'applicable');
 });
 
-test('candidate preflight gates direct candidate refresh and Mission advance on authoritative readiness', () => {
+test('candidate preflight gates explicit candidate refresh on authoritative readiness', () => {
   const blockedResult = {
     missionId: 'mission-1',
     candidateId: null,
@@ -137,11 +135,8 @@ test('candidate preflight gates direct candidate refresh and Mission advance on 
     sourceDrift: true
   };
   const blockedRefresh = suggestion('candidate_preflight', 'candidate_refresh', 'recover', blockedResult);
-  const blockedAdvance = suggestion('candidate_preflight', 'mission_advance', 'next', blockedResult);
   assert.equal(blockedRefresh.applicability.state, 'not-applicable');
-  assert.equal(blockedAdvance.applicability.state, 'not-applicable');
   assert.equal(blockedRefresh.readiness.readyAfterCallerGenerated, true);
-  assert.equal(blockedAdvance.readiness.readyAfterCallerGenerated, true);
 
   const readyResult = {
     missionId: 'mission-1',
@@ -150,11 +145,8 @@ test('candidate preflight gates direct candidate refresh and Mission advance on 
     sourceDrift: false
   };
   const readyRefresh = suggestion('candidate_preflight', 'candidate_refresh', 'recover', readyResult);
-  const readyAdvance = suggestion('candidate_preflight', 'mission_advance', 'next', readyResult);
   assert.equal(readyRefresh.applicability.state, 'applicable');
-  assert.equal(readyAdvance.applicability.state, 'applicable');
   assert.equal(readyRefresh.readiness.readyAfterCallerGenerated, true);
-  assert.equal(readyAdvance.readiness.readyAfterCallerGenerated, true);
 });
 
 test('review result gates expose mutually exclusive proof and remediation applicability', () => {
