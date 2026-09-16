@@ -333,7 +333,7 @@ export const TOOL_WORKFLOW_BINDINGS = Object.freeze(Object.fromEntries(
       schema: TOOL_WORKFLOW_BINDINGS_SCHEMA,
       sourceTool: name,
       copyPolicy: 'Copy a deterministic binding only when its source pointer resolves to a non-null value. availability=guaranteed means the source schema requires a non-null value on every path; conditional means runtime resolution may still be absent. Apply declared transforms exactly. Never synthesize requestId or non-identity business inputs.',
-      selectionPolicy: 'Selections are not automatic bindings. A client or operator must choose values from the declared source collection after applying any filter.',
+      selectionPolicy: 'Selections are not automatic bindings. A client or operator must choose values from the declared source collection after applying any filter. A selection target has exclusive input ownership and must never also be populated by a deterministic binding on the same relation.',
       relations: Object.freeze(workflow.relations.map((edge) => compileRelation(name, edge)))
     })];
   })
@@ -420,6 +420,7 @@ function assertBindingContract() {
       for (const binding of bindingEdge.bindings) assertBindingDescriptor(name, edge.tool, binding, seenTargets);
       const selectionTargets = new Set();
       for (const descriptor of bindingEdge.selections) {
+        if (seenTargets.has(descriptor.target)) throw new Error(`Workflow input ownership overlap ${name} -> ${edge.tool}.${descriptor.target}: deterministic binding cannot also require explicit selection`);
         if (selectionTargets.has(descriptor.target)) throw new Error(`Duplicate workflow selection target ${name} -> ${edge.tool}.${descriptor.target}`);
         selectionTargets.add(descriptor.target);
         assertSelectionDescriptor(name, edge.tool, descriptor);
