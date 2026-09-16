@@ -159,7 +159,7 @@ export const TOOL_WORKFLOW_RELATIONS = Object.freeze({
   ]),
   candidate_preflight: workflow('candidate', ['missionId', 'candidateId'], [
     relation('candidate_status', 'inspect', 'Inspect immutable candidate identity and proof freshness.'),
-    relation('candidate_refresh', 'recover', 'Create a refreshed immutable candidate when source authority drifted.'),
+    relation('candidate_refresh', 'recover', 'Create or refresh an immutable candidate explicitly after candidate preflight reports ready.', condition('/ready', 'equals', true)),
     relation('mission_readiness', 'inspect', 'Check Mission-level blockers around candidate/finalize work.'),
     relation('mission_advance', 'next', 'Continue candidate/finalize progression when preflight is ready.', condition('/ready', 'equals', true))
   ]),
