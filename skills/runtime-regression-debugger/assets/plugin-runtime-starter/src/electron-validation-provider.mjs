@@ -45,6 +45,19 @@ function windowStateMatches(observed, expected) {
   return true;
 }
 
+function menuItemMatches(observed, expected) {
+  if (!observed || typeof observed !== 'object' || Array.isArray(observed)) return false;
+  for (const [key, value] of Object.entries(expected)) {
+    if (observed[key] !== value) return false;
+  }
+  return true;
+}
+
+function findMenuItem(menu, expected) {
+  if (!menu || typeof menu !== 'object' || !Array.isArray(menu.items)) return null;
+  return menu.items.find((item) => menuItemMatches(item, expected)) || null;
+}
+
 function remainingBudget(deadline, requested) {
   const remaining = deadline - Date.now();
   if (remaining <= 0) throw electronError('Electron validation exceeded its total timeout', 'ELECTRON_VALIDATION_TIMEOUT');
@@ -216,6 +229,18 @@ async function executeStep(session, step, stepIndex, assertions, attachments) {
     const passed = Boolean(value?.ok && windowStateMatches(value.state, step.state));
     const detail = assertionDetail(`expected=${JSON.stringify(step.state)} observed=${JSON.stringify(value?.state ?? null)}`);
     assertions.push({ name: assertionName(step, stepIndex), passed, detail });
+    if (!passed) throw electronError(`Electron assertion failed: ${assertionName(step, stepIndex)}`, 'ELECTRON_ASSERTION_FAILED', { stepIndex });
+    return;
+  }
+
+  if (step.action === 'assertMenuItem') {
+    const value = await commandUntil(session, step, 'menuInventory', {}, (item) => item?.ok && Boolean(findMenuItem(item.menu, step.item)));
+    const matched = value?.ok ? findMenuItem(value.menu, step.item) : null;
+    const passed = Boolean(matched);
+    const truncated = Boolean(value?.menu?.truncated);
+    const detail = assertionDetail(`expected=${JSON.stringify(step.item)} matched=${passed} truncated=${truncated}`);
+    assertions.push({ name: assertionName(step, stepIndex), passed, detail });
+    if (!passed && truncated) throw electronError('Electron menu inventory was truncated before the asserted item could be proven absent', 'ELECTRON_MENU_INVENTORY_TRUNCATED', { stepIndex });
     if (!passed) throw electronError(`Electron assertion failed: ${assertionName(step, stepIndex)}`, 'ELECTRON_ASSERTION_FAILED', { stepIndex });
     return;
   }

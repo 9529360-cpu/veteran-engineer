@@ -18,11 +18,13 @@ const MAX_TIMEOUT_MS = 10 * 60_000;
 const MAX_WINDOW_DIMENSION = 32_768;
 const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_STEP_TIMEOUT_MS = 10_000;
-const ACTIONS = new Set(['waitForSurface', 'assertSurfaceCount', 'assertWindowState', 'click', 'fill', 'press', 'assertVisible', 'assertText', 'assertValue', 'assertUrl', 'screenshot']);
+const ACTIONS = new Set(['waitForSurface', 'assertSurfaceCount', 'assertWindowState', 'assertMenuItem', 'click', 'fill', 'press', 'assertVisible', 'assertText', 'assertValue', 'assertUrl', 'screenshot']);
 const TARGET_TYPES = new Set(['window', 'webview']);
 const MATCH_MODES = new Set(['equals', 'contains']);
 const WINDOW_STATE_FIELDS = new Set(['visible', 'minimized', 'maximized', 'fullScreen', 'bounds']);
 const WINDOW_BOUND_FIELDS = new Set(['width', 'height']);
+const MENU_ITEM_FIELDS = new Set(['id', 'label', 'role', 'type', 'accelerator', 'enabled', 'visible', 'checked']);
+const MENU_ITEM_IDENTITY_FIELDS = new Set(['id', 'label', 'role', 'accelerator']);
 const SAFE_ENV_KEYS = [
   'PATH', 'Path', 'PATHEXT', 'SystemRoot', 'WINDIR', 'COMSPEC',
   'TMPDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL', 'LC_CTYPE', 'SHELL',
@@ -150,10 +152,30 @@ function normalizeWindowStateExpectation(raw, index) {
   return Object.freeze(output);
 }
 
+function normalizeMenuItemExpectation(raw, index) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw electronError(`Electron scenario step ${index + 1} menu item must be an object`, 'ELECTRON_SCENARIO_INVALID');
+  const keys = Object.keys(raw);
+  if (keys.length === 0 || keys.some((key) => !MENU_ITEM_FIELDS.has(key))) throw electronError(`Electron scenario step ${index + 1} menu item contains no supported expectations or an unknown field`, 'ELECTRON_SCENARIO_INVALID');
+  const output = {};
+  const limits = { id: 240, label: 240, role: 120, type: 80, accelerator: 120 };
+  for (const key of ['id', 'label', 'role', 'type', 'accelerator']) {
+    if (raw[key] === undefined) continue;
+    output[key] = boundedString(raw[key], `Electron scenario step ${index + 1} menu item ${key}`, { max: limits[key] });
+  }
+  for (const key of ['enabled', 'visible', 'checked']) {
+    if (raw[key] === undefined) continue;
+    if (typeof raw[key] !== 'boolean') throw electronError(`Electron scenario step ${index + 1} menu item ${key} must be boolean`, 'ELECTRON_SCENARIO_INVALID');
+    output[key] = raw[key];
+  }
+  if (![...MENU_ITEM_IDENTITY_FIELDS].some((key) => Object.hasOwn(output, key))) throw electronError(`Electron scenario step ${index + 1} menu item must include id, label, role, or accelerator`, 'ELECTRON_SCENARIO_INVALID');
+  return Object.freeze(output);
+}
+
 function normalizeStep(raw, index, defaultStepTimeoutMs) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw electronError(`Electron scenario step ${index + 1} must be an object`, 'ELECTRON_SCENARIO_INVALID');
   const action = String(raw.action || '');
   if (!ACTIONS.has(action)) throw electronError(`Electron scenario step ${index + 1} has unknown action ${action || '<empty>'}`, 'ELECTRON_SCENARIO_INVALID');
+  if (action === 'assertMenuItem' && raw.target !== undefined) throw electronError(`Electron scenario step ${index + 1} menu item assertions are application-level and may not specify a target`, 'ELECTRON_SCENARIO_INVALID');
   const target = normalizeTarget(raw.target, index);
   const timeoutMs = raw.timeoutMs === undefined ? defaultStepTimeoutMs : normalizeTimeout(raw.timeoutMs, defaultStepTimeoutMs, 'ELECTRON_STEP_TIMEOUT_INVALID');
   const name = raw.name === undefined ? null : boundedString(raw.name, 'Electron step name', { max: 240 });
@@ -171,6 +193,7 @@ function normalizeStep(raw, index, defaultStepTimeoutMs) {
     if (target.type !== 'window') throw electronError(`Electron scenario step ${index + 1} window state assertions require a window target`, 'ELECTRON_SCENARIO_INVALID');
     step.state = normalizeWindowStateExpectation(raw.state, index);
   }
+  if (action === 'assertMenuItem') step.item = normalizeMenuItemExpectation(raw.item, index);
   if (action === 'fill') step.value = boundedString(raw.value ?? '', 'Electron fill value', { max: 10000, allowEmpty: true });
   if (action === 'press') { step.key = boundedString(raw.key, 'Electron key', { max: 120 }); if (selector) step.selector = selector; }
   if (action === 'assertText') {
