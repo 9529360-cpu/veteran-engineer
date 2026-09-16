@@ -110,7 +110,7 @@ const OUTPUT_EXPERIENCE = openObject('Project experience record.', {
   status: stringField('Experience lifecycle status.', { minLength: null }),
   evidenceIds: stringArray('Supporting evidence ids.'),
   freshness: stringField('Freshness classification when queried.', { minLength: null })
-}, ['status']);
+}, ['projectId', 'status']);
 
 const TOOL_OUTPUT_CONTRACTS = Object.freeze({
   project_open: OUTPUT_PROJECT,
