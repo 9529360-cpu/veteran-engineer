@@ -65,6 +65,7 @@ export const TOOL_WORKFLOW_RELATIONS = Object.freeze({
     relation('mission_readiness', 'next', 'Determine the next safe transition from the current aggregate state.'),
     relation('mission_timeline', 'inspect', 'Inspect durable history when current status needs causal context.'),
     relation('candidate_status', 'inspect', 'Inspect immutable candidate identity when candidate or finalize work is active.'),
+    relation('worker_cancel', 'recover', 'Cancel one executing or already-cancelling task selected from the fresh authoritative Mission status.'),
     relation('worker_resume', 'recover', 'Resume one interrupted task after Mission-level reconciliation has made the uncertain task state explicit.'),
     relation('worker_retry', 'recover', 'Retry one failed, interrupted, or cancelled task with a new dispatch identity after the failure or uncertain outcome is understood.'),
     relation('mission_resume', 'recover', 'Reconcile and resume an interrupted Mission.'),
