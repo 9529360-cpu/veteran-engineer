@@ -87,6 +87,20 @@ After the first implementation:
 
 Do not treat the first plausible patch as the default stopping point.
 
+## Review failure is a continuation state
+
+A failed deterministic, semantic, visual, integration, or outcome-contract review means the implementation loop is still open. Do not turn a review failure into a final report while ordinary authorized engineering actions remain available.
+
+Use the finding as new product evidence:
+
+`failed requirement -> inspect owning path -> implement repair -> rerun focused proof -> rerun whole-change review -> re-check all original clauses`
+
+When the Veteran runtime exposes `remediation_plan`, remember that it is proposal-only: creating a remediation plan does not modify source code, reopen a finished task, or prove the missing requirement. Never report a remediation proposal as implemented work.
+
+If the host also provides authorized repository mutation/execution tools, continue the repair with those tools when doing so preserves source authority and the current change can be safely edited. If the runtime/backend cannot apply the remediation to the actual in-progress source state, treat that as a real execution blocker rather than pretending the proposal completed the task.
+
+For acceptance failures, preserve the original requested clause in the repair packet. A generic instruction such as `resolve review finding` is weaker than `implement the missing Codex-style workspace layout and prove it in the running desktop app`.
+
 ## Hermes desktop example
 
 Request:
