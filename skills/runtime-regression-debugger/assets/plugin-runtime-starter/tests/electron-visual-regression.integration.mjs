@@ -2,6 +2,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
+import {
+  ELECTRON_SCENARIO_CONTRACT,
+  normalizeElectronValidation,
+  runElectronValidation
+} from '../src/electron-validation-provider.mjs';
 import { nativeElectronAutomation } from '../src/electron-validation-driver.mjs';
 import { createGitRepo, cleanup } from './helpers.mjs';
 
@@ -63,6 +68,41 @@ async function waitForState(session, target, expected) {
     if (inspected.ok && inspected.found && inspected.text === expected) return inspected;
     if (Date.now() >= deadline) throw new Error(`Electron visual fixture did not reach state: ${expected}`);
     await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
+
+async function writeStableBaseline({ root, repo }) {
+  const home = path.join(root, 'electron-home-baseline');
+  await fs.mkdir(home, { recursive: true });
+  const automation = nativeElectronAutomation();
+  let session = null;
+  try {
+    session = await automation.launch({
+      executablePath: electronPath,
+      args: ['main.cjs'],
+      cwd: repo,
+      env: {
+        ...process.env,
+        HOME: home,
+        USERPROFILE: home,
+        XDG_CONFIG_HOME: path.join(home, '.config'),
+        XDG_CACHE_HOME: path.join(home, '.cache')
+      },
+      timeout: 30_000,
+      chromiumSandbox: true
+    });
+    await waitForWindow(session);
+    const target = { type: 'window', titleIncludes: 'Veteran Visual Fixture' };
+    await waitForState(session, target, 'stable');
+    const captured = await session.command(target, 'screenshot', {}, 15_000);
+    assert.equal(captured.ok, true);
+    assert.equal(typeof captured.pngBase64, 'string');
+    assert.ok(captured.pngBase64.length > 0);
+    await fs.mkdir(path.join(repo, 'baselines'), { recursive: true });
+    await fs.writeFile(path.join(repo, 'baselines', 'stable.png'), Buffer.from(captured.pngBase64, 'base64'));
+    return target;
+  } finally {
+    if (session) await session.close().catch(() => {});
   }
 }
 
@@ -136,6 +176,72 @@ test('real Electron bridge compares a captured baseline and detects a real rende
     assert.equal(JSON.stringify(changed).includes(repo), false);
   } finally {
     if (session) await session.close().catch(() => {});
+    await cleanup(root);
+  }
+});
+
+test('Electron scenario exposes bounded assertVisual without creating a second screenshot authority', { skip: !electronPath, timeout: 180_000 }, async () => {
+  const { root, repo } = await createGitRepo({ files: {
+    'main.cjs': mainSource,
+    'index.html': html
+  } });
+  const target = { type: 'window', titleIncludes: 'Veteran Visual Fixture' };
+  const visual = {
+    baselinePath: 'baselines/stable.png',
+    maxDiffPixels: 0,
+    channelThreshold: 0
+  };
+  try {
+    await writeStableBaseline({ root, repo });
+
+    await fs.writeFile(path.join(repo, 'visual-pass.json'), `${JSON.stringify({
+      contract: ELECTRON_SCENARIO_CONTRACT,
+      steps: [{ action: 'assertVisual', target, visual, timeoutMs: 15_000 }]
+    }, null, 2)}\n`);
+    const passConfig = normalizeElectronValidation({
+      executablePath: electronPath,
+      args: ['main.cjs'],
+      scenarioFile: 'visual-pass.json',
+      timeoutMs: 45_000,
+      stepTimeoutMs: 15_000
+    });
+    const passed = await runElectronValidation(passConfig, { cwd: repo, environment: process.env });
+    assert.equal(passed.passed, true, JSON.stringify(passed, null, 2));
+    assert.equal(passed.assertions.length, 1);
+    assert.equal(passed.assertions[0].passed, true);
+    assert.match(passed.assertions[0].detail, /reason=within-threshold/);
+    assert.match(passed.assertions[0].detail, /diffPixels=0/);
+    assert.equal(JSON.stringify(passed).includes(repo), false);
+    assert.equal(JSON.stringify(passed).includes('baselines/stable.png'), false);
+
+    await fs.writeFile(path.join(repo, 'visual-fail.json'), `${JSON.stringify({
+      contract: ELECTRON_SCENARIO_CONTRACT,
+      steps: [
+        { action: 'waitForSurface', target, timeoutMs: 15_000 },
+        { action: 'press', target, key: 'Enter', timeoutMs: 5_000 },
+        { action: 'assertText', target, selector: '#state', text: 'changed', match: 'equals', timeoutMs: 5_000 },
+        { action: 'assertVisual', target, visual, timeoutMs: 5_000 }
+      ]
+    }, null, 2)}\n`);
+    const failConfig = normalizeElectronValidation({
+      executablePath: electronPath,
+      args: ['main.cjs'],
+      scenarioFile: 'visual-fail.json',
+      timeoutMs: 45_000,
+      stepTimeoutMs: 15_000
+    });
+    const failed = await runElectronValidation(failConfig, { cwd: repo, environment: process.env });
+    assert.equal(failed.passed, false);
+    assert.equal(failed.failureCode, 'ELECTRON_ASSERTION_FAILED');
+    assert.equal(failed.assertions.length, 2);
+    assert.equal(failed.assertions[0].passed, true);
+    assert.equal(failed.assertions[1].passed, false);
+    assert.match(failed.assertions[1].detail, /reason=pixel-diff-exceeded/);
+    assert.match(failed.assertions[1].detail, /diffPixels=[1-9][0-9]*/);
+    assert.ok(failed.attachments.some((item) => item.kind === 'electron-failure-screenshot'));
+    assert.equal(JSON.stringify(failed).includes(repo), false);
+    assert.equal(JSON.stringify(failed).includes('baselines/stable.png'), false);
+  } finally {
     await cleanup(root);
   }
 });

@@ -1,6 +1,9 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import visualRegression from './electron-visual-regression.cjs';
+
+const { normalizeVisualCompareRequest } = visualRegression;
 
 export const ELECTRON_VALIDATION_CONTRACT = 'veteran-electron-validation-v1';
 export const ELECTRON_SCENARIO_CONTRACT = 'veteran-electron-scenario-v1';
@@ -18,7 +21,7 @@ const MAX_TIMEOUT_MS = 10 * 60_000;
 const MAX_WINDOW_DIMENSION = 32_768;
 const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_STEP_TIMEOUT_MS = 10_000;
-const ACTIONS = new Set(['waitForSurface', 'assertSurfaceCount', 'assertWindowState', 'assertMenuItem', 'click', 'fill', 'press', 'assertVisible', 'assertText', 'assertValue', 'assertUrl', 'screenshot']);
+const ACTIONS = new Set(['waitForSurface', 'assertSurfaceCount', 'assertWindowState', 'assertMenuItem', 'assertVisual', 'click', 'fill', 'press', 'assertVisible', 'assertText', 'assertValue', 'assertUrl', 'screenshot']);
 const TARGET_TYPES = new Set(['window', 'webview']);
 const MATCH_MODES = new Set(['equals', 'contains']);
 const WINDOW_STATE_FIELDS = new Set(['visible', 'minimized', 'maximized', 'fullScreen', 'bounds']);
@@ -171,6 +174,14 @@ function normalizeMenuItemExpectation(raw, index) {
   return Object.freeze(output);
 }
 
+function normalizeVisualExpectation(raw, index) {
+  try {
+    return normalizeVisualCompareRequest(raw);
+  } catch {
+    throw electronError(`Electron scenario step ${index + 1} visual expectation is invalid`, 'ELECTRON_SCENARIO_INVALID');
+  }
+}
+
 function normalizeStep(raw, index, defaultStepTimeoutMs) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw electronError(`Electron scenario step ${index + 1} must be an object`, 'ELECTRON_SCENARIO_INVALID');
   const action = String(raw.action || '');
@@ -194,6 +205,7 @@ function normalizeStep(raw, index, defaultStepTimeoutMs) {
     step.state = normalizeWindowStateExpectation(raw.state, index);
   }
   if (action === 'assertMenuItem') step.item = normalizeMenuItemExpectation(raw.item, index);
+  if (action === 'assertVisual') step.visual = normalizeVisualExpectation(raw.visual, index);
   if (action === 'fill') step.value = boundedString(raw.value ?? '', 'Electron fill value', { max: 10000, allowEmpty: true });
   if (action === 'press') { step.key = boundedString(raw.key, 'Electron key', { max: 120 }); if (selector) step.selector = selector; }
   if (action === 'assertText') {
