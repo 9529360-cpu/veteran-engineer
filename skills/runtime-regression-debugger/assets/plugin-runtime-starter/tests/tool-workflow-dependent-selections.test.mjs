@@ -11,6 +11,24 @@ function actionSelection(sourceTool, result) {
   return selections[0];
 }
 
+test('direct experience review sources project actions from guaranteed lifecycle status', () => {
+  const committed = actionSelection('experience_commit', { id: 'candidate-1', status: 'candidate' });
+  assert.equal(committed.sourceState, 'candidate');
+  assert.equal(Object.hasOwn(committed, 'dependsOn'), false);
+  assert.deepEqual(committed.candidates, [...experienceReviewActionsForStatus('candidate')]);
+
+  const challenged = actionSelection('experience_challenge', { id: 'challenged-1', status: 'challenged' });
+  assert.equal(challenged.sourceState, 'challenged');
+  assert.equal(Object.hasOwn(challenged, 'dependsOn'), false);
+  assert.deepEqual(challenged.candidates, [...experienceReviewActionsForStatus('challenged')]);
+});
+
+test('direct review action candidates become unavailable rather than invented without source status', () => {
+  const selection = actionSelection('experience_commit', {});
+  assert.equal(Object.hasOwn(selection, 'sourceState'), false);
+  assert.deepEqual(selection.candidates, []);
+});
+
 test('experience audit action candidates are projected from lifecycle authority per selected experience', () => {
   const selection = actionSelection('experience_audit', [
     { id: 'candidate-1', status: 'candidate' },
