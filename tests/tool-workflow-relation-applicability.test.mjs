@@ -22,6 +22,15 @@ test('workflow relations publish structured conditions only for result gates wit
   assert.deepEqual(relation('mission_readiness', 'candidate_preflight', 'inspect').condition, {
     source: 'structuredContent', pointer: '/phase', operator: 'in', value: ['candidate', 'finalize']
   });
+  assert.deepEqual(relation('mission_status', 'worker_retry', 'recover').condition, {
+    source: 'structuredContent', pointer: '/mission/status', operator: 'not-equals', value: 'cancelled'
+  });
+  assert.deepEqual(relation('mission_status', 'mission_resume', 'recover').condition, {
+    source: 'structuredContent', pointer: '/mission/status', operator: 'not-equals', value: 'cancelled'
+  });
+  assert.deepEqual(relation('mission_readiness', 'mission_resume', 'recover').condition, {
+    source: 'structuredContent', pointer: '/status', operator: 'not-equals', value: 'cancelled'
+  });
   assert.deepEqual(relation('review_run', 'semantic_review_run', 'next').condition, {
     source: 'structuredContent', pointer: '/passed', operator: 'equals', value: true
   });
@@ -60,6 +69,41 @@ test('workflow suggestions keep structural readiness independent from relation a
     missionId: 'mission-1', ready: false
   });
   assert.deepEqual(inspect.applicability, { state: 'not-declared' });
+});
+
+test('cancelled Mission observations make rejected recovery actions explicitly not applicable', () => {
+  const activeStatus = {
+    mission: { id: 'mission-1', status: 'blocked' },
+    tasks: [{ id: 'T1', status: 'cancelled' }],
+    candidates: [],
+    mergeProposals: []
+  };
+  const cancelledStatus = {
+    ...activeStatus,
+    mission: { ...activeStatus.mission, status: 'cancelled' }
+  };
+
+  const activeRetry = suggestion('mission_status', 'worker_retry', 'recover', activeStatus);
+  const cancelledRetry = suggestion('mission_status', 'worker_retry', 'recover', cancelledStatus);
+  assert.equal(activeRetry.applicability.state, 'applicable');
+  assert.equal(cancelledRetry.applicability.state, 'not-applicable');
+  assert.deepEqual(cancelledRetry.selections[0].candidates, ['T1']);
+  assert.equal(Object.hasOwn(cancelledRetry.arguments, 'taskId'), false);
+  assert.equal(Object.hasOwn(cancelledRetry.arguments, 'requestId'), false);
+
+  const activeResume = suggestion('mission_status', 'mission_resume', 'recover', activeStatus);
+  const cancelledResume = suggestion('mission_status', 'mission_resume', 'recover', cancelledStatus);
+  assert.equal(activeResume.applicability.state, 'applicable');
+  assert.equal(cancelledResume.applicability.state, 'not-applicable');
+  assert.equal(cancelledResume.readiness.readyAfterCallerGenerated, true);
+  assert.deepEqual(cancelledResume.readiness.callerGeneratedRequired, ['requestId']);
+
+  const cancelledReadiness = suggestion('mission_readiness', 'mission_resume', 'recover', {
+    missionId: 'mission-1', ready: false, phase: 'execution', status: 'cancelled', blockers: [{ code: 'MISSION_CANCELLED' }], operatorActionRequired: false
+  });
+  assert.equal(cancelledReadiness.applicability.state, 'not-applicable');
+  assert.equal(cancelledReadiness.readiness.readyAfterCallerGenerated, true);
+  assert.deepEqual(cancelledReadiness.readiness.callerGeneratedRequired, ['requestId']);
 });
 
 test('mission readiness phase gates phase-specific relations without replacing transition readiness', () => {

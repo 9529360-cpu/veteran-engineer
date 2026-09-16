@@ -66,7 +66,7 @@ const OUTPUT_MISSION = openObject('Mission record. Its id is the missionId for e
   status: stringField('Current Mission status.', { minLength: null }),
   activeCandidateId: nullable(stringField('Active immutable candidate id when one exists.', { minLength: null })),
   activeMergeProposalId: nullable(stringField('Active merge-proposal id when one exists.', { minLength: null }))
-}, ['id']);
+}, ['id', 'status']);
 
 const OUTPUT_TASK = openObject('Mission task record.', {
   id: stringField('Stable task id.'),
@@ -191,7 +191,7 @@ const TOOL_OUTPUT_CONTRACTS = Object.freeze({
     nextAction: nullable(stringField('Next safe action when known.', { minLength: null })),
     operatorActionRequired: booleanField('Whether progress requires operator action.'),
     capabilitySnapshot: anyField('Current worker/capability admission snapshot.')
-  }, ['missionId', 'ready', 'phase']),
+  }, ['missionId', 'ready', 'phase', 'status']),
   mission_timeline: outputArray('Durable Mission timeline events.', openObject('Mission timeline event.', {
     type: stringField('Event type.', { minLength: null }),
     missionId: stringField('Mission id.', { minLength: null }),
