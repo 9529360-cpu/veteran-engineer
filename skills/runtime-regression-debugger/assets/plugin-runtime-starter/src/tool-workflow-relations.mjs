@@ -55,8 +55,7 @@ export const TOOL_WORKFLOW_RELATIONS = Object.freeze({
   ]),
   mission_execute: workflow('mission', ['missionId'], [
     relation('mission_status', 'inspect', 'Inspect task and Mission state after a dispatch or worker wave.'),
-    relation('mission_readiness', 'inspect', 'Re-evaluate blockers after the current execution wave settles.'),
-    relation('mission_advance', 'next', 'Advance the Mission state machine after execution is settled.'),
+    relation('mission_readiness', 'next', 'Re-read authoritative Mission blockers after execution before any lifecycle progression.'),
     relation('worker_cancel', 'recover', 'Stop an active worker when a task must not continue.'),
     relation('worker_retry', 'recover', 'Retry a failed or cancelled task after the failure is understood.'),
     relation('mission_cancel', 'recover', 'Drain and cancel the Mission when safe continuation is no longer desired.')
