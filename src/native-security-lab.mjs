@@ -2,41 +2,56 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import process from 'node:process';
+import { pathToFileURL } from 'node:url';
 
 export const NATIVE_SECURITY_LAB_CONTRACT = 'veteran-native-security-lab-v1';
+export const SECURITY_REPORT_CONTRACT = NATIVE_SECURITY_LAB_CONTRACT;
+export const SECURITY_BASELINE_CONTRACT = 'veteran-native-security-baseline-v1';
 
-const MAX_FILES = 5_000;
-const MAX_FILE_BYTES = 2 * 1024 * 1024;
-const MAX_TOTAL_BYTES = 64 * 1024 * 1024;
-const MAX_FINDINGS = 2_000;
+const DEFAULT_MAX_FILES = 20_000;
+const DEFAULT_MAX_FILE_BYTES = 2 * 1024 * 1024;
+const DEFAULT_MAX_TOTAL_BYTES = 64 * 1024 * 1024;
+const MAX_FINDINGS = 10_000;
 const MAX_REPORT_BYTES = 16 * 1024 * 1024;
-const IGNORED_DIRS = new Set(['.git', 'node_modules', 'dist', 'build', 'coverage', '.next', '.cache', 'vendor']);
-const TEXT_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.json', '.jsonc', '.yaml', '.yml', '.toml', '.ini', '.cfg', '.conf', '.env', '.properties', '.sh', '.bash', '.zsh', '.fish', '.ps1', '.py', '.rb', '.php', '.go', '.rs', '.java', '.kt', '.kts', '.cs', '.swift', '.sql', '.md', '.mdx', '.txt', '.xml', '.html', '.css', '.scss', '.less', '.pem', '.key']);
-const TEXT_NAMES = new Set(['dockerfile', 'makefile', 'procfile', '.npmrc', '.yarnrc', '.pypirc', '.netrc', '.env', '.env.local', '.env.production', '.env.development']);
-const SEVERITY_RANK = Object.freeze({ none: 0, low: 1, medium: 2, high: 3, critical: 4 });
-const PLACEHOLDER_WORDS = ['example', 'sample', 'dummy', 'fake', 'changeme', 'replace-me', 'replace_me', 'your_', 'test-only', 'not-a-secret', 'placeholder'];
-
-const PATTERNS = Object.freeze([
-  { kind: 'private-key', severity: 'critical', regex: /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----/g },
-  { kind: 'aws-access-key', severity: 'high', regex: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g },
-  { kind: 'github-token', severity: 'high', regex: /\b(?:gh[pousr]_[A-Za-z0-9_]{30,}|github_pat_[A-Za-z0-9_]{50,})\b/g },
-  { kind: 'slack-token', severity: 'high', regex: /\bxox[baprs]-[A-Za-z0-9-]{20,}\b/g },
-  { kind: 'stripe-live-key', severity: 'high', regex: /\b(?:sk|rk)_live_[A-Za-z0-9]{16,}\b/g },
-  { kind: 'google-api-key', severity: 'high', regex: /\bAIza[0-9A-Za-z_-]{35}\b/g },
-  { kind: 'jwt-token', severity: 'medium', regex: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g }
+const IGNORED_DIRS = new Set([
+  '.git', '.hg', '.svn', 'node_modules', 'vendor', 'dist', 'build', 'coverage', '.next', '.nuxt', '.cache', '.turbo', '.venv', 'venv', '__pycache__'
 ]);
+const TEXT_EXTENSIONS = new Set([
+  '', '.txt', '.md', '.mdx', '.rst', '.json', '.jsonc', '.jsonl', '.ndjson', '.yaml', '.yml', '.toml', '.ini', '.cfg', '.conf', '.config', '.env', '.properties',
+  '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.py', '.rb', '.php', '.java', '.kt', '.kts', '.go', '.rs', '.c', '.h', '.cc', '.cpp', '.cs', '.swift',
+  '.sh', '.bash', '.zsh', '.fish', '.ps1', '.sql', '.graphql', '.gql', '.xml', '.html', '.css', '.scss', '.less', '.dockerfile',
+  '.pem', '.key', '.crt', '.cer', '.tf', '.tfvars', '.hcl'
+]);
+const SPECIAL_TEXT_NAMES = new Set(['dockerfile', 'makefile', 'procfile', 'gemfile', 'rakefile', '.npmrc', '.yarnrc', '.pypirc', '.netrc', '.git-credentials']);
+const PLACEHOLDER_WORDS = ['example', 'sample', 'dummy', 'fake', 'changeme', 'replace-me', 'replace_me', 'your_', 'test-only', 'not-a-secret', 'placeholder'];
+const SEVERITY_RANK = Object.freeze({ none: 0, low: 1, medium: 2, high: 3, critical: 4, any: 0 });
+
+const TOKEN_RULES = [
+  { id: 'github-token', severity: 'critical', description: 'GitHub access token', regex: /\b(?:gh[pousr]_[A-Za-z0-9_]{30,255}|github_pat_[A-Za-z0-9_]{20,255})\b/g },
+  { id: 'slack-token', severity: 'high', description: 'Slack token', regex: /\bxox[baprs]-[A-Za-z0-9-]{10,255}\b/g },
+  { id: 'aws-access-key', severity: 'high', description: 'AWS access key id', regex: /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g },
+  { id: 'stripe-live-secret', severity: 'critical', description: 'Stripe live secret key', regex: /\b(?:sk|rk)_live_[A-Za-z0-9]{16,255}\b/g },
+  { id: 'google-api-key', severity: 'high', description: 'Google API key', regex: /\bAIza[0-9A-Za-z_-]{35}\b/g },
+  { id: 'jwt-token', severity: 'medium', description: 'JWT-like bearer token', regex: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g },
+  { id: 'credential-url', severity: 'high', description: 'Credential embedded in URL', regex: /\b[a-z][a-z0-9+.-]{1,20}:\/\/[^\s/@:]{1,128}:[^\s/@]{8,256}@[^\s]+/gi }
+];
+
+const PRIVATE_KEY_RULES = [
+  /-----BEGIN ((?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY)-----[\s\S]{1,65536}?-----END \1-----/g,
+  /-----BEGIN PGP PRIVATE KEY BLOCK-----[\s\S]{1,65536}?-----END PGP PRIVATE KEY BLOCK-----/g
+];
 
 const GENERIC_ASSIGNMENT = /\b(api[_-]?key|access[_-]?token|auth[_-]?token|secret(?:[_-]?key)?|client[_-]?secret|password|passwd|private[_-]?token)\b\s*[:=]\s*["'`]([^"'`\r\n]{12,})["'`]/gi;
 
 function codedError(message, code, details = null) {
   const error = new Error(message);
   error.code = code;
-  if (details) error.details = details;
+  if (details !== null) error.details = details;
   return error;
 }
 
-function stableHash(value) {
+function sha256(value) {
   return crypto.createHash('sha256').update(value).digest('hex');
 }
 
@@ -44,9 +59,71 @@ function portablePath(value) {
   return String(value).split(path.sep).join('/');
 }
 
-function isTextCandidate(name) {
+function normalizeRelativePath(value, label = 'path') {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 4096 || value.includes('\0')) {
+    throw codedError(`${label} must be a bounded relative path`, 'SECURITY_PATH_INVALID');
+  }
+  if (path.isAbsolute(value)) throw codedError(`${label} must stay inside the root`, 'SECURITY_PATH_INVALID');
+  const normalized = path.normalize(value);
+  if (normalized === '..' || normalized.startsWith(`..${path.sep}`)) throw codedError(`${label} must stay inside the root`, 'SECURITY_PATH_INVALID');
+  return normalized;
+}
+
+async function rootInfo(root) {
+  const absolute = path.resolve(root || '.');
+  const real = await fs.realpath(absolute);
+  return { absolute, real };
+}
+
+function isWithin(rootReal, candidateReal) {
+  return candidateReal === rootReal || candidateReal.startsWith(`${rootReal}${path.sep}`);
+}
+
+async function resolveContainedExisting(root, relative, label) {
+  const safe = normalizeRelativePath(relative, label);
+  const absolute = path.resolve(root.absolute, safe);
+  const real = await fs.realpath(absolute);
+  if (!isWithin(root.real, real)) throw codedError(`${label} escapes root`, 'SECURITY_LAB_ROOT_ESCAPE');
+  return { safe, absolute, real };
+}
+
+async function resolveContainedOutput(root, relative, label) {
+  const safe = normalizeRelativePath(relative, label);
+  const absolute = path.resolve(root.absolute, safe);
+  const parent = path.dirname(absolute);
+  await fs.mkdir(parent, { recursive: true });
+  const parentReal = await fs.realpath(parent);
+  if (!isWithin(root.real, parentReal)) throw codedError(`${label} escapes root`, 'SECURITY_LAB_ROOT_ESCAPE');
+  try {
+    const stat = await fs.lstat(absolute);
+    if (stat.isSymbolicLink() || !stat.isFile()) throw codedError(`${label} must be a regular file`, 'SECURITY_LAB_OUTPUT_INVALID');
+    const existingReal = await fs.realpath(absolute);
+    if (!isWithin(root.real, existingReal)) throw codedError(`${label} escapes root`, 'SECURITY_LAB_ROOT_ESCAPE');
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  return { safe, absolute };
+}
+
+function extensionFor(name) {
   const lower = name.toLowerCase();
-  return TEXT_NAMES.has(lower) || lower.startsWith('.env.') || TEXT_EXTENSIONS.has(path.extname(lower));
+  if (SPECIAL_TEXT_NAMES.has(lower)) return '';
+  if (lower.endsWith('.env') || lower.includes('.env.')) return '.env';
+  return path.extname(lower);
+}
+
+function shouldScanFile(name) {
+  return TEXT_EXTENSIONS.has(extensionFor(name));
+}
+
+function looksBinary(buffer) {
+  const sample = buffer.subarray(0, Math.min(buffer.length, 8192));
+  let suspicious = 0;
+  for (const byte of sample) {
+    if (byte === 0) return true;
+    if (byte < 9 || (byte > 13 && byte < 32)) suspicious += 1;
+  }
+  return sample.length > 0 && suspicious / sample.length > 0.15;
 }
 
 function looksPlaceholder(value) {
@@ -69,92 +146,177 @@ function entropy(value) {
   return out;
 }
 
-function genericSecretMatches(line) {
-  const matches = [];
+async function walkFiles(root, limits) {
+  const files = [];
+  let totalBytes = 0;
+  const stack = [{ absolute: root.absolute, relative: '' }];
+  while (stack.length) {
+    const current = stack.pop();
+    const entries = await fs.readdir(current.absolute, { withFileTypes: true });
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+    for (let index = entries.length - 1; index >= 0; index -= 1) {
+      const entry = entries[index];
+      if (entry.isSymbolicLink()) continue;
+      const relative = current.relative ? path.join(current.relative, entry.name) : entry.name;
+      const absolute = path.join(current.absolute, entry.name);
+      if (entry.isDirectory()) {
+        if (!IGNORED_DIRS.has(entry.name.toLowerCase())) stack.push({ absolute, relative });
+        continue;
+      }
+      if (!entry.isFile() || !shouldScanFile(entry.name)) continue;
+      if (files.length >= limits.maxFiles) throw codedError('Security scan exceeded file count limit', 'SECURITY_LAB_SCAN_LIMIT');
+      const stat = await fs.stat(absolute);
+      if (stat.size > limits.maxFileBytes) continue;
+      if (totalBytes + stat.size > limits.maxTotalBytes) throw codedError('Security scan exceeded total byte limit', 'SECURITY_LAB_SCAN_LIMIT');
+      totalBytes += stat.size;
+      files.push({ absolute, relative: portablePath(relative), size: stat.size });
+    }
+  }
+  files.sort((a, b) => a.relative.localeCompare(b.relative));
+  return { files, totalBytes };
+}
+
+function lineNumberAt(text, index) {
+  let line = 1;
+  for (let i = 0; i < index; i += 1) if (text.charCodeAt(i) === 10) line += 1;
+  return line;
+}
+
+function lineBounds(text, index) {
+  const start = text.lastIndexOf('\n', Math.max(0, index - 1)) + 1;
+  let end = text.indexOf('\n', index);
+  if (end < 0) end = text.length;
+  return { start, end };
+}
+
+function safeContext(text, matchIndex, matchLength) {
+  const { start, end } = lineBounds(text, matchIndex);
+  let line = text.slice(start, end).replace(/\r$/, '');
+  const localStart = matchIndex - start;
+  const localEnd = localStart + matchLength;
+  line = `${line.slice(0, localStart)}[REDACTED:${matchLength}]${line.slice(localEnd)}`;
+  if (line.length > 240) line = `${line.slice(0, 237)}...`;
+  return line;
+}
+
+function findingFingerprint(kind, relativePath, secret) {
+  return sha256(`${kind}\0${relativePath}\0${secret}`);
+}
+
+function genericSecretFindings(text, relativePath) {
+  const findings = [];
   GENERIC_ASSIGNMENT.lastIndex = 0;
-  for (const match of line.matchAll(GENERIC_ASSIGNMENT)) {
+  let match;
+  while ((match = GENERIC_ASSIGNMENT.exec(text)) !== null) {
     const secret = match[2];
     if (looksPlaceholder(secret)) continue;
     const compact = secret.replace(/\s+/g, '');
     if (compact.length < 16 || entropy(compact) < 3.2) continue;
     const full = match[0];
-    const secretOffset = full.lastIndexOf(secret);
-    matches.push({ kind: 'generic-secret-assignment', severity: 'high', value: secret, start: (match.index || 0) + Math.max(0, secretOffset), end: (match.index || 0) + Math.max(0, secretOffset) + secret.length });
+    const localOffset = full.lastIndexOf(secret);
+    const secretIndex = match.index + Math.max(0, localOffset);
+    findings.push({
+      kind: 'generic-secret-assignment',
+      severity: 'high',
+      description: 'High-entropy credential assignment',
+      path: relativePath,
+      line: lineNumberAt(text, secretIndex),
+      fingerprint: findingFingerprint('generic-secret-assignment', relativePath, secret),
+      context: safeContext(text, secretIndex, secret.length)
+    });
   }
-  return matches;
+  return findings;
 }
 
-function specificMatches(line) {
-  const matches = [];
-  for (const pattern of PATTERNS) {
-    pattern.regex.lastIndex = 0;
-    for (const match of line.matchAll(pattern.regex)) {
-      matches.push({ kind: pattern.kind, severity: pattern.severity, value: match[0], start: match.index || 0, end: (match.index || 0) + match[0].length });
+function scanPrivateKeyBlocks(text, relativePath) {
+  const findings = [];
+  for (const regex of PRIVATE_KEY_RULES) {
+    regex.lastIndex = 0;
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+      const block = match[0];
+      findings.push({
+        kind: 'private-key',
+        severity: 'critical',
+        description: 'Private key material',
+        path: relativePath,
+        line: lineNumberAt(text, match.index),
+        fingerprint: findingFingerprint('private-key', relativePath, block),
+        context: '[REDACTED PRIVATE KEY MATERIAL]'
+      });
+      if (match.index === regex.lastIndex) regex.lastIndex += 1;
     }
   }
-  matches.sort((a, b) => a.start - b.start || b.value.length - a.value.length);
-  return matches;
+  return findings;
 }
 
-function overlaps(left, right) {
-  return left.start < right.end && right.start < left.end;
-}
-
-function maskedContext(line, matches) {
-  let out = '';
-  let cursor = 0;
-  const ordered = [...matches].sort((a, b) => a.start - b.start || a.end - b.end);
-  for (const match of ordered) {
-    if (match.start < cursor) continue;
-    out += line.slice(cursor, match.start);
-    out += '[REDACTED]';
-    cursor = match.end;
-  }
-  out += line.slice(cursor);
-  const trimmed = out.trim();
-  return trimmed.length <= 300 ? trimmed : `${trimmed.slice(0, 299)}…`;
-}
-
-function findingFingerprint(kind, relativePath, secret) {
-  return stableHash(`${kind}\0${portablePath(relativePath)}\0${secret}`);
-}
-
-function scanLine(line, relativePath, lineNumber) {
-  const specific = specificMatches(line);
-  const generic = genericSecretMatches(line).filter((candidate) => !specific.some((item) => overlaps(candidate, item)));
-  const all = [...specific, ...generic];
-  return all.map((match) => ({
-    kind: match.kind,
-    severity: match.severity,
-    path: portablePath(relativePath),
-    line: lineNumber,
-    fingerprint: findingFingerprint(match.kind, relativePath, match.value),
-    context: maskedContext(line, [match])
-  }));
-}
-
-async function listFiles(root) {
-  const files = [];
-  let totalBytes = 0;
-  async function walk(directory) {
-    const entries = await fs.readdir(directory, { withFileTypes: true });
-    entries.sort((a, b) => a.name.localeCompare(b.name));
-    for (const entry of entries) {
-      if (IGNORED_DIRS.has(entry.name)) continue;
-      const full = path.join(directory, entry.name);
-      if (entry.isSymbolicLink()) continue;
-      if (entry.isDirectory()) { await walk(full); continue; }
-      if (!entry.isFile() || !isTextCandidate(entry.name)) continue;
-      const stat = await fs.stat(full);
-      if (stat.size > MAX_FILE_BYTES) continue;
-      totalBytes += stat.size;
-      if (totalBytes > MAX_TOTAL_BYTES) throw codedError(`Security scan corpus exceeds ${MAX_TOTAL_BYTES} bytes`, 'SECURITY_LAB_CORPUS_TOO_LARGE', { bytes: totalBytes });
-      files.push({ full, relative: path.relative(root, full), bytes: stat.size });
-      if (files.length > MAX_FILES) throw codedError(`Security scan corpus exceeds ${MAX_FILES} files`, 'SECURITY_LAB_FILE_LIMIT');
+function scanTokenRules(text, relativePath) {
+  const findings = [];
+  for (const rule of TOKEN_RULES) {
+    rule.regex.lastIndex = 0;
+    let match;
+    while ((match = rule.regex.exec(text)) !== null) {
+      const secret = match[0];
+      findings.push({
+        kind: rule.id,
+        severity: rule.severity,
+        description: rule.description,
+        path: relativePath,
+        line: lineNumberAt(text, match.index),
+        fingerprint: findingFingerprint(rule.id, relativePath, secret),
+        context: safeContext(text, match.index, secret.length)
+      });
+      if (match.index === rule.regex.lastIndex) rule.regex.lastIndex += 1;
     }
   }
-  await walk(root);
-  return { files, totalBytes };
+  return findings;
+}
+
+function uniqueFindings(findings) {
+  const seen = new Set();
+  const out = [];
+  for (const finding of findings) {
+    const key = `${finding.kind}\0${finding.path}\0${finding.line}\0${finding.fingerprint}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(finding);
+  }
+  return out;
+}
+
+function severityRank(value) {
+  return ({ low: 1, medium: 2, high: 3, critical: 4 })[value] || 0;
+}
+
+function normalizeFailOn(value) {
+  const level = String(value ?? 'high').trim().toLowerCase();
+  if (!['none', 'low', 'medium', 'high', 'critical', 'any'].includes(level)) throw codedError('Security failOn level is invalid', 'SECURITY_LAB_FAIL_LEVEL_INVALID');
+  return level;
+}
+
+function baselineFingerprints(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw codedError('Invalid security baseline', 'SECURITY_LAB_BASELINE_INVALID');
+  let values;
+  if (raw.contract === SECURITY_BASELINE_CONTRACT && Array.isArray(raw.fingerprints)) values = raw.fingerprints;
+  else if (raw.contract === NATIVE_SECURITY_LAB_CONTRACT && Array.isArray(raw.findings)) values = raw.findings.map((finding) => finding?.fingerprint);
+  else throw codedError('Invalid security baseline contract', 'SECURITY_LAB_BASELINE_INVALID');
+  const set = new Set();
+  for (const value of values) {
+    if (typeof value !== 'string' || !/^[a-f0-9]{64}$/.test(value)) throw codedError('Invalid security baseline fingerprint', 'SECURITY_LAB_BASELINE_INVALID');
+    set.add(value);
+  }
+  return set;
+}
+
+async function loadBaseline(root, relative) {
+  if (!relative) return new Set();
+  const resolved = await resolveContainedExisting(root, relative, 'baseline path');
+  const stat = await fs.stat(resolved.absolute);
+  if (!stat.isFile() || stat.size > MAX_REPORT_BYTES) throw codedError('Security baseline is invalid or too large', 'SECURITY_LAB_BASELINE_INVALID');
+  let parsed;
+  try { parsed = JSON.parse(await fs.readFile(resolved.absolute, 'utf8')); }
+  catch { throw codedError('Security baseline JSON is invalid', 'SECURITY_LAB_BASELINE_INVALID'); }
+  return baselineFingerprints(parsed);
 }
 
 function severityCounts(findings) {
@@ -163,90 +325,84 @@ function severityCounts(findings) {
   return counts;
 }
 
-function normalizeFailOn(value) {
-  const level = String(value ?? 'high').trim().toLowerCase();
-  if (!Object.hasOwn(SEVERITY_RANK, level)) throw codedError('Security failOn level is invalid', 'SECURITY_LAB_FAIL_LEVEL_INVALID', { level });
-  return level;
-}
-
-function failingFindings(findings, failOn) {
-  const threshold = SEVERITY_RANK[failOn];
-  if (threshold === 0) return [];
-  return findings.filter((finding) => SEVERITY_RANK[finding.severity] >= threshold);
-}
-
-async function readBaselineFingerprints(baselinePath, root) {
-  if (!baselinePath) return new Set();
-  const target = path.resolve(root, baselinePath);
-  const real = await fs.realpath(target).catch((error) => { throw codedError('Security baseline is unavailable', 'SECURITY_LAB_BASELINE_UNAVAILABLE', { cause: error?.code || null }); });
-  if (real !== root && !real.startsWith(`${root}${path.sep}`)) throw codedError('Security baseline escapes the allowed root', 'SECURITY_LAB_ROOT_ESCAPE');
-  const stat = await fs.stat(real);
-  if (!stat.isFile() || stat.size > MAX_REPORT_BYTES) throw codedError('Security baseline is invalid or too large', 'SECURITY_LAB_BASELINE_INVALID', { bytes: stat.size });
-  let parsed;
-  try { parsed = JSON.parse(await fs.readFile(real, 'utf8')); }
-  catch { throw codedError('Security baseline JSON is invalid', 'SECURITY_LAB_BASELINE_INVALID'); }
-  if (!parsed || parsed.contract !== NATIVE_SECURITY_LAB_CONTRACT || !Array.isArray(parsed.findings) || parsed.findings.length > MAX_FINDINGS) throw codedError('Security baseline contract is invalid', 'SECURITY_LAB_BASELINE_INVALID');
-  return new Set(parsed.findings.map((finding) => String(finding?.fingerprint || '')).filter((value) => /^[a-f0-9]{64}$/.test(value)));
-}
-
-export async function scanSecurityLab({ rootDir = process.cwd(), baselinePath = null, failOn = 'high' } = {}) {
-  const root = await fs.realpath(path.resolve(rootDir));
-  const baseline = await readBaselineFingerprints(baselinePath, root);
-  const { files, totalBytes } = await listFiles(root);
+export async function scanSecurityLab({ rootDir = process.cwd(), baselinePath = null, failOn = 'high', maxFiles, maxFileBytes, maxTotalBytes } = {}) {
+  const root = await rootInfo(rootDir);
+  const limits = {
+    maxFiles: Math.max(1, Math.min(DEFAULT_MAX_FILES, Number(maxFiles || DEFAULT_MAX_FILES))),
+    maxFileBytes: Math.max(1024, Math.min(DEFAULT_MAX_FILE_BYTES, Number(maxFileBytes || DEFAULT_MAX_FILE_BYTES))),
+    maxTotalBytes: Math.max(1024, Math.min(DEFAULT_MAX_TOTAL_BYTES, Number(maxTotalBytes || DEFAULT_MAX_TOTAL_BYTES)))
+  };
+  const baseline = await loadBaseline(root, baselinePath);
+  const walked = await walkFiles(root, limits);
   const findings = [];
-  for (const file of files) {
-    const content = await fs.readFile(file.full, 'utf8');
-    if (content.includes('\0')) continue;
-    const lines = content.replace(/\r\n/g, '\n').split('\n');
-    for (let index = 0; index < lines.length; index += 1) {
-      for (const finding of scanLine(lines[index], file.relative, index + 1)) {
-        findings.push({ ...finding, baseline: baseline.has(finding.fingerprint) });
-        if (findings.length > MAX_FINDINGS) throw codedError(`Security findings exceed ${MAX_FINDINGS}`, 'SECURITY_LAB_FINDING_LIMIT');
-      }
-    }
+  let scannedFiles = 0;
+  let scannedBytes = 0;
+  for (const file of walked.files) {
+    const buffer = await fs.readFile(file.absolute);
+    if (looksBinary(buffer)) continue;
+    scannedFiles += 1;
+    scannedBytes += buffer.length;
+    const text = buffer.toString('utf8');
+    findings.push(...scanPrivateKeyBlocks(text, file.relative), ...scanTokenRules(text, file.relative), ...genericSecretFindings(text, file.relative));
+    if (findings.length > MAX_FINDINGS) throw codedError('Security scan exceeded finding limit', 'SECURITY_LAB_FINDING_LIMIT');
   }
-  findings.sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity] || a.path.localeCompare(b.path) || a.line - b.line || a.kind.localeCompare(b.kind));
-  const newFindings = findings.filter((finding) => !finding.baseline);
+  const ordered = uniqueFindings(findings).sort((a, b) => severityRank(b.severity) - severityRank(a.severity) || a.path.localeCompare(b.path) || a.line - b.line || a.kind.localeCompare(b.kind));
+  const decorated = ordered.map((finding) => ({ ...finding, baseline: baseline.has(finding.fingerprint) }));
+  const newFindings = decorated.filter((finding) => !finding.baseline);
   const threshold = normalizeFailOn(failOn);
-  const failing = failingFindings(newFindings, threshold);
+  const thresholdRank = threshold === 'none' ? 999 : threshold === 'any' ? 0 : severityRank(threshold);
+  const failed = newFindings.some((finding) => severityRank(finding.severity) >= thresholdRank);
   return {
     contract: NATIVE_SECURITY_LAB_CONTRACT,
-    source: { root: '.', files: files.length, bytes: totalBytes },
+    source: { root: '.', files: scannedFiles, bytes: scannedBytes },
     failOn: threshold,
-    passed: failing.length === 0,
-    counts: severityCounts(findings),
+    passed: !failed,
+    counts: severityCounts(decorated),
     newCounts: severityCounts(newFindings),
-    baselineCount: findings.length - newFindings.length,
-    findings
+    baselineCount: decorated.length - newFindings.length,
+    findings: decorated
   };
 }
 
-async function containedOutput(rootDir, outputPath) {
-  const root = await fs.realpath(path.resolve(rootDir));
-  const target = path.resolve(root, outputPath);
-  if (target === root || !target.startsWith(`${root}${path.sep}`)) throw codedError('Security report output escapes the allowed root', 'SECURITY_LAB_ROOT_ESCAPE');
-  const parent = await fs.realpath(path.dirname(target));
-  if (parent !== root && !parent.startsWith(`${root}${path.sep}`)) throw codedError('Security report output parent escapes the allowed root', 'SECURITY_LAB_ROOT_ESCAPE');
-  try {
-    const stat = await fs.lstat(target);
-    if (stat.isSymbolicLink() || !stat.isFile()) throw codedError('Security report output must be a regular file', 'SECURITY_LAB_OUTPUT_INVALID');
-  } catch (error) {
-    if (error?.code !== 'ENOENT') throw error;
-  }
-  return target;
+export async function scanSecurity(rootPath = '.', options = {}) {
+  const report = await scanSecurityLab({ rootDir: rootPath, baselinePath: options.baseline || null, failOn: options.failOn || 'high', ...options });
+  return {
+    ...report,
+    scannedFiles: report.source.files,
+    scannedBytes: report.source.bytes,
+    summary: {
+      findings: report.findings.length,
+      newFindings: report.findings.filter((finding) => !finding.baseline).length,
+      baselineFindings: report.baselineCount,
+      counts: report.counts,
+      newCounts: report.newCounts
+    }
+  };
+}
+
+export async function createSecurityBaseline(report) {
+  if (!report || report.contract !== NATIVE_SECURITY_LAB_CONTRACT || !Array.isArray(report.findings)) throw codedError('Invalid security report', 'SECURITY_LAB_REPORT_INVALID');
+  return { contract: SECURITY_BASELINE_CONTRACT, fingerprints: [...new Set(report.findings.map((finding) => finding.fingerprint))].sort() };
+}
+
+export const createBaseline = createSecurityBaseline;
+
+async function writePrivateJson(root, relative, payload, label) {
+  const resolved = await resolveContainedOutput(root, relative, label);
+  const content = `${JSON.stringify(payload, null, 2)}\n`;
+  if (Buffer.byteLength(content) > MAX_REPORT_BYTES) throw codedError(`${label} exceeds the supported size`, 'SECURITY_LAB_REPORT_TOO_LARGE');
+  await fs.writeFile(resolved.absolute, content, { encoding: 'utf8', mode: 0o600 });
+  await fs.chmod(resolved.absolute, 0o600).catch(() => {});
+  return { path: portablePath(resolved.safe), bytes: Buffer.byteLength(content), sha256: sha256(content) };
 }
 
 export async function writeSecurityReport(report, outputPath, { rootDir = process.cwd() } = {}) {
   if (!report || report.contract !== NATIVE_SECURITY_LAB_CONTRACT) throw codedError('Security report contract is invalid', 'SECURITY_LAB_REPORT_INVALID');
-  const serialized = `${JSON.stringify(report, null, 2)}\n`;
-  if (Buffer.byteLength(serialized) > MAX_REPORT_BYTES) throw codedError('Security report exceeds the supported size', 'SECURITY_LAB_REPORT_TOO_LARGE');
-  const target = await containedOutput(rootDir, outputPath);
-  await fs.writeFile(target, serialized, { encoding: 'utf8', mode: 0o600 });
-  return { path: portablePath(path.relative(await fs.realpath(path.resolve(rootDir)), target)), bytes: Buffer.byteLength(serialized), sha256: stableHash(serialized) };
+  return writePrivateJson(await rootInfo(rootDir), outputPath, report, 'report output');
 }
 
-function usage() {
-  return `Veteran Native Security Lab\n\nUsage:\n  node src/native-security-lab.mjs scan --root <directory> [--baseline <report.json>] [--fail-on none|low|medium|high|critical] [--out <report.json>]\n\nScans local text/config/code files for credential-like material without returning raw secret values. No Snyk, Gitleaks cloud service, or paid API is required.\n`;
+export async function writeSecurityBaseline(report, outputPath, { rootDir = process.cwd() } = {}) {
+  return writePrivateJson(await rootInfo(rootDir), outputPath, await createSecurityBaseline(report), 'baseline output');
 }
 
 function requiredValue(argv, index, option) {
@@ -255,33 +411,40 @@ function requiredValue(argv, index, option) {
   return value;
 }
 
-async function cli(argv) {
+function usage() {
+  return `Veteran Native Security Lab\n\nUsage:\n  node src/native-security-lab.mjs scan --root <directory> [--baseline <baseline.json>] [--write-baseline <baseline.json>] [--fail-on none|low|medium|high|critical|any] [--out <report.json>]\n\nScans local text/config/code/key files for credential-like material without returning raw secret values. Baselines contain fingerprints only. No Snyk, Gitleaks cloud service, or paid API is required.\n`;
+}
+
+export async function main(argv = process.argv.slice(2)) {
   const command = argv[0] || 'help';
   if (['help', '-h', '--help'].includes(command)) { process.stdout.write(usage()); return 0; }
   if (command !== 'scan') throw codedError(`Unknown Security Lab command: ${command}`, 'SECURITY_LAB_COMMAND_UNKNOWN');
   let rootDir = process.cwd();
   let baselinePath = null;
+  let writeBaselinePath = null;
   let failOn = 'high';
   let outPath = null;
   for (let index = 1; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--root') rootDir = requiredValue(argv, index++, arg);
     else if (arg === '--baseline') baselinePath = requiredValue(argv, index++, arg);
+    else if (arg === '--write-baseline') writeBaselinePath = requiredValue(argv, index++, arg);
     else if (arg === '--fail-on') failOn = requiredValue(argv, index++, arg);
     else if (arg === '--out') outPath = requiredValue(argv, index++, arg);
     else throw codedError(`Unknown Security Lab argument: ${arg}`, 'SECURITY_LAB_ARGUMENT_UNKNOWN');
   }
   const report = await scanSecurityLab({ rootDir, baselinePath, failOn });
-  let artifact = null;
-  if (outPath) artifact = await writeSecurityReport(report, outPath, { rootDir });
-  process.stdout.write(`${JSON.stringify({ ...report, ...(artifact ? { artifact } : {}) }, null, 2)}\n`);
+  const artifacts = {};
+  if (outPath) artifacts.report = await writeSecurityReport(report, outPath, { rootDir });
+  if (writeBaselinePath) artifacts.baseline = await writeSecurityBaseline(report, writeBaselinePath, { rootDir });
+  process.stdout.write(`${JSON.stringify({ ...report, artifacts }, null, 2)}\n`);
   return report.passed ? 0 : 2;
 }
 
-const self = fileURLToPath(import.meta.url);
-if (process.argv[1] && path.resolve(process.argv[1]) === self) {
-  cli(process.argv.slice(2)).then((code) => { process.exitCode = code; }).catch((error) => {
-    process.stderr.write(`${error.code ? `[${error.code}] ` : ''}${error.message || String(error)}\n`);
+const invokedAsScript = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+if (invokedAsScript) {
+  main().then((code) => { process.exitCode = code; }).catch((error) => {
+    process.stderr.write(`${error?.code || 'SECURITY_LAB_ERROR'}: ${String(error?.message || error)}\n`);
     process.exitCode = 1;
   });
 }
