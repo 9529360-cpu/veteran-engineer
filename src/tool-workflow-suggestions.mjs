@@ -1,6 +1,6 @@
 import { toolInputJsonSchema, toolRequiresRequestId } from './tool-catalog.mjs';
 import { TOOL_WORKFLOW_RELATIONS } from './tool-workflow-relations.mjs';
-import { TOOL_WORKFLOW_BINDINGS } from './tool-workflow-bindings.mjs';
+import { TOOL_IDENTITY_SOURCES, TOOL_WORKFLOW_BINDINGS } from './tool-workflow-bindings.mjs';
 import { dependentWorkflowSelections } from './tool-workflow-dependent-selections.mjs';
 
 export const TOOL_WORKFLOW_SUGGESTIONS_META_KEY = 'io.veteran-engineer/workflow-suggestions';
@@ -36,11 +36,30 @@ function applyTransform(transform, value) {
   throw new Error(`Unknown workflow suggestion binding transform: ${transform}`);
 }
 
-function bindingValue(binding, args, result) {
+function requiredInvocationIdentityFallback(sourceTool, binding, args, sourceOutcome) {
+  if (sourceOutcome !== 'error' || binding.source !== 'structuredContent' || binding.transform !== 'identity') {
+    return { found: false, value: undefined };
+  }
+  const identitySource = TOOL_IDENTITY_SOURCES[sourceTool]?.[binding.target];
+  if (!identitySource
+    || identitySource.source !== binding.source
+    || identitySource.pointer !== binding.pointer) {
+    return { found: false, value: undefined };
+  }
+  const sourceInput = toolInputJsonSchema(sourceTool);
+  if (!(sourceInput.required || []).includes(binding.target)) return { found: false, value: undefined };
+  const resolved = resolvePointer(args, `/${binding.target}`);
+  if (!resolved.found || resolved.value === null || resolved.value === undefined) return { found: false, value: undefined };
+  return { found: true, value: resolved.value };
+}
+
+function bindingValue(sourceTool, binding, args, result, sourceOutcome) {
   const root = binding.source === 'arguments' ? args : result;
   const resolved = resolvePointer(root, binding.pointer);
-  if (!resolved.found || resolved.value === null || resolved.value === undefined) return { found: false, value: undefined };
-  return { found: true, value: applyTransform(binding.transform, resolved.value) };
+  if (resolved.found && resolved.value !== null && resolved.value !== undefined) {
+    return { found: true, value: applyTransform(binding.transform, resolved.value) };
+  }
+  return requiredInvocationIdentityFallback(sourceTool, binding, args, sourceOutcome);
 }
 
 function matchesFilter(item, filter) {
@@ -199,7 +218,7 @@ function suggestionFor(sourceTool, index, args, result, sourceOutcome) {
   const targetSchema = toolInputJsonSchema(edge.tool);
   const partialArguments = {};
   for (const binding of bindingEdge.bindings) {
-    const resolved = bindingValue(binding, args, result);
+    const resolved = bindingValue(sourceTool, binding, args, result, sourceOutcome);
     if (resolved.found) partialArguments[binding.target] = resolved.value;
   }
   const missingRequired = (targetSchema.required || []).filter((name) => !Object.hasOwn(partialArguments, name));
@@ -242,7 +261,7 @@ export function toolWorkflowSuggestions(sourceTool, args = {}, result = {}, { so
     sourceTool,
     sourceOutcome: outcome.sourceOutcome,
     ...(outcome.sourceErrorCode ? { sourceErrorCode: outcome.sourceErrorCode } : {}),
-    invocationPolicy: 'Suggestions are partial call arguments only. Apply the relation condition before use, supply every missing required input, explicitly choose any declared selection, create a fresh requestId for mutating calls, and never treat a suggestion as authorization to invoke a tool. Dependent selections publish call-time choices derived from authoritative source results and do not auto-bind them; a selection marked fallbackForMissingBinding appears only when its deterministic conditional binding did not resolve and must then be explicitly chosen. Dependent action selections may publish candidateGroups keyed by an earlier explicit selection; they do not auto-bind either selection. applicability.state is machine-evaluated only when the relation declares a structured condition: applicable means the observed source result satisfies it, not-applicable means it does not, unknown means authoritative source evidence is unavailable, and not-declared means only the human-readable when condition is published. readiness.readyAfterCallerGenerated means all non-caller-generated relation inputs are currently resolved; it is independent from applicability and does not grant authorization. callerGeneratedRequired values still must be freshly created. conditionalRequired identifies absent optional/conditional source bindings that have no explicit fallback selection; resultRequired identifies a normally guaranteed result-derived identity that is unavailable, such as after an error outcome. Error outcomes have no authoritative structured result, so result-derived bindings, selections, and structured applicability conditions may be unavailable.',
+    invocationPolicy: 'Suggestions are partial call arguments only. Apply the relation condition before use, supply every missing required input, explicitly choose any declared selection, create a fresh requestId for mutating calls, and never treat a suggestion as authorization to invoke a tool. Dependent selections publish call-time choices derived from authoritative source results and do not auto-bind them; a selection marked fallbackForMissingBinding appears only when its deterministic conditional binding did not resolve and must then be explicitly chosen. Dependent action selections may publish candidateGroups keyed by an earlier explicit selection; they do not auto-bind either selection. applicability.state is machine-evaluated only when the relation declares a structured condition: applicable means the observed source result satisfies it, not-applicable means it does not, unknown means authoritative source evidence is unavailable, and not-declared means only the human-readable when condition is published. readiness.readyAfterCallerGenerated means all non-caller-generated relation inputs are currently resolved; it is independent from applicability and does not grant authorization. callerGeneratedRequired values still must be freshly created. conditionalRequired identifies absent optional/conditional source bindings that have no explicit fallback selection; resultRequired identifies a normally guaranteed result-derived identity that is unavailable. On successful calls, declared structured-result identities remain authoritative even when invocation arguments disagree. Error outcomes have no authoritative structured result, so a result-derived identity may retain same-name required invocation scope strictly as a recovery fallback; other result-derived bindings, selections, and structured applicability conditions may be unavailable.',
     suggestions: Object.freeze(workflow.relations.map((_edge, index) => suggestionFor(sourceTool, index, args || {}, result, outcome.sourceOutcome)))
   });
 }
