@@ -185,16 +185,15 @@ async function commandUntil(session, step, operation, params, predicate) {
   }
 }
 
-async function visualCompareUntil(session, step) {
+async function visualCompareOnce(session, step) {
   const deadline = Date.now() + step.timeoutMs;
   await waitForSurface(session, step.target, Math.max(1, deadline - Date.now()));
-  let result = null;
-  for (;;) {
-    const requestTimeout = Math.max(1, deadline - Date.now());
-    result = await session.command(step.target, 'visualCompare', step.visual, requestTimeout);
-    if (!result?.ok || result.passed === true || Date.now() >= deadline) return result || { ok: false };
-    await delay(Math.min(50, Math.max(1, deadline - Date.now())));
-  }
+  return session.command(
+    step.target,
+    'visualCompare',
+    step.visual,
+    Math.max(1, deadline - Date.now())
+  );
 }
 
 function pushScreenshotAttachment(attachments, attachment) {
@@ -270,7 +269,7 @@ async function executeStep(session, step, stepIndex, assertions, attachments) {
   }
 
   if (step.action === 'assertVisual') {
-    const value = await visualCompareUntil(session, step);
+    const value = await visualCompareOnce(session, step);
     if (!value?.ok) throw electronError('Electron visual comparison failed', value?.code || 'ELECTRON_VISUAL_COMPARISON_FAILED', { stepIndex });
     const passed = value.passed === true;
     const detail = visualAssertionDetail(value);

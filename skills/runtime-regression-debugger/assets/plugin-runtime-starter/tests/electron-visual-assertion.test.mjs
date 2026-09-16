@@ -112,14 +112,9 @@ test('assertVisual reuses the bounded visual-comparison request contract', () =>
   }
 });
 
-test('assertVisual polls a rendered mismatch until the bounded expectation passes', async () => {
+test('assertVisual performs one bounded point-in-time comparison through the existing visual authority', async () => {
   const root = await fixture();
-  const state = {
-    visualSequence: [
-      comparison({ passed: false, reason: 'pixel-diff-exceeded', currentHash: 'b'.repeat(64), diffPixels: 2, diffRatio: 0.02 }),
-      comparison()
-    ]
-  };
+  const state = { visualSequence: [comparison()] };
   try {
     const result = await runScenario(root, [{
       action: 'assertVisual',
@@ -133,7 +128,7 @@ test('assertVisual polls a rendered mismatch until the bounded expectation passe
     assert.match(result.assertions[0].detail, /reason=within-threshold/);
     assert.match(result.assertions[0].detail, /diffPixels=0/);
     assert.equal(result.assertions[0].detail.includes('baselines/home.png'), false);
-    assert.ok(state.visualCalls >= 2);
+    assert.equal(state.visualCalls, 1);
     assert.deepEqual(state.visualParams, { baselinePath: 'baselines/home.png', maxDiffPixels: 0, channelThreshold: 0 });
     assert.equal(state.closed, true);
   } finally {
@@ -167,7 +162,7 @@ test('assertVisual reports a stable pixel mismatch as an assertion failure and c
     assert.equal(result.assertions[0].detail.includes('baselines/home.png'), false);
     assert.equal(result.attachments.length, 1);
     assert.equal(result.attachments[0].kind, 'electron-failure-screenshot');
-    assert.ok(state.visualCalls >= 1);
+    assert.equal(state.visualCalls, 1);
     assert.ok(state.screenshotCalls >= 1);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
