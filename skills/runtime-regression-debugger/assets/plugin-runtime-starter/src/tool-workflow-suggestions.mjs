@@ -1,4 +1,4 @@
-import { toolInputJsonSchema } from './tool-catalog.mjs';
+import { toolInputJsonSchema, toolRequiresRequestId } from './tool-catalog.mjs';
 import { TOOL_WORKFLOW_RELATIONS } from './tool-workflow-relations.mjs';
 import { TOOL_WORKFLOW_BINDINGS } from './tool-workflow-bindings.mjs';
 
@@ -89,6 +89,66 @@ function resolvedSelection(selection, result) {
   });
 }
 
+function callerGeneratedRequiredTargets(targetTool, targetSchema) {
+  if (!toolRequiresRequestId(targetTool)) return new Set();
+  if (!(targetSchema.required || []).includes('requestId')) {
+    throw new Error(`Workflow suggestion request-id authority drift for ${targetTool}`);
+  }
+  return new Set(['requestId']);
+}
+
+function invocationReadiness(targetSchema, bindingEdge, partialArguments, missingRequired, selections) {
+  const callerGeneratedTargets = callerGeneratedRequiredTargets(bindingEdge.tool, targetSchema);
+  const bindingByTarget = new Map((bindingEdge.bindings || []).map((binding) => [binding.target, binding]));
+  const requiredSelections = (selections || []).filter((selection) => selection.requiredForRelation === true);
+  const selectionTargets = new Set(requiredSelections.map((selection) => selection.target));
+  const callerGeneratedRequired = [];
+  const conditionalRequired = [];
+  const resultRequired = [];
+  const inputRequired = [];
+
+  for (const name of missingRequired) {
+    if (callerGeneratedTargets.has(name)) {
+      callerGeneratedRequired.push(name);
+      continue;
+    }
+    if (selectionTargets.has(name)) continue;
+    const binding = bindingByTarget.get(name);
+    if (binding) {
+      if (binding.availability === 'conditional') conditionalRequired.push(name);
+      else if (binding.source === 'structuredContent') resultRequired.push(name);
+      else throw new Error(`Guaranteed argument binding is unexpectedly unresolved for ${bindingEdge.tool}.${name}`);
+      continue;
+    }
+    inputRequired.push(name);
+  }
+
+  const selectionRequired = requiredSelections
+    .filter((selection) => !Object.hasOwn(partialArguments, selection.target))
+    .map((selection) => selection.target);
+  const selectionUnavailable = requiredSelections
+    .filter((selection) => selectionRequired.includes(selection.target) && selection.candidates.length === 0)
+    .map((selection) => selection.target);
+
+  const requiredNames = new Set(targetSchema.required || []);
+  for (const target of selectionRequired) {
+    if (requiredNames.has(target)) continue;
+    if (callerGeneratedTargets.has(target) || bindingByTarget.has(target)) {
+      throw new Error(`Workflow relation selection overlaps incompatible input ownership for ${bindingEdge.tool}.${target}`);
+    }
+  }
+
+  return Object.freeze({
+    readyAfterCallerGenerated: conditionalRequired.length === 0 && resultRequired.length === 0 && selectionRequired.length === 0 && inputRequired.length === 0,
+    callerGeneratedRequired: Object.freeze(callerGeneratedRequired),
+    conditionalRequired: Object.freeze(conditionalRequired),
+    resultRequired: Object.freeze(resultRequired),
+    selectionRequired: Object.freeze(selectionRequired),
+    selectionUnavailable: Object.freeze(selectionUnavailable),
+    inputRequired: Object.freeze(inputRequired)
+  });
+}
+
 function suggestionFor(sourceTool, index, args, result) {
   const edge = TOOL_WORKFLOW_RELATIONS[sourceTool].relations[index];
   const bindingEdge = TOOL_WORKFLOW_BINDINGS[sourceTool].relations[index];
@@ -104,6 +164,7 @@ function suggestionFor(sourceTool, index, args, result) {
   }
   const missingRequired = (targetSchema.required || []).filter((name) => !Object.hasOwn(partialArguments, name));
   const selections = (bindingEdge.selections || []).map((item) => resolvedSelection(item, result));
+  const readiness = invocationReadiness(targetSchema, bindingEdge, partialArguments, missingRequired, selections);
 
   return Object.freeze({
     tool: edge.tool,
@@ -112,7 +173,8 @@ function suggestionFor(sourceTool, index, args, result) {
     arguments: Object.freeze(partialArguments),
     missingRequired: Object.freeze(missingRequired),
     argumentsComplete: missingRequired.length === 0,
-    selections: Object.freeze(selections)
+    selections: Object.freeze(selections),
+    readiness
   });
 }
 
@@ -134,7 +196,7 @@ export function toolWorkflowSuggestions(sourceTool, args = {}, result = {}, { so
     sourceTool,
     sourceOutcome: outcome.sourceOutcome,
     ...(outcome.sourceErrorCode ? { sourceErrorCode: outcome.sourceErrorCode } : {}),
-    invocationPolicy: 'Suggestions are partial call arguments only. Apply the relation condition before use, supply every missing required input, explicitly choose any declared selection, create a fresh requestId for mutating calls, and never treat a suggestion as authorization to invoke a tool. Error outcomes have no authoritative structured result, so result-derived bindings or selections may be absent.',
+    invocationPolicy: 'Suggestions are partial call arguments only. Apply the relation condition before use, supply every missing required input, explicitly choose any declared selection, create a fresh requestId for mutating calls, and never treat a suggestion as authorization to invoke a tool. readiness.readyAfterCallerGenerated means all non-caller-generated relation inputs are currently resolved; callerGeneratedRequired values still must be freshly created. conditionalRequired identifies absent optional/conditional source bindings; resultRequired identifies a normally guaranteed result-derived identity that is unavailable, such as after an error outcome. Error outcomes have no authoritative structured result, so result-derived bindings or selections may be absent.',
     suggestions: Object.freeze(workflow.relations.map((_edge, index) => suggestionFor(sourceTool, index, args || {}, result)))
   });
 }
