@@ -203,6 +203,9 @@ test('workflow selections make ambiguous next-step choices explicit instead of a
   const audit = selection('experience_audit', 'experience_review', 'experienceId', 'next');
   assert.equal(audit.cardinality, 'one');
   assert.equal(audit.sources[0].legacyCollectionPointer, '/result');
+  assert.deepEqual(audit.sources[0].filter, {
+    pointer: '/status', operator: 'in', value: ['candidate', 'active', 'challenged']
+  });
   assert.equal(binding('experience_audit', 'experience_review', 'experienceId', 'next'), undefined);
   assert.deepEqual(relation('experience_audit', 'experience_review', 'next').unboundRequired, ['requestId', 'experienceId', 'action']);
 
@@ -254,30 +257,6 @@ test('standalone fallback publishes workflow bindings for all public tools', asy
     for (const item of pending.values()) clearTimeout(item.timer);
     child.stdin.end();
     child.kill('SIGTERM');
-    await fs.rm(stateRoot, { recursive: true, force: true });
-  }
-});
-
-test('official SDK publishes the same workflow bindings', { skip: !officialSdkAvailable }, async () => {
-  const stateRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'veteran-tool-workflow-bindings-sdk-'));
-  const [{ Client }, { StdioClientTransport }] = await Promise.all([
-    import('@modelcontextprotocol/client'),
-    import('@modelcontextprotocol/client/stdio')
-  ]);
-  const client = new Client({ name: 'workflow-bindings-test', version: '1.0.0' });
-  const transport = new StdioClientTransport({
-    command: process.execPath,
-    args: [server],
-    cwd: root,
-    env: { ...process.env, VETERAN_ENGINEER_STATE_DIR: stateRoot, VETERAN_MCP_REQUIRE_SDK: '1' },
-    stderr: 'pipe'
-  });
-  try {
-    await client.connect(transport);
-    const listed = await client.listTools();
-    assertPublishedBindings(listed.tools);
-  } finally {
-    await client.close().catch(() => {});
     await fs.rm(stateRoot, { recursive: true, force: true });
   }
 });

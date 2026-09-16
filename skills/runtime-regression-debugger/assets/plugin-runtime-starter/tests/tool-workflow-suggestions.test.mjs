@@ -134,9 +134,11 @@ test('workflow suggestions expose filtered selection candidates without auto-bin
 
   next = suggestion('experience_audit', 'experience_review', 'next', { projectId: 'project-1' }, [
     { id: 'exp-1', status: 'candidate' },
-    { id: 'exp-2', status: 'retired' }
+    { id: 'exp-2', status: 'active' },
+    { id: 'exp-3', status: 'challenged' },
+    { id: 'exp-4', status: 'retired' }
   ]);
-  assert.deepEqual(next.selections[0].candidates, ['exp-1', 'exp-2']);
+  assert.deepEqual(next.selections[0].candidates, ['exp-1', 'exp-2', 'exp-3']);
 
   next = suggestion('experience_compact', 'experience_review', 'next', { projectId: 'project-1' }, {
     removed: ['exp-old'], kept: ['exp-keep-1', 'exp-keep-2']
