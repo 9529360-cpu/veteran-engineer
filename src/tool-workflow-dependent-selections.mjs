@@ -56,20 +56,6 @@ function itemPointerExists(schema, collectionPointer, itemPointer) {
   return itemSchemas.some((itemSchema) => schemaHasPointer(itemSchema, itemPointer));
 }
 
-function resolvePointer(root, pointer) {
-  const segments = pointerSegments(pointer);
-  if (!segments) return { found: false, value: undefined };
-  let current = root;
-  for (const segment of segments) {
-    if (current === null || current === undefined || (typeof current !== 'object' && typeof current !== 'function')) {
-      return { found: false, value: undefined };
-    }
-    if (!Object.hasOwn(current, segment)) return { found: false, value: undefined };
-    current = current[segment];
-  }
-  return { found: true, value: current };
-}
-
 function uniqueValues(values) {
   const seen = new Set();
   const output = [];
@@ -162,7 +148,7 @@ function assertAuditSourceContract() {
 function assertCompactSourceContract() {
   const natural = toolOutputJsonSchema('experience_compact');
   const legacy = toolOutputJsonSchema('experience_compact', { legacyEnvelope: true });
-  for (const [schema, collectionPointer] of [[natural, '/kept'], [legacy, '/result/kept']]) {
+  for (const [schema, collectionPointer] of [[natural, '/kept'], [legacy, '/kept']]) {
     if (!itemPointerExists(schema, collectionPointer, '')) {
       throw new Error(`Experience compact dependent selection pointer missing: ${collectionPointer}`);
     }
