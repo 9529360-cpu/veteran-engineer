@@ -22,9 +22,14 @@ const html = '<!doctype html><html><head><title>Veteran File Dialog Fixture</tit
 async function waitForWindow(session) {
   const deadline = Date.now() + 15_000;
   for (;;) {
-    const surfaces = await session.listSurfaces(1_000);
-    const found = surfaces.windows.find((item) => item.title === 'Veteran File Dialog Fixture');
-    if (found) return found;
+    try {
+      const requestTimeout = Math.max(1, Math.min(1_000, deadline - Date.now()));
+      const surfaces = await session.listSurfaces(requestTimeout);
+      const found = surfaces.windows.find((item) => item.title === 'Veteran File Dialog Fixture');
+      if (found) return found;
+    } catch (error) {
+      if (error?.code !== 'ELECTRON_BRIDGE_TIMEOUT') throw error;
+    }
     if (Date.now() >= deadline) throw new Error('Electron file dialog test window did not become ready');
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
