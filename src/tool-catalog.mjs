@@ -189,10 +189,13 @@ const TOOL_INPUT_CONTRACTS = Object.freeze({
   review_run: { properties: { missionId: stringField('Mission id.'), candidateId: stringField('Optional immutable candidate id.') }, required: ['missionId'] },
   semantic_review_run: { properties: { missionId: stringField('Mission id.'), candidateId: stringField('Optional immutable candidate id.') }, required: ['missionId'] },
   remediation_plan: {
+    description: 'Create a bounded remediation proposal, or with apply=true and explicit task specs append source-bound remediation work to the same failed-review Mission and re-enter execution.',
     properties: {
       missionId: stringField('Mission id.'),
       findings: { type: 'array', items: FINDING, description: 'Optional explicit findings; defaults to current deterministic + semantic review findings.' },
-      maxTasks: integerField('Maximum remediation tasks.', 1, 8)
+      maxTasks: integerField('Maximum remediation tasks.', 1, 8),
+      apply: booleanField('When true, append the explicit tasks to the same source-bound Mission and reset proof state for re-execution. Defaults to false.'),
+      tasks: { type: 'array', items: TASK, minItems: 1, maxItems: 8, description: 'Explicit executable remediation task specs. Required by runtime when apply=true; owner/writeSet/risk must come from repository/review evidence, not guesses.' }
     },
     required: ['missionId']
   },
@@ -269,7 +272,7 @@ const TOOL_DESCRIPTIONS = Object.freeze({
   validation_run: 'Run an allowed command, service, browser, or observability validation in isolated source.',
   review_run: 'Run deterministic whole-change review against the mission base.',
   semantic_review_run: 'Run the configured independent semantic reviewer provider.',
-  remediation_plan: 'Create a bounded remediation plan from review findings.',
+  remediation_plan: 'Create a bounded remediation proposal or explicitly append source-bound repair tasks to the same Mission for re-execution.',
   candidate_preflight: 'Read-only preflight the mission candidate against current source using merge-tree.',
   candidate_refresh: 'Create a new immutable candidate after source drift and invalidate stale proof.',
   candidate_status: 'Read immutable candidate identity and proof freshness.',
