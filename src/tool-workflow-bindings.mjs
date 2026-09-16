@@ -165,6 +165,11 @@ const RELATION_SELECTIONS = Object.freeze({
       selectionSource('/pending', '/taskId', { filter: { pointer: '/status', operator: 'in', value: ['executing', 'cancelling'] } })
     ], 'Select one currently executing or cancelling task; other pending states are not valid worker_cancel targets.')
   ]),
+  [relationKey('mission_status', 'worker_cancel', 'recover')]: Object.freeze([
+    selection('taskId', 'one', [
+      selectionSource('/tasks', '/id', { filter: { pointer: '/status', operator: 'in', value: ['executing', 'cancelling'] } })
+    ], 'Select one executing or cancelling task that the authoritative worker service can still cancel.')
+  ]),
   [relationKey('mission_status', 'worker_resume', 'recover')]: Object.freeze([
     selection('taskId', 'one', [
       selectionSource('/tasks', '/id', { filter: { pointer: '/status', operator: 'equals', value: 'interrupted' } })
