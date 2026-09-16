@@ -64,7 +64,7 @@ test('mission_status exposes explicit per-task recovery relations after Mission 
   });
   assert.deepEqual(retry.unboundRequired, ['requestId', 'taskId']);
   assert.deepEqual(retry.selections[0].sources[0].filter, {
-    pointer: '/status', operator: 'in', value: ['failed', 'cancelled']
+    pointer: '/status', operator: 'in', value: ['failed', 'interrupted', 'cancelled']
   });
 });
 
@@ -89,7 +89,7 @@ test('mission_status suggestions carry current Mission identity and filter valid
   const retry = suggestion('worker_retry', statusResult);
   assert.deepEqual(retry.arguments, { missionId: 'mission-current' });
   assert.deepEqual(retry.missingRequired, ['requestId', 'taskId']);
-  assert.deepEqual(retry.selections[0].candidates, ['T-failed', 'T-cancelled']);
+  assert.deepEqual(retry.selections[0].candidates, ['T-interrupted', 'T-failed', 'T-cancelled']);
   assert.deepEqual(retry.readiness, {
     readyAfterCallerGenerated: false,
     callerGeneratedRequired: ['requestId'],
@@ -100,7 +100,6 @@ test('mission_status suggestions carry current Mission identity and filter valid
     inputRequired: []
   });
   assert.equal(retry.selections[0].candidates.includes('T-executing'), false);
-  assert.equal(retry.selections[0].candidates.includes('T-interrupted'), false);
   assert.equal(Object.hasOwn(retry.arguments, 'taskId'), false);
   assert.equal(Object.hasOwn(retry.arguments, 'requestId'), false);
 });
@@ -124,4 +123,25 @@ test('mission_status recovery suggestions remain inert and expose unavailable se
   assert.deepEqual(retry.readiness.selectionRequired, ['taskId']);
   assert.deepEqual(retry.readiness.selectionUnavailable, ['taskId']);
   assert.equal(retry.readiness.readyAfterCallerGenerated, false);
+});
+
+test('worker control results require a fresh Mission status before another worker control action', () => {
+  assert.deepEqual(
+    TOOL_WORKFLOW_RELATIONS.worker_cancel.relations.map((edge) => [edge.tool, edge.kind]),
+    [['mission_status', 'inspect'], ['mission_timeline', 'inspect']]
+  );
+  assert.deepEqual(
+    TOOL_WORKFLOW_RELATIONS.worker_resume.relations.map((edge) => [edge.tool, edge.kind]),
+    [['mission_status', 'inspect'], ['mission_readiness', 'next']]
+  );
+  assert.deepEqual(
+    TOOL_WORKFLOW_RELATIONS.worker_retry.relations.map((edge) => [edge.tool, edge.kind]),
+    [['mission_status', 'inspect'], ['mission_timeline', 'inspect'], ['mission_readiness', 'next']]
+  );
+
+  for (const sourceTool of ['worker_cancel', 'worker_resume', 'worker_retry']) {
+    const directWorkerControls = TOOL_WORKFLOW_RELATIONS[sourceTool].relations
+      .filter((edge) => ['worker_cancel', 'worker_resume', 'worker_retry'].includes(edge.tool));
+    assert.deepEqual(directWorkerControls, [], `${sourceTool} must re-observe Mission state before another worker control action`);
+  }
 });
