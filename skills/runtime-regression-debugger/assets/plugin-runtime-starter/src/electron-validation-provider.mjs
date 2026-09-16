@@ -185,6 +185,17 @@ async function commandUntil(session, step, operation, params, predicate) {
   }
 }
 
+async function visualCompareOnce(session, step) {
+  const deadline = Date.now() + step.timeoutMs;
+  await waitForSurface(session, step.target, Math.max(1, deadline - Date.now()));
+  return session.command(
+    step.target,
+    'visualCompare',
+    step.visual,
+    Math.max(1, deadline - Date.now())
+  );
+}
+
 function pushScreenshotAttachment(attachments, attachment) {
   const content = Buffer.from(attachment.content);
   if (content.length > MAX_SCREENSHOT_BYTES) {
@@ -204,6 +215,18 @@ function assertionName(step, index) {
 function assertionDetail(value) {
   if (value === undefined || value === null) return '';
   return String(value).slice(0, 1200);
+}
+
+function visualAssertionDetail(value) {
+  const dimension = (item) => Number.isInteger(item?.width) && Number.isInteger(item?.height)
+    ? `${item.width}x${item.height}`
+    : 'unknown';
+  const diffPixels = Number.isInteger(value?.diffPixels) ? value.diffPixels : 'n/a';
+  const totalPixels = Number.isInteger(value?.totalPixels) ? value.totalPixels : 'n/a';
+  const diffRatio = Number.isFinite(value?.diffRatio) ? value.diffRatio : 'n/a';
+  return assertionDetail(
+    `reason=${String(value?.reason || 'unknown')} diffPixels=${diffPixels} totalPixels=${totalPixels} diffRatio=${diffRatio} baseline=${dimension(value?.baseline)} current=${dimension(value?.current)} maxDiffPixels=${value?.maxDiffPixels ?? 'n/a'} channelThreshold=${value?.channelThreshold ?? 'n/a'}`
+  );
 }
 
 async function executeStep(session, step, stepIndex, assertions, attachments) {
@@ -241,6 +264,16 @@ async function executeStep(session, step, stepIndex, assertions, attachments) {
     const detail = assertionDetail(`expected=${JSON.stringify(step.item)} matched=${passed} truncated=${truncated}`);
     assertions.push({ name: assertionName(step, stepIndex), passed, detail });
     if (!passed && truncated) throw electronError('Electron menu inventory was truncated before the asserted item could be proven absent', 'ELECTRON_MENU_INVENTORY_TRUNCATED', { stepIndex });
+    if (!passed) throw electronError(`Electron assertion failed: ${assertionName(step, stepIndex)}`, 'ELECTRON_ASSERTION_FAILED', { stepIndex });
+    return;
+  }
+
+  if (step.action === 'assertVisual') {
+    const value = await visualCompareOnce(session, step);
+    if (!value?.ok) throw electronError('Electron visual comparison failed', value?.code || 'ELECTRON_VISUAL_COMPARISON_FAILED', { stepIndex });
+    const passed = value.passed === true;
+    const detail = visualAssertionDetail(value);
+    assertions.push({ name: assertionName(step, stepIndex), passed, detail });
     if (!passed) throw electronError(`Electron assertion failed: ${assertionName(step, stepIndex)}`, 'ELECTRON_ASSERTION_FAILED', { stepIndex });
     return;
   }
