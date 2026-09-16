@@ -29,6 +29,11 @@ function challengeSuggestion(meta) {
     ?.find((item) => item.tool === 'experience_challenge' && item.kind === 'recover');
 }
 
+function reviewSuggestion(meta) {
+  return meta?.[TOOL_WORKFLOW_SUGGESTIONS_META_KEY]?.suggestions
+    ?.find((item) => item.tool === 'experience_review' && item.kind === 'next');
+}
+
 function assertChallengeSuggestion(called, experienceId, expectedStatus, expectedApplicability) {
   assert.equal(called.isError, undefined, JSON.stringify(called));
   assert.equal(called.structuredContent?.status, expectedStatus);
@@ -55,6 +60,31 @@ function assertChallengeSuggestion(called, experienceId, expectedStatus, expecte
   });
 }
 
+function assertDirectReviewSuggestion(called, experienceId, expectedStatus, expectedActions) {
+  assert.equal(called.isError, undefined, JSON.stringify(called));
+  assert.equal(called.structuredContent?.status, expectedStatus);
+  const next = reviewSuggestion(called._meta);
+  assert.ok(next);
+  assert.deepEqual(next.arguments, { experienceId });
+  assert.equal(Object.hasOwn(next.arguments, 'requestId'), false);
+  assert.equal(Object.hasOwn(next.arguments, 'action'), false);
+  const actionSelection = next.selections.find((item) => item.target === 'action');
+  assert.ok(actionSelection);
+  assert.equal(actionSelection.sourceState, expectedStatus);
+  assert.equal(Object.hasOwn(actionSelection, 'dependsOn'), false);
+  assert.deepEqual(actionSelection.candidates, expectedActions);
+  assert.deepEqual(next.readiness, {
+    readyAfterCallerGenerated: false,
+    callerGeneratedRequired: ['requestId'],
+    conditionalRequired: [],
+    resultRequired: [],
+    selectionRequired: ['action'],
+    selectionUnavailable: [],
+    inputRequired: []
+  });
+  assert.deepEqual(next.applicability, { state: 'not-declared' });
+}
+
 async function prepareFixture(suffix) {
   const fixture = await createGitRepo({ files: { 'src/a.txt': 'a\n' } });
   const app = await createVeteranApp({ stateRoot: fixture.stateRoot });
@@ -62,14 +92,7 @@ async function prepareFixture(suffix) {
     requestId: `workflow-experience-challenge-open-${suffix}`,
     repoPath: fixture.repo
   });
-  const candidate = await app.services.experienceService.commit({
-    projectId: project.id,
-    mechanism: `workflow-challenge-${suffix}`,
-    statement: `workflow challenge ${suffix}`,
-    kind: 'invariant',
-    equivalenceClass: `workflow-challenge-${suffix}`
-  });
-  return { fixture, experienceId: candidate.id };
+  return { fixture, projectId: project.id };
 }
 
 async function withFallbackClient(stateRoot, run) {
@@ -140,13 +163,31 @@ async function withOfficialSdkClient(stateRoot, run) {
   }
 }
 
-async function exerciseReviewLifecycle(callTool, experienceId, suffix) {
+async function exerciseReviewLifecycle(callTool, projectId, suffix) {
+  const committed = await callTool('experience_commit', {
+    requestId: `workflow-experience-challenge-commit-${suffix}`,
+    projectId,
+    mechanism: `workflow-challenge-${suffix}`,
+    statement: `workflow challenge ${suffix}`,
+    kind: 'invariant'
+  });
+  const experienceId = committed.structuredContent?.id;
+  assert.equal(typeof experienceId, 'string');
+  assertDirectReviewSuggestion(committed, experienceId, 'candidate', ['activate', 'reject']);
+
   const activated = await callTool('experience_review', {
     requestId: `workflow-experience-challenge-activate-${suffix}`,
     experienceId,
     action: 'activate'
   });
   assertChallengeSuggestion(activated, experienceId, 'active', 'applicable');
+
+  const challenged = await callTool('experience_challenge', {
+    requestId: `workflow-experience-challenge-record-${suffix}`,
+    experienceId,
+    statement: 'contrary runtime evidence'
+  });
+  assertDirectReviewSuggestion(challenged, experienceId, 'challenged', ['reactivate', 'retire']);
 
   const retired = await callTool('experience_review', {
     requestId: `workflow-experience-challenge-retire-${suffix}`,
@@ -156,22 +197,22 @@ async function exerciseReviewLifecycle(callTool, experienceId, suffix) {
   assertChallengeSuggestion(retired, experienceId, 'retired', 'not-applicable');
 }
 
-test('fallback MCP publishes challenge applicability from the reviewed lifecycle status', async () => {
+test('fallback MCP publishes lifecycle-driven review choices and challenge applicability', async () => {
   const seeded = await prepareFixture('fallback');
   try {
     await withFallbackClient(seeded.fixture.stateRoot, async (callTool) => {
-      await exerciseReviewLifecycle(callTool, seeded.experienceId, 'fallback');
+      await exerciseReviewLifecycle(callTool, seeded.projectId, 'fallback');
     });
   } finally {
     await cleanup(seeded.fixture.root);
   }
 });
 
-test('official SDK publishes the same challenge applicability from the reviewed lifecycle status', { skip: !officialSdkAvailable }, async () => {
+test('official SDK publishes the same lifecycle-driven review choices and challenge applicability', { skip: !officialSdkAvailable }, async () => {
   const seeded = await prepareFixture('sdk');
   try {
     await withOfficialSdkClient(seeded.fixture.stateRoot, async (callTool) => {
-      await exerciseReviewLifecycle(callTool, seeded.experienceId, 'sdk');
+      await exerciseReviewLifecycle(callTool, seeded.projectId, 'sdk');
     });
   } finally {
     await cleanup(seeded.fixture.root);
