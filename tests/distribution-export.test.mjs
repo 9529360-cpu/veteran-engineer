@@ -33,6 +33,11 @@ function zipReport(file) {
   return JSON.parse(runPython(['-c', program, file]));
 }
 
+function zipText(file, member) {
+  const program = "import sys,zipfile;print(zipfile.ZipFile(sys.argv[1]).read(sys.argv[2]).decode(),end='')";
+  return runPython(['-c', program, file, member]);
+}
+
 test('distribution exporter keeps local MCP artifacts out of the web profile', async (t) => {
   if (!pythonAvailable()) return t.skip('python3 unavailable; exporter is validated by Skill packaging instead');
   const temp = await tempDir('veteran-export-profiles-');
@@ -53,6 +58,25 @@ test('distribution exporter keeps local MCP artifacts out of the web profile', a
     assert.equal(webReport.names.some((name) => name.startsWith('veteran-engineer/src/')), false);
     assert.ok(webReport.names.includes('veteran-engineer/skills/runtime-regression-debugger/SKILL.md'));
     assert.equal(webReport.distribution.platformNotes.webCompatible, true);
+  } finally {
+    await cleanup(temp);
+  }
+});
+
+test('desktop export carries the outcome-closure and visible-validation Skill kernel', async (t) => {
+  if (!pythonAvailable()) return t.skip('python3 unavailable; exporter is validated by Skill packaging instead');
+  const temp = await tempDir('veteran-export-skill-kernel-');
+  try {
+    const desktop = path.join(temp, 'desktop.zip');
+    runPython([exporter, skillRoot, '--profile', 'desktop', '--output', desktop]);
+    const skill = zipText(desktop, 'veteran-engineer/skills/runtime-regression-debugger/SKILL.md');
+    assert.match(skill, /Every material clause must become an observable acceptance row/);
+    assert.match(skill, /Clause closure/);
+    assert.match(skill, /Semantic-dimension match/);
+    assert.match(skill, /Visible-boundary proof/);
+    assert.match(skill, /Self-repair before handoff/);
+    assert.match(skill, /layout request is not satisfied by color tokens/);
+    assert.match(skill, /rendered validation by default/);
   } finally {
     await cleanup(temp);
   }
