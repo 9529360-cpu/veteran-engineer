@@ -156,6 +156,7 @@ export class ExperienceService {
     const now = Date.now();
     return items.map((item) => ({
       id: item.id,
+      projectId: item.projectId,
       status: item.status,
       mechanism: item.mechanism,
       evidenceMissing: item.evidenceIds.filter((id) => !state.evidence[id]),

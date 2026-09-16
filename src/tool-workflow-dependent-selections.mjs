@@ -3,8 +3,11 @@ import { toolInputJsonSchema } from './tool-catalog.mjs';
 import { toolOutputJsonSchema } from './tool-output-contracts.mjs';
 
 const EXPERIENCE_REVIEW_TARGET = 'experience_review';
+const EXPERIENCE_COMPACT_TARGET = 'experience_compact';
+const EXPERIENCE_QUERY_TARGET = 'experience_query';
 const ACTION_TARGET = 'action';
 const EXPERIENCE_ID_TARGET = 'experienceId';
+const PROJECT_ID_TARGET = 'projectId';
 const DIRECT_REVIEW_ACTION_SOURCES = new Set(['experience_commit', 'experience_challenge']);
 
 function decodePointerSegment(segment) {
@@ -75,6 +78,13 @@ function itemPointerExists(schema, collectionPointer, itemPointer) {
   return itemSchemas.some((itemSchema) => schemaHasPointer(itemSchema, itemPointer));
 }
 
+function itemPointerGuaranteed(schema, collectionPointer, itemPointer) {
+  const itemSchemas = arrayItemSchemasAtPointer(schema, collectionPointer);
+  if (!itemSchemas.length) return false;
+  if (itemPointer === '') return true;
+  return itemSchemas.every((itemSchema) => schemaPointerGuaranteed(itemSchema, itemPointer));
+}
+
 function uniqueValues(values) {
   const seen = new Set();
   const output = [];
@@ -127,6 +137,22 @@ function auditActionSelection(result) {
   });
 }
 
+function auditProjectSelection(result, targetTool) {
+  const candidates = uniqueValues(Array.isArray(result)
+    ? result.map((item) => item?.projectId).filter((value) => value !== null && value !== undefined)
+    : []);
+  return Object.freeze({
+    target: PROJECT_ID_TARGET,
+    cardinality: 'one',
+    requiredForRelation: true,
+    fallbackForMissingBinding: true,
+    candidates: Object.freeze(candidates),
+    reason: targetTool === EXPERIENCE_COMPACT_TARGET
+      ? 'The audit was not project-scoped. Explicitly select one owning project from the audited records before compacting exact duplicate candidates.'
+      : 'The audit was not project-scoped. Explicitly select one owning project from the audited records before re-querying reviewed experience.'
+  });
+}
+
 function compactActionSelection(result) {
   const kept = Array.isArray(result?.kept) ? result.kept : [];
   const groups = uniqueValues(kept)
@@ -143,7 +169,13 @@ function compactActionSelection(result) {
   });
 }
 
-export function dependentWorkflowSelections(sourceTool, edge, result) {
+export function dependentWorkflowSelections(sourceTool, edge, result, partialArguments = {}) {
+  if (sourceTool === 'experience_audit'
+    && ((edge.tool === EXPERIENCE_COMPACT_TARGET && edge.kind === 'next')
+      || (edge.tool === EXPERIENCE_QUERY_TARGET && edge.kind === 'inspect'))) {
+    if (Object.hasOwn(partialArguments, PROJECT_ID_TARGET)) return Object.freeze([]);
+    return Object.freeze([auditProjectSelection(result, edge.tool)]);
+  }
   if (edge.tool !== EXPERIENCE_REVIEW_TARGET || edge.kind !== 'next') return Object.freeze([]);
   if (DIRECT_REVIEW_ACTION_SOURCES.has(sourceTool)) return Object.freeze([directActionSelection(result)]);
   if (sourceTool === 'experience_audit') return Object.freeze([auditActionSelection(result)]);
@@ -178,11 +210,13 @@ function assertAuditSourceContract() {
   const natural = toolOutputJsonSchema('experience_audit');
   const legacy = toolOutputJsonSchema('experience_audit', { legacyEnvelope: true });
   for (const [schema, collectionPointer] of [[natural, ''], [legacy, '/result']]) {
-    if (!itemPointerExists(schema, collectionPointer, '/id')) {
-      throw new Error(`Experience audit dependent selection id pointer missing: ${collectionPointer}/id`);
-    }
-    if (!itemPointerExists(schema, collectionPointer, '/status')) {
-      throw new Error(`Experience audit dependent selection status pointer missing: ${collectionPointer}/status`);
+    for (const pointer of ['/id', '/projectId', '/status']) {
+      if (!itemPointerExists(schema, collectionPointer, pointer)) {
+        throw new Error(`Experience audit dependent selection pointer missing: ${collectionPointer}${pointer}`);
+      }
+      if (!itemPointerGuaranteed(schema, collectionPointer, pointer)) {
+        throw new Error(`Experience audit dependent selection pointer must be guaranteed: ${collectionPointer}${pointer}`);
+      }
     }
   }
 }
