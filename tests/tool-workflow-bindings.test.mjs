@@ -125,7 +125,7 @@ test('workflow bindings carry deterministic identities and transformed evidence 
     target: 'ids', source: 'structuredContent', pointer: '/evidenceId', mode: 'if-present-non-null', transform: 'singleton-array', availability: 'conditional'
   });
   assert.deepEqual(binding('experience_commit', 'evidence_query', 'ids', 'inspect'), {
-    target: 'ids', source: 'structuredContent', pointer: '/evidenceIds', mode: 'if-present-non-null', transform: 'identity', availability: 'conditional'
+    target: 'ids', source: 'structuredContent', pointer: '/evidenceIds', mode: 'if-present-non-null', transform: 'identity', availability: 'guaranteed'
   });
 
   assert.ok(binding('candidate_refresh', 'candidate_status', 'missionId', 'inspect'));
