@@ -51,7 +51,7 @@ function normalizeFilters(raw) {
     if (keys.some((key) => key !== 'name' && key !== 'extensions')) {
       throw nativeDialogError('Electron file dialog filter contains an unsupported field', 'ELECTRON_FILE_DIALOG_REQUEST_INVALID');
     }
-    const name = boundedLabel(filter.name, 'Electron file dialog filter name', 80);
+    const name = boundedLabel(filter.name ?? '', 'Electron file dialog filter name', 80);
     if (!Array.isArray(filter.extensions) || filter.extensions.length === 0 || filter.extensions.length > MAX_DIALOG_FILTER_EXTENSIONS) {
       throw nativeDialogError(`Electron file dialog filter extensions must contain 1-${MAX_DIALOG_FILTER_EXTENSIONS} values`, 'ELECTRON_FILE_DIALOG_REQUEST_INVALID');
     }
