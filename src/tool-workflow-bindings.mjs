@@ -426,8 +426,14 @@ function assertBindingContract() {
       const edge = workflow.relations[index];
       const bindingEdge = compiled.relations[index];
       if (bindingEdge.tool !== edge.tool || bindingEdge.kind !== edge.kind) throw new Error(`Workflow binding relation drift for ${name} at index ${index}`);
-      if (edge.condition && !schemaHasPointer(toolOutputJsonSchema(name), edge.condition.pointer)) {
-        throw new Error(`Workflow relation condition pointer does not exist for ${name} -> ${edge.tool}: structuredContent${edge.condition.pointer}`);
+      if (edge.condition) {
+        const conditionSourceContract = toolOutputJsonSchema(name);
+        if (!schemaHasPointer(conditionSourceContract, edge.condition.pointer)) {
+          throw new Error(`Workflow relation condition pointer does not exist for ${name} -> ${edge.tool}: structuredContent${edge.condition.pointer}`);
+        }
+        if (schemaPointerAvailability(conditionSourceContract, edge.condition.pointer) !== 'guaranteed') {
+          throw new Error(`Workflow relation condition source must be guaranteed for ${name} -> ${edge.tool}: structuredContent${edge.condition.pointer}`);
+        }
       }
       const seenTargets = new Set();
       for (const binding of bindingEdge.bindings) assertBindingDescriptor(name, edge.tool, binding, seenTargets);

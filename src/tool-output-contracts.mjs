@@ -249,12 +249,12 @@ const TOOL_OUTPUT_CONTRACTS = Object.freeze({
     reviewBase: stringField('Review base commit.', { minLength: null }),
     findings: { type: 'array', items: FINDING, description: 'Review findings.' },
     evidenceId: stringField('Review evidence id.', { minLength: null })
-  }),
+  }, ['passed']),
   semantic_review_run: openObject('Independent semantic review result.', {
     passed: booleanField('Whether semantic review passed.'),
     findings: { type: 'array', items: FINDING, description: 'Semantic findings.' },
     evidenceId: stringField('Review evidence id.', { minLength: null })
-  }),
+  }, ['passed']),
   remediation_plan: openObject('Bounded remediation plan derived from review findings.', {
     missionId: stringField('Mission id.', { minLength: null }),
     tasks: { type: 'array', items: OUTPUT_TASK, description: 'Remediation tasks.' },
@@ -265,7 +265,7 @@ const TOOL_OUTPUT_CONTRACTS = Object.freeze({
     candidateId: nullable(stringField('Candidate id when present.', { minLength: null })),
     ready: booleanField('Whether candidate creation/finalization is safe.'),
     sourceDrift: booleanField('Whether source authority drifted.')
-  }),
+  }, ['ready']),
   candidate_refresh: openObject('Created/refreshed immutable candidate.', {
     candidate: OUTPUT_CANDIDATE,
     evidenceId: stringField('Evidence id for candidate creation.', { minLength: null }),
