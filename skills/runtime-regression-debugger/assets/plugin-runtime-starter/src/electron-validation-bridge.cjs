@@ -372,6 +372,10 @@ rl.on('line', (line) => {
       return;
     }
     if (message.operation === 'menuInventory') {
+      if (!app.isReady()) {
+        reply({ id: message.id, ok: false, code: 'ELECTRON_APP_NOT_READY' });
+        return;
+      }
       reply({ id: message.id, ok: true, menu: applicationMenuInventory(Menu.getApplicationMenu()) });
       return;
     }
