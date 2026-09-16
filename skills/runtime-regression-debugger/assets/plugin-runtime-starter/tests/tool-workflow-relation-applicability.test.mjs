@@ -28,6 +28,9 @@ test('workflow relations publish structured conditions only for result gates wit
   assert.deepEqual(relation('semantic_review_run', 'remediation_plan', 'recover').condition, {
     source: 'structuredContent', pointer: '/passed', operator: 'equals', value: false
   });
+  assert.deepEqual(relation('candidate_preflight', 'mission_advance', 'next').condition, {
+    source: 'structuredContent', pointer: '/ready', operator: 'equals', value: true
+  });
   assert.equal(Object.hasOwn(relation('mission_readiness', 'mission_status', 'inspect'), 'condition'), false);
 });
 
@@ -48,6 +51,26 @@ test('workflow suggestions keep structural readiness independent from relation a
     missionId: 'mission-1', ready: false
   });
   assert.deepEqual(inspect.applicability, { state: 'not-declared' });
+});
+
+test('candidate preflight gates direct Mission advance on authoritative readiness', () => {
+  const blocked = suggestion('candidate_preflight', 'mission_advance', 'next', {
+    missionId: 'mission-1',
+    candidateId: null,
+    ready: false,
+    sourceDrift: true
+  });
+  assert.equal(blocked.applicability.state, 'not-applicable');
+  assert.equal(blocked.readiness.readyAfterCallerGenerated, true);
+
+  const ready = suggestion('candidate_preflight', 'mission_advance', 'next', {
+    missionId: 'mission-1',
+    candidateId: null,
+    ready: true,
+    sourceDrift: false
+  });
+  assert.equal(ready.applicability.state, 'applicable');
+  assert.equal(ready.readiness.readyAfterCallerGenerated, true);
 });
 
 test('review result gates expose mutually exclusive proof and remediation applicability', () => {
