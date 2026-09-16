@@ -2,7 +2,8 @@
 
 const fs = require('node:fs');
 const readline = require('node:readline');
-const { app, BrowserWindow, Menu, webContents } = require('electron');
+const { app, BrowserWindow, Menu, dialog, webContents } = require('electron');
+const { openBoundedFileDialog } = require('./electron-native-dialog.cjs');
 const { applicationMenuInventory } = require('./electron-native-menu.cjs');
 
 const CONTRACT = 'veteran-electron-bridge-v1';
@@ -309,6 +310,12 @@ async function invoke(target, operation, params = {}) {
   if (!surface) return { ok: false, code: 'ELECTRON_SURFACE_NOT_FOUND' };
   const contents = surface.contents;
   if (operation === 'inventory') return { ok: true, surface: publicSurface(surface) };
+  if (operation === 'openFileDialog') {
+    if (surface.type !== 'window') return { ok: false, code: 'ELECTRON_FILE_DIALOG_TARGET_INVALID' };
+    const owner = BrowserWindow.fromWebContents(contents);
+    if (!owner || owner.isDestroyed()) return { ok: false, code: 'ELECTRON_FILE_DIALOG_TARGET_INVALID' };
+    return openBoundedFileDialog({ dialog, owner, request: params, root: process.cwd() });
+  }
   if (operation === 'url') return { ok: true, url: surface.url };
   if (operation === 'inspect') return { ok: true, ...(await runDom(contents, 'inspect', params)) };
   if (operation === 'click') {
