@@ -18,8 +18,7 @@ function suggestion(targetTool, kind, args, result, options) {
 const MISSION_SCOPED_RELATIONS = Object.freeze([
   ['candidate_status', 'inspect'],
   ['candidate_refresh', 'recover'],
-  ['mission_readiness', 'inspect'],
-  ['mission_advance', 'next']
+  ['mission_readiness', 'next']
 ]);
 
 test('candidate preflight carries Mission scope from its required invocation argument', () => {
@@ -43,6 +42,8 @@ test('candidate preflight carries Mission scope from its required invocation arg
     assert.equal(relation.requiredCoverage.guaranteed.includes('missionId'), true);
     assert.equal(relation.requiredCoverage.conditional.includes('missionId'), false);
   }
+
+  assert.equal(bindingRelation('mission_advance', 'next'), undefined);
 });
 
 test('candidate preflight suggestions do not depend on result echo for Mission scope', () => {
@@ -57,7 +58,8 @@ test('candidate preflight suggestions do not depend on result echo for Mission s
   }
 
   assert.equal(suggestion('candidate_refresh', 'recover', args, result).applicability.state, 'applicable');
-  assert.equal(suggestion('mission_advance', 'next', args, result).applicability.state, 'applicable');
+  assert.equal(suggestion('mission_readiness', 'next', args, result).applicability.state, 'not-declared');
+  assert.equal(suggestion('mission_advance', 'next', args, result), undefined);
 });
 
 test('candidate preflight errors retain Mission scope without bypassing readiness gates', () => {
@@ -75,6 +77,6 @@ test('candidate preflight errors retain Mission scope without bypassing readines
 
   assert.equal(suggestion('candidate_refresh', 'recover', args, {}, options).applicability.state, 'unknown');
   assert.equal(suggestion('candidate_refresh', 'recover', args, {}, options).applicability.reason, 'source-error');
-  assert.equal(suggestion('mission_advance', 'next', args, {}, options).applicability.state, 'unknown');
-  assert.equal(suggestion('mission_advance', 'next', args, {}, options).applicability.reason, 'source-error');
+  assert.equal(suggestion('mission_readiness', 'next', args, {}, options).applicability.state, 'not-declared');
+  assert.equal(suggestion('mission_advance', 'next', args, {}, options), undefined);
 });
