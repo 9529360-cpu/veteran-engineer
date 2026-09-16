@@ -54,6 +54,7 @@ function matchesFilter(item, filter) {
 
 function matchesCondition(value, condition) {
   if (condition.operator === 'equals') return Object.is(value, condition.value);
+  if (condition.operator === 'not-equals') return !Object.is(value, condition.value);
   if (condition.operator === 'in') return Array.isArray(condition.value) && condition.value.some((candidate) => Object.is(candidate, value));
   throw new Error(`Unknown workflow suggestion relation condition operator: ${condition.operator}`);
 }

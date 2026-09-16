@@ -4,7 +4,7 @@ export const TOOL_WORKFLOW_META_KEY = 'io.veteran-engineer/workflow';
 export const TOOL_WORKFLOW_SCHEMA = 'veteran-tool-workflow-v1';
 
 const RELATION_KINDS = new Set(['next', 'inspect', 'recover', 'refresh', 'alternate']);
-const RELATION_CONDITION_OPERATORS = new Set(['equals', 'in']);
+const RELATION_CONDITION_OPERATORS = new Set(['equals', 'in', 'not-equals']);
 const WORKFLOW_GROUPS = new Set(['project', 'mission', 'worker', 'evidence', 'validation', 'review', 'candidate', 'experience', 'runtime', 'handoff']);
 const SCOPE_KEYS = new Set(['projectId', 'missionId', 'taskId', 'candidateId', 'evidenceId', 'experienceId']);
 
@@ -67,8 +67,8 @@ export const TOOL_WORKFLOW_RELATIONS = Object.freeze({
     relation('candidate_status', 'inspect', 'Inspect immutable candidate identity when candidate or finalize work is active.'),
     relation('worker_cancel', 'recover', 'Cancel one executing or already-cancelling task selected from the fresh authoritative Mission status.'),
     relation('worker_resume', 'recover', 'Resume one interrupted task after Mission-level reconciliation has made the uncertain task state explicit.'),
-    relation('worker_retry', 'recover', 'Retry one failed, interrupted, or cancelled task with a new dispatch identity after the failure or uncertain outcome is understood.'),
-    relation('mission_resume', 'recover', 'Reconcile and resume an interrupted Mission.'),
+    relation('worker_retry', 'recover', 'Retry one failed, interrupted, or cancelled task with a new dispatch identity after the failure or uncertain outcome is understood.', condition('/mission/status', 'not-equals', 'cancelled')),
+    relation('mission_resume', 'recover', 'Reconcile and resume an interrupted Mission.', condition('/mission/status', 'not-equals', 'cancelled')),
     relation('mission_cancel', 'recover', 'Drain and cancel a Mission that should not continue.'),
     relation('handoff_export', 'alternate', 'Export resumable state when another operator or session should take over.')
   ]),
@@ -87,7 +87,7 @@ export const TOOL_WORKFLOW_RELATIONS = Object.freeze({
     relation('mission_status', 'inspect', 'Inspect full Mission/task state behind a readiness decision.'),
     relation('mission_timeline', 'inspect', 'Inspect durable history when a blocker needs causal context.'),
     relation('candidate_preflight', 'inspect', 'Check source drift explicitly during candidate or finalize work.', condition('/phase', 'in', ['candidate', 'finalize'])),
-    relation('mission_resume', 'recover', 'Reconcile an interruption before trying to advance again.')
+    relation('mission_resume', 'recover', 'Reconcile an interruption before trying to advance again.', condition('/status', 'not-equals', 'cancelled'))
   ]),
   mission_timeline: workflow('mission', ['missionId'], [
     relation('mission_status', 'inspect', 'Pair history with the current aggregate Mission state.'),

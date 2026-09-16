@@ -32,6 +32,7 @@ test('flagship output contracts expose fields needed to chain the engineering wo
   const plan = toolOutputJsonSchema('mission_plan');
   assert.deepEqual(plan.required, ['mission', 'tasks']);
   assert.ok(plan.properties.mission.properties.id);
+  assert.deepEqual(plan.properties.mission.required, ['id', 'status']);
   assert.ok(plan.properties.tasks.items.properties.id);
 
   const execute = toolOutputJsonSchema('mission_execute');
@@ -46,9 +47,10 @@ test('flagship output contracts expose fields needed to chain the engineering wo
   const status = toolOutputJsonSchema('mission_status');
   assert.ok(status.properties.candidates);
   assert.ok(status.properties.mergeProposals);
+  assert.deepEqual(status.properties.mission.required, ['id', 'status']);
 
   const readiness = toolOutputJsonSchema('mission_readiness');
-  assert.deepEqual(readiness.required, ['missionId', 'ready', 'phase']);
+  assert.deepEqual(readiness.required, ['missionId', 'ready', 'phase', 'status']);
   assert.ok(readiness.properties.blockers);
 
   const candidate = toolOutputJsonSchema('candidate_status');
@@ -114,9 +116,14 @@ test('official SDK Zod output contracts are generated from the same canonical sc
   assert.equal(project.safeParse({ id: 'project-1', remoteUrl: null, futureField: true }).success, true);
   assert.equal(project.safeParse({ remoteUrl: null }).success, false);
 
+  const status = toolOutputZodSchema(z, 'mission_status');
+  assert.equal(status.safeParse({ mission: { id: 'mission-1', status: 'blocked' }, tasks: [] }).success, true);
+  assert.equal(status.safeParse({ mission: { id: 'mission-1' }, tasks: [] }).success, false);
+
   const readiness = toolOutputZodSchema(z, 'mission_readiness');
-  assert.equal(readiness.safeParse({ missionId: 'mission-1', ready: false, phase: 'execution', nextAction: null, blockers: [] }).success, true);
-  assert.equal(readiness.safeParse({ missionId: 'mission-1', ready: false, nextAction: null, blockers: [] }).success, false);
+  assert.equal(readiness.safeParse({ missionId: 'mission-1', ready: false, phase: 'execution', status: 'blocked', nextAction: null, blockers: [] }).success, true);
+  assert.equal(readiness.safeParse({ missionId: 'mission-1', ready: false, phase: 'execution', nextAction: null, blockers: [] }).success, false);
+  assert.equal(readiness.safeParse({ missionId: 'mission-1', ready: false, status: 'blocked', nextAction: null, blockers: [] }).success, false);
 
   const timeline = toolOutputZodSchema(z, 'mission_timeline');
   assert.equal(timeline.safeParse([{ type: 'mission_planned', missionId: 'mission-1', at: 'now', futureField: true }]).success, true);

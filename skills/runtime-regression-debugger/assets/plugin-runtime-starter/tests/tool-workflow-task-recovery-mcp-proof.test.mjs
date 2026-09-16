@@ -37,7 +37,7 @@ function recoverySuggestion(meta, targetTool) {
     ?.find((item) => item.tool === targetTool && item.kind === 'recover');
 }
 
-async function seedMissionState(statuses) {
+async function seedMissionState(statuses, { cancelMission = false } = {}) {
   const files = Object.fromEntries(Object.keys(statuses).map((taskId) => [`src/${taskId}.txt`, `${taskId}\n`]));
   const fixture = await createGitRepo({ files });
   const app = await createVeteranApp({ stateRoot: fixture.stateRoot });
@@ -79,11 +79,18 @@ async function seedMissionState(statuses) {
       }
     }, { missionId });
   }
+  if (cancelMission) {
+    await app.callTool('mission_cancel', {
+      requestId: 'workflow-recovery-mcp-cancel',
+      missionId,
+      reason: 'prove cancelled Mission recovery applicability'
+    });
+  }
   return { fixture, missionId };
 }
 
-async function callMissionStatusThroughFallback(statuses) {
-  const { fixture, missionId } = await seedMissionState(statuses);
+async function callMissionStatusThroughFallback(statuses, options = {}) {
+  const { fixture, missionId } = await seedMissionState(statuses, options);
   const child = spawn(process.execPath, [server], {
     cwd: root,
     env: { ...process.env, VETERAN_ENGINEER_STATE_DIR: fixture.stateRoot, VETERAN_MCP_FORCE_FALLBACK: '1' },
@@ -137,8 +144,8 @@ async function callMissionStatusThroughFallback(statuses) {
   }
 }
 
-async function callMissionStatusThroughSdk(statuses) {
-  const { fixture, missionId } = await seedMissionState(statuses);
+async function callMissionStatusThroughSdk(statuses, options = {}) {
+  const { fixture, missionId } = await seedMissionState(statuses, options);
   const [{ Client }, { StdioClientTransport }] = await Promise.all([
     import('@modelcontextprotocol/client'),
     import('@modelcontextprotocol/client/stdio')
@@ -186,7 +193,10 @@ function assertRecoveryCandidates(called, missionId) {
 
   const retry = recoverySuggestion(called._meta, 'worker_retry');
   assert.ok(retry);
-  assert.deepEqual(retry.applicability, { state: 'not-declared' });
+  assert.equal(retry.applicability.state, 'applicable');
+  assert.deepEqual(retry.applicability.condition, {
+    source: 'structuredContent', pointer: '/mission/status', operator: 'not-equals', value: 'cancelled'
+  });
   assert.deepEqual(retry.arguments, { missionId });
   assert.deepEqual(retry.selections[0].candidates, ['T-cancelled', 'T-failed', 'T-interrupted']);
   assert.equal(retry.selections[0].candidates.includes('T-interrupted'), true);
@@ -206,15 +216,55 @@ function assertRecoveryCandidates(called, missionId) {
 }
 
 function assertUnavailableRecoverySelections(called) {
-  for (const targetTool of ['worker_resume', 'worker_retry']) {
-    const suggestion = recoverySuggestion(called._meta, targetTool);
-    assert.ok(suggestion);
-    assert.deepEqual(suggestion.applicability, { state: 'not-declared' });
-    assert.deepEqual(suggestion.selections[0].candidates, []);
-    assert.deepEqual(suggestion.readiness.selectionRequired, ['taskId']);
-    assert.deepEqual(suggestion.readiness.selectionUnavailable, ['taskId']);
-    assert.equal(suggestion.readiness.readyAfterCallerGenerated, false);
-  }
+  const resume = recoverySuggestion(called._meta, 'worker_resume');
+  assert.ok(resume);
+  assert.deepEqual(resume.applicability, { state: 'not-declared' });
+  assert.deepEqual(resume.selections[0].candidates, []);
+  assert.deepEqual(resume.readiness.selectionRequired, ['taskId']);
+  assert.deepEqual(resume.readiness.selectionUnavailable, ['taskId']);
+  assert.equal(resume.readiness.readyAfterCallerGenerated, false);
+
+  const retry = recoverySuggestion(called._meta, 'worker_retry');
+  assert.ok(retry);
+  assert.equal(retry.applicability.state, 'applicable');
+  assert.deepEqual(retry.selections[0].candidates, []);
+  assert.deepEqual(retry.readiness.selectionRequired, ['taskId']);
+  assert.deepEqual(retry.readiness.selectionUnavailable, ['taskId']);
+  assert.equal(retry.readiness.readyAfterCallerGenerated, false);
+}
+
+function assertCancelledMissionRecovery(called, missionId) {
+  const retry = recoverySuggestion(called._meta, 'worker_retry');
+  assert.ok(retry);
+  assert.equal(retry.applicability.state, 'not-applicable');
+  assert.deepEqual(retry.applicability.condition, {
+    source: 'structuredContent', pointer: '/mission/status', operator: 'not-equals', value: 'cancelled'
+  });
+  assert.deepEqual(retry.arguments, { missionId });
+  assert.deepEqual(retry.selections[0].candidates, ['T-cancelled']);
+  assert.deepEqual(retry.readiness.callerGeneratedRequired, ['requestId']);
+  assert.deepEqual(retry.readiness.selectionRequired, ['taskId']);
+  assert.deepEqual(retry.readiness.selectionUnavailable, []);
+  assert.equal(Object.hasOwn(retry.arguments, 'taskId'), false);
+  assert.equal(Object.hasOwn(retry.arguments, 'requestId'), false);
+
+  const missionResume = recoverySuggestion(called._meta, 'mission_resume');
+  assert.ok(missionResume);
+  assert.equal(missionResume.applicability.state, 'not-applicable');
+  assert.deepEqual(missionResume.applicability.condition, {
+    source: 'structuredContent', pointer: '/mission/status', operator: 'not-equals', value: 'cancelled'
+  });
+  assert.deepEqual(missionResume.arguments, { missionId });
+  assert.deepEqual(missionResume.readiness, {
+    readyAfterCallerGenerated: true,
+    callerGeneratedRequired: ['requestId'],
+    conditionalRequired: [],
+    resultRequired: [],
+    selectionRequired: [],
+    selectionUnavailable: [],
+    inputRequired: []
+  });
+  assert.equal(Object.hasOwn(missionResume.arguments, 'requestId'), false);
 }
 
 test('fallback MCP mission_status publishes task recovery candidates without binding operator choices', async () => {
@@ -235,4 +285,14 @@ test('fallback MCP mission_status exposes unavailable recovery selections when n
 test('official SDK mission_status exposes the same unavailable recovery selections', { skip: !officialSdkAvailable }, async () => {
   const { called } = await callMissionStatusThroughSdk({ T1: 'planned', T2: 'planned' });
   assertUnavailableRecoverySelections(called);
+});
+
+test('fallback MCP gates retry and Mission resume after authoritative Mission cancellation', async () => {
+  const { called, missionId } = await callMissionStatusThroughFallback({ 'T-cancelled': 'planned' }, { cancelMission: true });
+  assertCancelledMissionRecovery(called, missionId);
+});
+
+test('official SDK gates the same recovery actions after authoritative Mission cancellation', { skip: !officialSdkAvailable }, async () => {
+  const { called, missionId } = await callMissionStatusThroughSdk({ 'T-cancelled': 'planned' }, { cancelMission: true });
+  assertCancelledMissionRecovery(called, missionId);
 });

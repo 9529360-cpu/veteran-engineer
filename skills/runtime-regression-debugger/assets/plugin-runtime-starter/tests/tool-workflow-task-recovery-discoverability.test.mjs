@@ -18,7 +18,7 @@ function suggestion(to, result) {
 }
 
 const statusResult = {
-  mission: { id: 'mission-current', projectId: 'project-1', activeCandidateId: null },
+  mission: { id: 'mission-current', projectId: 'project-1', status: 'blocked', activeCandidateId: null },
   tasks: [
     { id: 'T-interrupted', status: 'interrupted' },
     { id: 'T-failed', status: 'failed' },
@@ -87,6 +87,7 @@ test('mission_status suggestions carry current Mission identity and filter valid
   assert.equal(Object.hasOwn(resume.arguments, 'requestId'), false);
 
   const retry = suggestion('worker_retry', statusResult);
+  assert.equal(retry.applicability.state, 'applicable');
   assert.deepEqual(retry.arguments, { missionId: 'mission-current' });
   assert.deepEqual(retry.missingRequired, ['requestId', 'taskId']);
   assert.deepEqual(retry.selections[0].candidates, ['T-interrupted', 'T-failed', 'T-cancelled']);
@@ -107,6 +108,7 @@ test('mission_status suggestions carry current Mission identity and filter valid
 test('mission_status recovery suggestions remain inert and expose unavailable selection when no task is eligible', () => {
   const clean = {
     ...statusResult,
+    mission: { ...statusResult.mission, status: 'ready' },
     tasks: [
       { id: 'T-planned', status: 'planned' },
       { id: 'T-executing', status: 'executing' },
@@ -115,6 +117,7 @@ test('mission_status recovery suggestions remain inert and expose unavailable se
   };
   const resume = suggestion('worker_resume', clean);
   const retry = suggestion('worker_retry', clean);
+  assert.equal(retry.applicability.state, 'applicable');
   assert.deepEqual(resume.selections[0].candidates, []);
   assert.deepEqual(retry.selections[0].candidates, []);
   assert.deepEqual(resume.readiness.selectionRequired, ['taskId']);
