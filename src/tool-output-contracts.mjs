@@ -242,7 +242,7 @@ const TOOL_OUTPUT_CONTRACTS = Object.freeze({
     evidenceId: stringField('Evidence id created for this validation.', { minLength: null }),
     sourceCommitSha: stringField('Commit that was actually validated.', { minLength: null }),
     exitCode: nullable(integerField('Process exit code when command-backed.', -2147483648, 2147483647))
-  }),
+  }, ['evidenceId']),
   review_run: openObject('Deterministic whole-change review result.', {
     passed: booleanField('Whether deterministic review passed.'),
     head: stringField('Reviewed head commit.', { minLength: null }),
