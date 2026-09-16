@@ -1,11 +1,9 @@
-import { toolInputJsonSchema } from './tool-catalog.mjs';
+import { toolInputJsonSchema, toolRequiresRequestId } from './tool-catalog.mjs';
 import { TOOL_WORKFLOW_RELATIONS } from './tool-workflow-relations.mjs';
 import { TOOL_WORKFLOW_BINDINGS } from './tool-workflow-bindings.mjs';
 
 export const TOOL_WORKFLOW_SUGGESTIONS_META_KEY = 'io.veteran-engineer/workflow-suggestions';
 export const TOOL_WORKFLOW_SUGGESTIONS_SCHEMA = 'veteran-tool-workflow-suggestions-v1';
-
-const CALLER_GENERATED_REQUIRED = new Set(['requestId']);
 
 function decodePointerSegment(segment) {
   return segment.replace(/~1/g, '/').replace(/~0/g, '~');
@@ -91,7 +89,16 @@ function resolvedSelection(selection, result) {
   });
 }
 
+function callerGeneratedRequiredTargets(targetTool, targetSchema) {
+  if (!toolRequiresRequestId(targetTool)) return new Set();
+  if (!(targetSchema.required || []).includes('requestId')) {
+    throw new Error(`Workflow suggestion request-id authority drift for ${targetTool}`);
+  }
+  return new Set(['requestId']);
+}
+
 function invocationReadiness(targetSchema, bindingEdge, partialArguments, missingRequired, selections) {
+  const callerGeneratedTargets = callerGeneratedRequiredTargets(bindingEdge.tool, targetSchema);
   const conditionalTargets = new Set(
     (bindingEdge.bindings || [])
       .filter((binding) => binding.availability === 'conditional')
@@ -104,7 +111,7 @@ function invocationReadiness(targetSchema, bindingEdge, partialArguments, missin
   const inputRequired = [];
 
   for (const name of missingRequired) {
-    if (CALLER_GENERATED_REQUIRED.has(name)) callerGeneratedRequired.push(name);
+    if (callerGeneratedTargets.has(name)) callerGeneratedRequired.push(name);
     else if (selectionTargets.has(name)) continue;
     else if (conditionalTargets.has(name)) conditionalRequired.push(name);
     else inputRequired.push(name);
@@ -120,7 +127,7 @@ function invocationReadiness(targetSchema, bindingEdge, partialArguments, missin
   const requiredNames = new Set(targetSchema.required || []);
   for (const target of selectionRequired) {
     if (requiredNames.has(target)) continue;
-    if (CALLER_GENERATED_REQUIRED.has(target) || conditionalTargets.has(target)) {
+    if (callerGeneratedTargets.has(target) || conditionalTargets.has(target)) {
       throw new Error(`Workflow relation selection overlaps incompatible input ownership for ${bindingEdge.tool}.${target}`);
     }
   }
