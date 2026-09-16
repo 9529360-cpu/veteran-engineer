@@ -166,7 +166,7 @@ test('workflow required coverage distinguishes guaranteed, conditional, selected
     selection: ['taskId'],
     unbound: ['requestId']
   });
-  assert.deepEqual(relation('mission_execute', 'worker_retry', 'recover').unboundRequired, ['requestId', 'taskId']);
+  assert.deepEqual(edge.unboundRequired, ['requestId', 'taskId']);
 
   edge = relation('experience_commit', 'experience_review', 'next');
   assert.deepEqual(edge.requiredCoverage, {
