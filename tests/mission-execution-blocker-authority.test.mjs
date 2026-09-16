@@ -166,8 +166,8 @@ test('mission_execute rejects unresolved reconciliation before capability reserv
     assert.equal(state.missions[missionId].interruption?.requiresReconciliation, true);
     assert.equal(interrupted.status, 'interrupted');
     assert.equal(sibling.status, 'planned');
-    assert.equal(sibling.capabilityLease, null);
-    assert.equal(sibling.admission, null);
+    assert.equal(sibling.capabilityLease ?? null, null);
+    assert.equal(sibling.admission ?? null, null);
     assert.deepEqual(sibling.dispatches, []);
     assert.equal(
       state.runtime.timeline.some((event) => event.missionId === missionId && event.type === 'capability_execution_reserved'),
