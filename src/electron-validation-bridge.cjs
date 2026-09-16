@@ -2,9 +2,10 @@
 
 const fs = require('node:fs');
 const readline = require('node:readline');
-const { app, BrowserWindow, Menu, dialog, webContents } = require('electron');
+const { app, BrowserWindow, Menu, dialog, nativeImage, webContents } = require('electron');
 const { openBoundedFileDialog } = require('./electron-native-dialog.cjs');
 const { applicationMenuInventory } = require('./electron-native-menu.cjs');
+const { compareVisualSnapshot } = require('./electron-visual-regression.cjs');
 
 const CONTRACT = 'veteran-electron-bridge-v1';
 const MAX_SURFACES = 64;
@@ -354,6 +355,16 @@ async function invoke(target, operation, params = {}) {
     return { ok: true };
   }
   if (operation === 'screenshot') return captureSurface(surface);
+  if (operation === 'visualCompare') {
+    const captured = await captureSurface(surface);
+    if (!captured.ok) return captured;
+    return compareVisualSnapshot({
+      nativeImage,
+      currentPng: Buffer.from(captured.pngBase64, 'base64'),
+      request: params,
+      root: process.cwd()
+    });
+  }
   return { ok: false, code: 'ELECTRON_OPERATION_INVALID' };
 }
 
