@@ -1,3 +1,5 @@
+import { EXPERIENCE_REVIEW_ACTIONS } from './experience-lifecycle.mjs';
+
 const REQUEST_ID_TOOL_NAMES = Object.freeze([
   'project_open', 'project_snapshot', 'mission_plan', 'mission_execute', 'mission_advance',
   'mission_cancel', 'mission_resume', 'task_result_commit', 'worker_cancel', 'worker_resume',
@@ -8,7 +10,6 @@ const REQUEST_ID_TOOL_NAMES = Object.freeze([
 
 const REQUEST_ID_TOOL_SET = new Set(REQUEST_ID_TOOL_NAMES);
 const RISK_LEVELS = ['low', 'medium', 'high', 'critical'];
-const EXPERIENCE_REVIEW_ACTIONS = ['activate', 'reject', 'reactivate', 'retire'];
 const VALIDATION_PURPOSES = ['final-validation', 'runtime-feedback'];
 
 function stringField(description, { minLength = 1, enumValues = null } = {}) {
