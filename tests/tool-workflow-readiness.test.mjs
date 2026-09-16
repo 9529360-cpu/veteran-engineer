@@ -23,6 +23,7 @@ test('readiness separates fresh request ids from real operator inputs', () => {
     readyAfterCallerGenerated: true,
     callerGeneratedRequired: ['requestId'],
     conditionalRequired: [],
+    resultRequired: [],
     selectionRequired: [],
     selectionUnavailable: [],
     inputRequired: []
@@ -31,6 +32,7 @@ test('readiness separates fresh request ids from real operator inputs', () => {
   next = suggestion('project_open', 'mission_plan', 'next', {}, { id: 'project-1' });
   assert.equal(next.readiness.readyAfterCallerGenerated, false);
   assert.deepEqual(next.readiness.callerGeneratedRequired, ['requestId']);
+  assert.deepEqual(next.readiness.resultRequired, []);
   assert.deepEqual(next.readiness.inputRequired, ['goal', 'doneDefinition']);
 });
 
@@ -44,6 +46,7 @@ test('readiness exposes relation-required selections even when the target schema
   assert.deepEqual(next.readiness.callerGeneratedRequired, ['requestId']);
   assert.deepEqual(next.readiness.selectionRequired, ['capability']);
   assert.deepEqual(next.readiness.selectionUnavailable, []);
+  assert.deepEqual(next.readiness.resultRequired, []);
   assert.deepEqual(next.readiness.inputRequired, []);
   assert.equal(next.readiness.readyAfterCallerGenerated, false);
 });
@@ -52,12 +55,14 @@ test('readiness distinguishes missing conditional scope from explicit business i
   let next = suggestion('evidence_query', 'mission_status', 'inspect', {}, [{ id: 'evidence-1' }]);
   assert.deepEqual(next.missingRequired, ['missionId']);
   assert.deepEqual(next.readiness.conditionalRequired, ['missionId']);
+  assert.deepEqual(next.readiness.resultRequired, []);
   assert.deepEqual(next.readiness.inputRequired, []);
   assert.equal(next.readiness.readyAfterCallerGenerated, false);
 
   next = suggestion('evidence_query', 'mission_status', 'inspect', { missionId: 'mission-1' }, [{ id: 'evidence-1' }]);
   assert.deepEqual(next.missingRequired, []);
   assert.deepEqual(next.readiness.conditionalRequired, []);
+  assert.deepEqual(next.readiness.resultRequired, []);
   assert.equal(next.readiness.readyAfterCallerGenerated, true);
 });
 
@@ -72,7 +77,25 @@ test('readiness marks required selections unavailable when the source result has
   assert.deepEqual(next.readiness.callerGeneratedRequired, ['requestId']);
   assert.deepEqual(next.readiness.selectionRequired, ['taskId']);
   assert.deepEqual(next.readiness.selectionUnavailable, ['taskId']);
+  assert.deepEqual(next.readiness.resultRequired, []);
   assert.equal(next.readiness.readyAfterCallerGenerated, false);
+});
+
+test('error readiness does not misclassify unavailable result identity as caller input', () => {
+  const meta = toolWorkflowErrorSuggestionsMeta(
+    'project_open',
+    { requestId: 'request-open', repoPath: '/tmp/missing' },
+    'PROJECT_OPEN_FAILED'
+  );
+  const projection = meta[TOOL_WORKFLOW_SUGGESTIONS_META_KEY];
+  const plan = projection.suggestions.find((item) => item.tool === 'mission_plan' && item.kind === 'next');
+
+  assert.deepEqual(plan.missingRequired, ['requestId', 'projectId', 'goal', 'doneDefinition']);
+  assert.deepEqual(plan.readiness.callerGeneratedRequired, ['requestId']);
+  assert.deepEqual(plan.readiness.resultRequired, ['projectId']);
+  assert.deepEqual(plan.readiness.conditionalRequired, []);
+  assert.deepEqual(plan.readiness.inputRequired, ['goal', 'doneDefinition']);
+  assert.equal(plan.readiness.readyAfterCallerGenerated, false);
 });
 
 test('error suggestions retain argument-derived readiness without claiming result-derived authority', () => {
@@ -87,7 +110,10 @@ test('error suggestions retain argument-derived readiness without claiming resul
 
   assert.equal(status.readiness.readyAfterCallerGenerated, true);
   assert.deepEqual(status.readiness.callerGeneratedRequired, []);
+  assert.deepEqual(status.readiness.resultRequired, []);
   assert.equal(resume.readiness.readyAfterCallerGenerated, true);
   assert.deepEqual(resume.readiness.callerGeneratedRequired, ['requestId']);
+  assert.deepEqual(resume.readiness.resultRequired, []);
   assert.ok(projection.invocationPolicy.includes('readiness.readyAfterCallerGenerated'));
+  assert.ok(projection.invocationPolicy.includes('resultRequired'));
 });
