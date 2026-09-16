@@ -102,7 +102,7 @@ const DECLARED_IDENTITY_SOURCES = Object.freeze({
   },
   remediation_plan: { missionId: identitySource('structuredContent', '/missionId') },
   candidate_preflight: {
-    missionId: identitySource('structuredContent', '/missionId'),
+    missionId: identitySource('arguments', '/missionId'),
     candidateId: identitySource('structuredContent', '/candidateId')
   },
   candidate_refresh: {
