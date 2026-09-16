@@ -160,7 +160,10 @@ export class EvidenceService {
   async query({ projectId, missionId, taskId, type, ids, limit = 50 }) {
     const state = await this.store.read();
     let items = Object.values(state.evidence);
-    if (ids?.length) items = ids.map((id) => state.evidence[id]).filter(Boolean);
+    if (ids !== undefined) {
+      if (!Array.isArray(ids)) throw new TypeError('evidence ids must be an array when provided');
+      items = ids.map((id) => state.evidence[id]).filter(Boolean);
+    }
     if (projectId) items = items.filter((item) => item.projectId === projectId);
     if (missionId) items = items.filter((item) => item.missionId === missionId);
     if (taskId) items = items.filter((item) => item.taskId === taskId);
