@@ -66,7 +66,7 @@ export const TOOL_WORKFLOW_RELATIONS = Object.freeze({
     relation('mission_timeline', 'inspect', 'Inspect durable history when current status needs causal context.'),
     relation('candidate_status', 'inspect', 'Inspect immutable candidate identity when candidate or finalize work is active.'),
     relation('worker_resume', 'recover', 'Resume one interrupted task after Mission-level reconciliation has made the uncertain task state explicit.'),
-    relation('worker_retry', 'recover', 'Retry one failed or cancelled task with a new dispatch identity after the failure is understood.'),
+    relation('worker_retry', 'recover', 'Retry one failed, interrupted, or cancelled task with a new dispatch identity after the failure or uncertain outcome is understood.'),
     relation('mission_resume', 'recover', 'Reconcile and resume an interrupted Mission.'),
     relation('mission_cancel', 'recover', 'Drain and cancel a Mission that should not continue.'),
     relation('handoff_export', 'alternate', 'Export resumable state when another operator or session should take over.')
@@ -111,22 +111,17 @@ export const TOOL_WORKFLOW_RELATIONS = Object.freeze({
     relation('mission_cancel', 'recover', 'Cancel the Mission if accepted external work exposes an unsafe continuation.')
   ]),
   worker_cancel: workflow('worker', ['missionId', 'taskId'], [
-    relation('mission_status', 'inspect', 'Inspect task and Mission state after cancellation signalling.'),
-    relation('mission_timeline', 'inspect', 'Inspect cancellation and drain events.'),
-    relation('worker_resume', 'recover', 'Resume the interrupted task after conservative reconciliation.'),
-    relation('worker_retry', 'recover', 'Start a new dispatch identity when retry is safer than resume.')
+    relation('mission_status', 'inspect', 'Inspect task and Mission state after cancellation signalling before choosing any further worker action.'),
+    relation('mission_timeline', 'inspect', 'Inspect cancellation and drain events.')
   ]),
   worker_resume: workflow('worker', ['missionId', 'taskId'], [
-    relation('mission_status', 'inspect', 'Inspect reconciled task and Mission state.'),
-    relation('mission_readiness', 'next', 'Check whether Mission progress is safe after task reconciliation.'),
-    relation('worker_retry', 'recover', 'Retry with a new dispatch identity if resume cannot safely recover the task.'),
-    relation('worker_cancel', 'recover', 'Stop resumed execution if the task must not continue.')
+    relation('mission_status', 'inspect', 'Inspect reconciled task and Mission state before choosing any further worker action.'),
+    relation('mission_readiness', 'next', 'Check whether Mission progress is safe after task reconciliation.')
   ]),
   worker_retry: workflow('worker', ['missionId', 'taskId'], [
-    relation('mission_status', 'inspect', 'Inspect the retried task and Mission after redispatch.'),
+    relation('mission_status', 'inspect', 'Inspect task and Mission state after retry scheduling before choosing any further worker action.'),
     relation('mission_timeline', 'inspect', 'Inspect prior failure and retry events.'),
-    relation('mission_readiness', 'next', 'Check whether retry completion unlocks Mission progress.'),
-    relation('worker_cancel', 'recover', 'Stop the retried worker if the task must not continue.')
+    relation('mission_readiness', 'next', 'Check whether retry scheduling allows Mission execution to continue.')
   ]),
   evidence_query: workflow('evidence', ['projectId', 'missionId', 'taskId', 'evidenceId'], [
     relation('mission_status', 'inspect', 'Correlate Mission-scoped evidence with current execution/proof state.'),

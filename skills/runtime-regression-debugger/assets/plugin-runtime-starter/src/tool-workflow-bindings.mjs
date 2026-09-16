@@ -172,8 +172,8 @@ const RELATION_SELECTIONS = Object.freeze({
   ]),
   [relationKey('mission_status', 'worker_retry', 'recover')]: Object.freeze([
     selection('taskId', 'one', [
-      selectionSource('/tasks', '/id', { filter: { pointer: '/status', operator: 'in', value: ['failed', 'cancelled'] } })
-    ], 'Select one failed or cancelled task that should start a new dispatch identity rather than resume prior execution.')
+      selectionSource('/tasks', '/id', { filter: { pointer: '/status', operator: 'in', value: ['failed', 'interrupted', 'cancelled'] } })
+    ], 'Select one failed, interrupted, or cancelled task that should start a new dispatch identity rather than resume prior execution.')
   ]),
   [relationKey('evidence_query', 'experience_commit', 'next')]: Object.freeze([
     selection('evidenceIds', 'many', [

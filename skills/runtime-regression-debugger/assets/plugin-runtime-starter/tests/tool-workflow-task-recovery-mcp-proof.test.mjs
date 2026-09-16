@@ -188,8 +188,8 @@ function assertRecoveryCandidates(called, missionId) {
   assert.ok(retry);
   assert.deepEqual(retry.applicability, { state: 'not-declared' });
   assert.deepEqual(retry.arguments, { missionId });
-  assert.deepEqual(retry.selections[0].candidates, ['T-cancelled', 'T-failed']);
-  assert.equal(retry.selections[0].candidates.includes('T-interrupted'), false);
+  assert.deepEqual(retry.selections[0].candidates, ['T-cancelled', 'T-failed', 'T-interrupted']);
+  assert.equal(retry.selections[0].candidates.includes('T-interrupted'), true);
   assert.equal(retry.selections[0].candidates.includes('T-executing'), false);
   assert.equal(retry.selections[0].candidates.includes('T-planned'), false);
   assert.deepEqual(retry.readiness, {
