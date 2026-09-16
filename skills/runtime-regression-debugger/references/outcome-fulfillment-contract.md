@@ -93,11 +93,18 @@ A failed deterministic, semantic, visual, integration, or outcome-contract revie
 
 Use the finding as new product evidence:
 
-`failed requirement -> inspect owning path -> implement repair -> rerun focused proof -> rerun whole-change review -> re-check all original clauses`
+`failed requirement -> inspect owning path -> derive bounded repair task -> apply repair to current source authority -> execute -> rerun focused proof -> rerun whole-change review -> re-check every original clause`
 
-When the Veteran runtime exposes `remediation_plan`, remember that it is proposal-only: creating a remediation plan does not modify source code, reopen a finished task, or prove the missing requirement. Never report a remediation proposal as implemented work.
+When the Veteran runtime exposes `remediation_plan`, treat proposal creation and remediation application as different states:
 
-If the host also provides authorized repository mutation/execution tools, continue the repair with those tools when doing so preserves source authority and the current change can be safely edited. If the runtime/backend cannot apply the remediation to the actual in-progress source state, treat that as a real execution blocker rather than pretending the proposal completed the task.
+- `apply=false` is diagnosis/proposal only. It does not modify source, reopen execution, or satisfy the user.
+- When current repository/review evidence is sufficient to derive explicit `contract`, `owner`, `writeSet`, risk, and validation authority, call `remediation_plan` with `apply=true` and those bounded task specs. Do this without asking the user to approve ordinary reversible implementation details that the repository already answers.
+- After an applied remediation returns the Mission to `execution`, continue through `mission_execute` / `mission_advance`, validation, deterministic review, semantic review, and outcome coverage again. Do not stop merely because remediation was accepted.
+- Do not apply guessed owner/writeSet or invented findings. If source ownership cannot be recovered safely, inspect more evidence first. Stop only for a genuine product/authorization/environment blocker.
+
+A failed review plus an available safe remediation path is therefore not a handoff condition. It is another implementation iteration.
+
+If the host also provides authorized repository mutation/execution tools outside the Veteran runtime, use them only when they preserve the same current source authority and proof chain. Do not fork the repair into an unrelated checkout or a new Mission that loses the in-progress integrated state.
 
 For acceptance failures, preserve the original requested clause in the repair packet. A generic instruction such as `resolve review finding` is weaker than `implement the missing Codex-style workspace layout and prove it in the running desktop app`.
 
@@ -112,7 +119,7 @@ Minimum outcome contract:
 1. `layout`: the running desktop shell visibly adopts the requested workspace structure; validate in the real desktop runtime.
 2. `glass`: the running shell surfaces consistently use the requested liquid-glass material system, including relevant hover/active/focus/dialog states; validate in the real desktop runtime.
 
-If only theme colors, opacity, blur, or tokens changed, requirement 1 is still open and the task is not complete.
+If only theme colors, opacity, blur, or tokens changed, requirement 1 is still open and the task is not complete. If semantic review reports the layout clause missing and repository evidence identifies the shell owner/write scope, apply a source-bound remediation task for that layout gap and continue execution; do not return the finding to the user as if the requested redesign were finished.
 
 ## Completion language
 
@@ -120,4 +127,4 @@ Report the strongest level actually proven:
 
 `implemented -> focused-validated -> integration-validated -> runtime-validated -> production-verified`
 
-Do not upgrade the claim because the change looks plausible. Missing clauses, unobserved visible behavior, or fake/inactive wiring keep the task open.
+Do not upgrade the claim because the change looks plausible. Missing clauses, unobserved visible behavior, failed review without exhausted remediation, or fake/inactive wiring keep the task open.
