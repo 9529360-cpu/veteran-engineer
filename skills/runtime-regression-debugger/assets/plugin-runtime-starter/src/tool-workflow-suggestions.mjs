@@ -5,6 +5,8 @@ import { TOOL_WORKFLOW_BINDINGS } from './tool-workflow-bindings.mjs';
 export const TOOL_WORKFLOW_SUGGESTIONS_META_KEY = 'io.veteran-engineer/workflow-suggestions';
 export const TOOL_WORKFLOW_SUGGESTIONS_SCHEMA = 'veteran-tool-workflow-suggestions-v1';
 
+const CALLER_GENERATED_REQUIRED = new Set(['requestId']);
+
 function decodePointerSegment(segment) {
   return segment.replace(/~1/g, '/').replace(/~0/g, '~');
 }
@@ -89,6 +91,50 @@ function resolvedSelection(selection, result) {
   });
 }
 
+function invocationReadiness(targetSchema, bindingEdge, partialArguments, missingRequired, selections) {
+  const conditionalTargets = new Set(
+    (bindingEdge.bindings || [])
+      .filter((binding) => binding.availability === 'conditional')
+      .map((binding) => binding.target)
+  );
+  const requiredSelections = (selections || []).filter((selection) => selection.requiredForRelation === true);
+  const selectionTargets = new Set(requiredSelections.map((selection) => selection.target));
+  const callerGeneratedRequired = [];
+  const conditionalRequired = [];
+  const inputRequired = [];
+
+  for (const name of missingRequired) {
+    if (CALLER_GENERATED_REQUIRED.has(name)) callerGeneratedRequired.push(name);
+    else if (selectionTargets.has(name)) continue;
+    else if (conditionalTargets.has(name)) conditionalRequired.push(name);
+    else inputRequired.push(name);
+  }
+
+  const selectionRequired = requiredSelections
+    .filter((selection) => !Object.hasOwn(partialArguments, selection.target))
+    .map((selection) => selection.target);
+  const selectionUnavailable = requiredSelections
+    .filter((selection) => selectionRequired.includes(selection.target) && selection.candidates.length === 0)
+    .map((selection) => selection.target);
+
+  const requiredNames = new Set(targetSchema.required || []);
+  for (const target of selectionRequired) {
+    if (requiredNames.has(target)) continue;
+    if (CALLER_GENERATED_REQUIRED.has(target) || conditionalTargets.has(target)) {
+      throw new Error(`Workflow relation selection overlaps incompatible input ownership for ${bindingEdge.tool}.${target}`);
+    }
+  }
+
+  return Object.freeze({
+    readyAfterCallerGenerated: conditionalRequired.length === 0 && selectionRequired.length === 0 && inputRequired.length === 0,
+    callerGeneratedRequired: Object.freeze(callerGeneratedRequired),
+    conditionalRequired: Object.freeze(conditionalRequired),
+    selectionRequired: Object.freeze(selectionRequired),
+    selectionUnavailable: Object.freeze(selectionUnavailable),
+    inputRequired: Object.freeze(inputRequired)
+  });
+}
+
 function suggestionFor(sourceTool, index, args, result) {
   const edge = TOOL_WORKFLOW_RELATIONS[sourceTool].relations[index];
   const bindingEdge = TOOL_WORKFLOW_BINDINGS[sourceTool].relations[index];
@@ -104,6 +150,7 @@ function suggestionFor(sourceTool, index, args, result) {
   }
   const missingRequired = (targetSchema.required || []).filter((name) => !Object.hasOwn(partialArguments, name));
   const selections = (bindingEdge.selections || []).map((item) => resolvedSelection(item, result));
+  const readiness = invocationReadiness(targetSchema, bindingEdge, partialArguments, missingRequired, selections);
 
   return Object.freeze({
     tool: edge.tool,
@@ -112,7 +159,8 @@ function suggestionFor(sourceTool, index, args, result) {
     arguments: Object.freeze(partialArguments),
     missingRequired: Object.freeze(missingRequired),
     argumentsComplete: missingRequired.length === 0,
-    selections: Object.freeze(selections)
+    selections: Object.freeze(selections),
+    readiness
   });
 }
 
@@ -134,7 +182,7 @@ export function toolWorkflowSuggestions(sourceTool, args = {}, result = {}, { so
     sourceTool,
     sourceOutcome: outcome.sourceOutcome,
     ...(outcome.sourceErrorCode ? { sourceErrorCode: outcome.sourceErrorCode } : {}),
-    invocationPolicy: 'Suggestions are partial call arguments only. Apply the relation condition before use, supply every missing required input, explicitly choose any declared selection, create a fresh requestId for mutating calls, and never treat a suggestion as authorization to invoke a tool. Error outcomes have no authoritative structured result, so result-derived bindings or selections may be absent.',
+    invocationPolicy: 'Suggestions are partial call arguments only. Apply the relation condition before use, supply every missing required input, explicitly choose any declared selection, create a fresh requestId for mutating calls, and never treat a suggestion as authorization to invoke a tool. readiness.readyAfterCallerGenerated means all non-caller-generated relation inputs are currently resolved; callerGeneratedRequired values still must be freshly created. Error outcomes have no authoritative structured result, so result-derived bindings or selections may be absent.',
     suggestions: Object.freeze(workflow.relations.map((_edge, index) => suggestionFor(sourceTool, index, args || {}, result)))
   });
 }
