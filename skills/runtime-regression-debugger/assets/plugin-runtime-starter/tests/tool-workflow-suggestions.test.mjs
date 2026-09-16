@@ -136,7 +136,8 @@ test('workflow suggestions expose filtered selection candidates without auto-bin
     { id: 'exp-1', status: 'candidate' },
     { id: 'exp-2', status: 'retired' }
   ]);
-  assert.deepEqual(next.selections[0].candidates, ['exp-1', 'exp-2']);
+  assert.deepEqual(next.selections[0].candidates, ['exp-1']);
+  assert.equal(next.selections[0].candidates.includes('exp-2'), false);
 
   next = suggestion('experience_compact', 'experience_review', 'next', { projectId: 'project-1' }, {
     removed: ['exp-old'], kept: ['exp-keep-1', 'exp-keep-2']
