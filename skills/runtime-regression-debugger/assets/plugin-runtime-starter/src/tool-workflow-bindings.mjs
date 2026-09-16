@@ -165,6 +165,11 @@ const RELATION_SELECTIONS = Object.freeze({
       selectionSource('/pending', '/taskId', { filter: { pointer: '/status', operator: 'in', value: ['executing', 'cancelling'] } })
     ], 'Select one currently executing or cancelling task; other pending states are not valid worker_cancel targets.')
   ]),
+  [relationKey('mission_status', 'task_result_commit', 'next')]: Object.freeze([
+    selection('taskId', 'one', [
+      selectionSource('/tasks', '/id', { filter: { pointer: '/status', operator: 'equals', value: 'dispatched' } })
+    ], 'Select one dispatched external task only after its external producer has finished writing the runtime-owned task worktree.')
+  ]),
   [relationKey('mission_status', 'worker_cancel', 'recover')]: Object.freeze([
     selection('taskId', 'one', [
       selectionSource('/tasks', '/id', { filter: { pointer: '/status', operator: 'in', value: ['executing', 'cancelling'] } })
