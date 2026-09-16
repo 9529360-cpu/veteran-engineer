@@ -1,0 +1,36 @@
+name: Temporary Workflow Recovery Relations
+
+on:
+  push:
+    branches:
+      - feat/workflow-task-recovery-discoverability
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    if: github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[workflow-recovery-relations-applied]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@v7
+        with:
+          ref: feat/workflow-task-recovery-discoverability
+          fetch-depth: 0
+
+      - name: Apply exact relation patch
+        run: |
+          git apply .tmp/workflow-recovery-relations.patch
+          cp src/tool-workflow-relations.mjs skills/runtime-regression-debugger/assets/plugin-runtime-starter/src/tool-workflow-relations.mjs
+          node --check src/tool-workflow-relations.mjs
+          cmp -s src/tool-workflow-relations.mjs skills/runtime-regression-debugger/assets/plugin-runtime-starter/src/tool-workflow-relations.mjs
+
+      - name: Commit materialized relation
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/tool-workflow-relations.mjs skills/runtime-regression-debugger/assets/plugin-runtime-starter/src/tool-workflow-relations.mjs
+          git commit -m 'chore: materialize workflow recovery relation [workflow-recovery-relations-applied]'
+          git push origin HEAD:refs/heads/feat/workflow-task-recovery-discoverability
