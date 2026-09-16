@@ -14,7 +14,7 @@
     "test:installer": "node --test tests/installer.test.mjs",
     "test:cli": "node --test tests/cli.test.mjs",
     "test:container-smoke": "node scripts/container-smoke.mjs",
-    "test:postgres": "node --test tests/postgres-state-backend.integration.mjs",
+    "test:postgres": "node --test tests/postgres-state-backend.integration.mjs tests/postgres-mission-crash-recovery.integration.mjs",
     "test:electron": "node --test --test-concurrency=1 tests/electron-validation.integration.mjs tests/electron-window-state.integration.mjs tests/electron-menu-assertion.integration.mjs tests/electron-file-dialog.integration.mjs tests/electron-visual-regression.integration.mjs",
     "check": "node scripts/check.mjs && npm test",
     "mcp:handshake": "node scripts/mcp-handshake.mjs",
