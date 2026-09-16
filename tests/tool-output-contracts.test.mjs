@@ -48,7 +48,7 @@ test('flagship output contracts expose fields needed to chain the engineering wo
   assert.ok(status.properties.mergeProposals);
 
   const readiness = toolOutputJsonSchema('mission_readiness');
-  assert.deepEqual(readiness.required, ['missionId', 'ready']);
+  assert.deepEqual(readiness.required, ['missionId', 'ready', 'phase']);
   assert.ok(readiness.properties.blockers);
 
   const candidate = toolOutputJsonSchema('candidate_status');
@@ -115,7 +115,8 @@ test('official SDK Zod output contracts are generated from the same canonical sc
   assert.equal(project.safeParse({ remoteUrl: null }).success, false);
 
   const readiness = toolOutputZodSchema(z, 'mission_readiness');
-  assert.equal(readiness.safeParse({ missionId: 'mission-1', ready: false, nextAction: null, blockers: [] }).success, true);
+  assert.equal(readiness.safeParse({ missionId: 'mission-1', ready: false, phase: 'execution', nextAction: null, blockers: [] }).success, true);
+  assert.equal(readiness.safeParse({ missionId: 'mission-1', ready: false, nextAction: null, blockers: [] }).success, false);
 
   const timeline = toolOutputZodSchema(z, 'mission_timeline');
   assert.equal(timeline.safeParse([{ type: 'mission_planned', missionId: 'mission-1', at: 'now', futureField: true }]).success, true);
