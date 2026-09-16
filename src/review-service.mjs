@@ -1,5 +1,9 @@
+import { RISK_LEVELS } from './constants.mjs';
+import { normalizeTaskCapabilityContract } from './capability-plane.mjs';
+import { assessTaskRisk, compileMissionExecutionStrategy } from './adaptive-mission-strategy.mjs';
+import { computeWaves } from './mission-service.mjs';
 import { allowlistedProcessEnvironment, runProcess, git } from './git.mjs';
-import { nowIso, randomId, redactKnownSecrets } from './util.mjs';
+import { normalizePathList, nowIso, randomId, redactKnownSecrets } from './util.mjs';
 import { evaluateRequirementReview } from './outcome-contract.mjs';
 
 function semanticAcceptanceCriteria(mission, tasks) {
@@ -20,6 +24,53 @@ function semanticAcceptanceCriteria(mission, tasks) {
       acceptance: task.contract
     }))
   ];
+}
+
+function normalizeRemediationTask(raw, index) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw Object.assign(new Error(`tasks[${index}] must be an object`), { code: 'REMEDIATION_TASK_INVALID' });
+  const id = String(raw.id || `R${index + 1}`).trim();
+  const contract = String(raw.contract || '').trim();
+  const owner = String(raw.owner || '').trim();
+  if (!id || !contract || !owner) throw Object.assign(new Error(`Remediation task ${id || index + 1} requires id, contract, and owner`), { code: 'REMEDIATION_TASK_INVALID' });
+  const dependencies = [...new Set((raw.dependencies || []).map(String))];
+  const writeSet = normalizePathList(raw.writeSet || []);
+  const capabilityContract = normalizeTaskCapabilityContract(raw, id);
+  const validationCapability = raw.validationCapability || null;
+  const riskAssessment = assessTaskRisk({
+    explicitRisk: raw.risk,
+    writeSet,
+    validationCapability,
+    sensingCapabilities: capabilityContract.sensingCapabilities,
+    executionCapabilities: capabilityContract.executionCapabilities,
+    coordinationKeys: capabilityContract.coordinationKeys,
+    runtimeResources: capabilityContract.runtimeResources
+  });
+  const risk = riskAssessment.risk;
+  if (!RISK_LEVELS.includes(risk)) throw Object.assign(new Error(`Invalid remediation risk level for ${id}: ${risk}`), { code: 'REMEDIATION_TASK_RISK_INVALID' });
+  return {
+    id,
+    contract,
+    owner,
+    dependencies,
+    writeSet,
+    protectedPaths: normalizePathList(raw.protectedPaths || []),
+    risk,
+    riskAssessment,
+    validationCapability,
+    worker: raw.worker || 'default',
+    notes: raw.notes || null,
+    ...capabilityContract
+  };
+}
+
+function failedReviewHead(mission) {
+  if (mission.semanticReview?.status === 'failed' && mission.semanticReview.commitSha) {
+    return { kind: 'semantic-review', head: mission.semanticReview.commitSha };
+  }
+  if (mission.review?.status === 'failed' && mission.review.commitSha) {
+    return { kind: 'deterministic-review', head: mission.review.commitSha };
+  }
+  return null;
 }
 
 export class ReviewService {
@@ -176,28 +227,168 @@ export class ReviewService {
     return { passed, head, findings, requirementResults: requirementReview.results, evidenceId: evidence.id };
   }
 
-  async remediationPlan({ missionId, findings = null, maxTasks = 8 }) {
-    const { mission } = await this.missionService.status({ missionId });
+  async remediationPlan({ missionId, findings = null, maxTasks = 8, apply = false, tasks = null }) {
+    const snapshot = await this.missionService.status({ missionId });
+    const { mission, tasks: existingTasks } = snapshot;
     const source = findings || [...(mission.review.findings || []), ...(mission.semanticReview.findings || [])];
-    const bounded = source.filter((item) => ['medium', 'high', 'critical'].includes(item.severity || 'high')).slice(0, Math.max(1, Math.min(maxTasks, 8)));
-    const plan = {
-      id: randomId('remediation'),
-      createdAt: nowIso(),
+    const boundedLimit = Math.max(1, Math.min(maxTasks, 8));
+    const bounded = source.filter((item) => ['medium', 'high', 'critical'].includes(item.severity || 'high')).slice(0, boundedLimit);
+    const planId = randomId('remediation');
+
+    if (!apply) {
+      const plan = {
+        id: planId,
+        missionId,
+        createdAt: nowIso(),
+        applied: false,
+        findings: bounded,
+        tasks: bounded.map((finding, index) => ({
+          id: `R${index + 1}`,
+          contract: finding.requirement
+            ? `Implement missing requirement: ${finding.requirement}`
+            : `Resolve ${finding.code || 'review finding'} without expanding mission scope`,
+          sourceFinding: finding,
+          status: 'proposed'
+        }))
+      };
+      await this.store.transaction('remediation_plan_created', (state) => {
+        const target = state.missions[missionId];
+        target.remediationPlans ||= [];
+        target.remediationPlans.push(plan);
+        target.updatedAt = nowIso();
+        state.runtime.timeline.push({ type: 'remediation_plan_created', missionId, remediationPlanId: plan.id, at: nowIso() });
+      }, { missionId, remediationPlanId: plan.id, taskCount: plan.tasks.length });
+      return plan;
+    }
+
+    if (!Array.isArray(tasks) || tasks.length === 0) {
+      throw Object.assign(new Error('Applying remediation requires explicit executable task specs'), { code: 'REMEDIATION_TASKS_REQUIRED' });
+    }
+    if (tasks.length > boundedLimit) {
+      throw Object.assign(new Error(`Remediation task count exceeds maxTasks=${boundedLimit}`), { code: 'REMEDIATION_TASK_LIMIT_EXCEEDED' });
+    }
+    if (!['review', 'semantic-review'].includes(mission.phase)) {
+      throw Object.assign(new Error(`Remediation can only re-enter execution from review phases, not ${mission.phase}`), { code: 'REMEDIATION_PHASE_INVALID' });
+    }
+    if (mission.status === 'cancelled') throw Object.assign(new Error('Cancelled missions cannot apply remediation'), { code: 'MISSION_CANCELLED' });
+    if (mission.activeCandidateId || mission.activeMergeProposalId) {
+      throw Object.assign(new Error('Remediation cannot mutate a Mission with an active immutable candidate or merge proposal'), { code: 'REMEDIATION_CANDIDATE_ACTIVE' });
+    }
+    const incomplete = existingTasks.filter((task) => task.status !== 'done');
+    if (incomplete.length) {
+      throw Object.assign(new Error('Remediation re-entry requires all existing Mission tasks to be integrated'), { code: 'REMEDIATION_EXISTING_TASKS_INCOMPLETE', details: incomplete.map((task) => task.id) });
+    }
+    const proof = failedReviewHead(mission);
+    if (!proof) throw Object.assign(new Error('Remediation apply requires a failed source-bound review'), { code: 'REMEDIATION_FAILED_REVIEW_REQUIRED' });
+
+    const normalized = tasks.map(normalizeRemediationTask);
+    const existingIds = new Set(existingTasks.map((task) => task.id));
+    const newIds = new Set();
+    for (const task of normalized) {
+      if (existingIds.has(task.id) || newIds.has(task.id)) {
+        throw Object.assign(new Error(`Duplicate remediation task id: ${task.id}`), { code: 'REMEDIATION_TASK_ID_CONFLICT', details: { taskId: task.id } });
+      }
+      newIds.add(task.id);
+    }
+    for (const task of normalized) {
+      const externalDependencies = task.dependencies.filter((id) => !newIds.has(id));
+      if (externalDependencies.length) {
+        throw Object.assign(new Error(`Remediation task ${task.id} has dependencies outside the remediation set: ${externalDependencies.join(', ')}`), {
+          code: 'REMEDIATION_DEPENDENCY_INVALID',
+          details: { taskId: task.id, dependencies: externalDependencies }
+        });
+      }
+    }
+    const remediationWaves = computeWaves(normalized);
+    const project = await this.projectService.get(mission.projectId);
+    const missionWt = await this.worktreeManager.ensureMissionWorktree(project, mission);
+    const sourceHead = (await git(missionWt.path, ['rev-parse', 'HEAD'])).stdout.trim();
+    if (sourceHead !== proof.head) {
+      throw Object.assign(new Error(`Remediation review proof is stale: reviewed ${proof.head}, current Mission head is ${sourceHead}`), {
+        code: 'REMEDIATION_SOURCE_STALE',
+        details: { reviewedHead: proof.head, currentHead: sourceHead, reviewKind: proof.kind }
+      });
+    }
+
+    const combinedWaves = [...mission.waves, ...remediationWaves];
+    const combinedTasks = [...existingTasks, ...normalized];
+    const executionStrategy = compileMissionExecutionStrategy({
+      tasks: combinedTasks,
+      waves: combinedWaves,
+      project,
+      riskEnvelope: mission.riskEnvelope,
+      riskEnvelopeSource: mission.executionStrategy?.riskEnvelopeSource === 'explicit' ? 'explicit' : 'default',
+      continuity: mission.projectContinuity
+    });
+    const createdAt = nowIso();
+    const taskRecords = normalized.map((task) => ({
+      ...task,
+      key: `${missionId}:${task.id}`,
+      missionId,
+      projectId: mission.projectId,
+      status: 'planned',
+      attempts: 0,
+      dispatches: [],
+      commitSha: null,
+      integrationSha: null,
+      capabilityLease: null,
+      evidenceIds: [],
+      createdAt,
+      updatedAt: createdAt
+    }));
+    const appliedPlan = {
+      id: planId,
+      missionId,
+      createdAt,
+      applied: true,
+      sourceHead,
+      reviewKind: proof.kind,
       findings: bounded,
-      tasks: bounded.map((finding, index) => ({
-        id: `R${index + 1}`,
-        contract: `Resolve ${finding.code || 'review finding'} without expanding mission scope`,
-        sourceFinding: finding,
-        status: 'proposed'
-      }))
+      taskIds: normalized.map((task) => task.id),
+      tasks: normalized.map((task) => ({ ...task, status: 'planned' }))
     };
-    await this.store.transaction('remediation_plan_created', (state) => {
+
+    return this.store.transaction('remediation_plan_applied', (state) => {
       const target = state.missions[missionId];
+      if (!target) throw Object.assign(new Error(`Unknown mission: ${missionId}`), { code: 'MISSION_NOT_FOUND' });
+      if (target.status === 'cancelled') throw Object.assign(new Error('Cancelled missions cannot apply remediation'), { code: 'MISSION_CANCELLED' });
+      if (!['review', 'semantic-review'].includes(target.phase)) throw Object.assign(new Error(`Mission phase changed before remediation apply: ${target.phase}`), { code: 'REMEDIATION_PHASE_STALE' });
+      if (target.activeCandidateId || target.activeMergeProposalId) throw Object.assign(new Error('Candidate/finalize state appeared before remediation apply'), { code: 'REMEDIATION_CANDIDATE_ACTIVE' });
+      const liveExisting = Object.values(state.tasks).filter((task) => task.missionId === missionId);
+      if (liveExisting.some((task) => task.status !== 'done')) throw Object.assign(new Error('Mission task state changed before remediation apply'), { code: 'REMEDIATION_TASK_STATE_STALE' });
+      const liveProof = failedReviewHead(target);
+      if (!liveProof || liveProof.head !== proof.head || liveProof.kind !== proof.kind) throw Object.assign(new Error('Review authority changed before remediation apply'), { code: 'REMEDIATION_REVIEW_STALE' });
+      if (target.waves.length !== mission.waves.length || target.nextWaveIndex !== mission.waves.length) {
+        throw Object.assign(new Error('Mission wave state changed before remediation apply'), { code: 'REMEDIATION_WAVE_STATE_STALE' });
+      }
+      for (const task of taskRecords) {
+        if (state.tasks[task.key]) throw Object.assign(new Error(`Remediation task already exists: ${task.id}`), { code: 'REMEDIATION_TASK_ID_CONFLICT' });
+        state.tasks[task.key] = task;
+      }
+      const firstRemediationWave = target.waves.length;
+      target.waves.push(...remediationWaves);
+      target.nextWaveIndex = firstRemediationWave;
+      target.phase = 'execution';
+      target.status = 'ready';
+      target.executionStrategy = executionStrategy;
+      target.currentSourceIdentity = { ...target.currentSourceIdentity, head: sourceHead, dirty: false, dirtyPaths: [] };
+      target.validation = { status: 'pending', evidenceIds: [] };
+      target.review = { status: 'pending', evidenceIds: [], findings: [] };
+      target.semanticReview = { status: 'pending', evidenceIds: [], findings: [] };
       target.remediationPlans ||= [];
-      target.remediationPlans.push(plan);
-      target.updatedAt = nowIso();
-      state.runtime.timeline.push({ type: 'remediation_plan_created', missionId, remediationPlanId: plan.id, at: nowIso() });
-    }, { missionId, remediationPlanId: plan.id, taskCount: plan.tasks.length });
-    return plan;
+      target.remediationPlans.push(appliedPlan);
+      target.updatedAt = createdAt;
+      state.runtime.timeline.push({
+        type: 'remediation_plan_applied',
+        missionId,
+        remediationPlanId: appliedPlan.id,
+        sourceHead,
+        reviewKind: proof.kind,
+        taskIds: appliedPlan.taskIds,
+        firstRemediationWave,
+        at: createdAt
+      });
+      return appliedPlan;
+    }, { missionId, remediationPlanId: appliedPlan.id, sourceHead, taskIds: appliedPlan.taskIds });
   }
 }
