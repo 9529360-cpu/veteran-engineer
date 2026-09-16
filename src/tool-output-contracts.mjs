@@ -173,7 +173,8 @@ const TOOL_OUTPUT_CONTRACTS = Object.freeze({
     mission: OUTPUT_MISSION,
     tasks: { type: 'array', items: OUTPUT_TASK, description: 'Mission tasks.' },
     candidates: { type: 'array', items: OUTPUT_CANDIDATE, description: 'Immutable Mission candidates.' },
-    mergeProposals: { type: 'array', items: openObject('Operator merge proposal.'), description: 'Durable merge proposals.' }
+    mergeProposals: { type: 'array', items: openObject('Operator merge proposal.'), description: 'Durable merge proposals.' },
+    projectDeliveryReadiness: anyField('End-to-end product-delivery lifecycle readiness projection; capability availability alone never makes a level ready.')
   }, ['mission', 'tasks']),
   mission_advance: openObject('Result of one authoritative Mission state-machine transition.', {
     action: stringField('Transition action taken.', { minLength: null }),
@@ -190,7 +191,8 @@ const TOOL_OUTPUT_CONTRACTS = Object.freeze({
     blockers: { type: 'array', items: openObject('Readiness blocker.'), description: 'Explicit blockers preventing the next transition.' },
     nextAction: nullable(stringField('Next safe action when known.', { minLength: null })),
     operatorActionRequired: booleanField('Whether progress requires operator action.'),
-    capabilitySnapshot: anyField('Current worker/capability admission snapshot.')
+    capabilitySnapshot: anyField('Current worker/capability admission snapshot.'),
+    projectDeliveryReadiness: anyField('End-to-end product-delivery lifecycle readiness projection with explicit provider gaps.')
   }, ['missionId', 'ready']),
   mission_timeline: outputArray('Durable Mission timeline events.', openObject('Mission timeline event.', {
     type: stringField('Event type.', { minLength: null }),

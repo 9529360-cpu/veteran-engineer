@@ -26,6 +26,7 @@ import { beginRequest, completeRequest, failRequest, markRequestUnknown, replayO
 import { MCP_TRANSPORT_MODES } from './mcp-protocol-capability.mjs';
 import { randomId, sha256, stableStringify } from './util.mjs';
 import { resolveSurfaceProfile } from './surface-capabilities.mjs';
+import { projectDeliveryReadiness } from './product-delivery-blueprint.mjs';
 
 const MUTATING_TOOLS = new Set([
   'project_open', 'project_snapshot', 'mission_plan', 'mission_execute', 'mission_advance',
@@ -172,11 +173,35 @@ export async function createVeteranApp({
   }
 
   async function missionReadiness(args) {
-    const [readiness, capabilitySnapshot] = await Promise.all([
+    const [readiness, capabilitySnapshot, status] = await Promise.all([
       missionService.readiness(args),
-      workerOrchestrator.snapshot(args)
+      workerOrchestrator.snapshot(args),
+      missionService.status(args)
     ]);
-    return { ...readiness, capabilitySnapshot };
+    return {
+      ...readiness,
+      capabilitySnapshot,
+      projectDeliveryReadiness: projectDeliveryReadiness({
+        mission: status.mission,
+        tasks: status.tasks,
+        candidates: status.candidates,
+        missionBlockers: readiness.blockers
+      })
+    };
+  }
+
+  async function missionStatus(args) {
+    const status = await missionService.status(args);
+    const readiness = await missionService.readiness(args);
+    return {
+      ...status,
+      projectDeliveryReadiness: projectDeliveryReadiness({
+        mission: status.mission,
+        tasks: status.tasks,
+        candidates: status.candidates,
+        missionBlockers: readiness.blockers
+      })
+    };
   }
 
   async function cleanupRuntime(args = {}) {
@@ -208,7 +233,7 @@ export async function createVeteranApp({
     project_snapshot: (a) => projectService.snapshot(a),
     mission_plan: (a) => missionService.plan(a),
     mission_execute: (a) => executeMission(a),
-    mission_status: (a) => missionService.status(a),
+    mission_status: (a) => missionStatus(a),
     mission_advance: (a) => missionAdvanceService.advance(a),
     mission_readiness: (a) => missionReadiness(a),
     mission_timeline: (a) => missionService.timeline(a),

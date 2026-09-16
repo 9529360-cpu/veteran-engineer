@@ -11,6 +11,7 @@ import { toolWorkflowMeta } from './tool-workflow-relations.mjs';
 import { toolWorkflowBindingsMeta } from './tool-workflow-bindings.mjs';
 import { assertCurrentWorkflowBindingTypeSafety } from './tool-workflow-binding-type-safety.mjs';
 import { toolWorkflowSuggestionsMeta, toolWorkflowErrorSuggestionsMeta } from './tool-workflow-suggestions.mjs';
+import { toolProductDeliveryMeta } from './product-delivery-blueprint.mjs';
 import { inspectMcpSdkIntegrity, assertMcpSdkIntegrity } from './mcp-sdk-integrity.mjs';
 
 const runtimeRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -33,7 +34,7 @@ function errorPayload(error) {
 }
 
 function toolMeta(name) {
-  return { ...toolWorkflowMeta(name), ...toolWorkflowBindingsMeta(name) };
+  return { ...toolWorkflowMeta(name), ...toolWorkflowBindingsMeta(name), ...toolProductDeliveryMeta(name) };
 }
 
 function toolErrorResult(name, args, error) {

@@ -8,6 +8,16 @@ The GitHub repository `9529360-cpu/veteran-engineer` is the implementation sourc
 
 Current development version is `0.4.0`. State schema remains `3`. The public MCP surface remains exactly **34 tools**.
 
+## End-to-end product delivery blueprint
+
+The runtime publishes one machine-readable lifecycle authority through existing MCP tool metadata instead of adding a 35th tool or a parallel control plane:
+
+`Discover -> Define -> Design -> Plan -> Build -> Verify -> Secure -> Provision -> Release -> Observe -> Operate -> Learn`
+
+`project_open` and `runtime_health` publish the complete `veteran-product-delivery-blueprint-v1`; every one of the 34 public tools publishes its lifecycle mapping. The blueprint defines stage evidence, recovery, drift invalidation, and a shared evidence taxonomy spanning product discovery, UX/accessibility, analytics, governance, security supply chain, infrastructure, progressive delivery, telemetry, incidents, DR, capacity, FinOps, and customer feedback.
+
+`mission_status` and `mission_readiness` project `veteran-project-delivery-readiness-v1` from the existing Project/Mission/task/candidate authorities. It distinguishes `implementation-ready`, `release-ready`, `production-ready`, and `operationally-ready`. A configured or callable capability never makes a lifecycle stage ready by itself, and build completion never implies production or operational readiness. Missing executable providers are reported as declared gaps rather than fabricated evidence. Existing workflow selections remain explicit and are never auto-bound by this projection.
+
 Protocol support is intentionally split:
 
 - official TypeScript SDK path: modern `2026-07-28` and legacy `2025-11-25`;
