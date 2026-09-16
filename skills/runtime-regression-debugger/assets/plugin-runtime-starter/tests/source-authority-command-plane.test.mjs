@@ -113,6 +113,10 @@ test('worker dispatch and candidate preflight stay on frozen authority while che
     assert.equal((await sourceIdentity(fixture.repo)).head, featureHead);
 
     const preflight = await app.services.candidateService.preflight({ missionId: planned.mission.id });
+    assert.equal(preflight.missionId, planned.mission.id);
+    assert.equal(preflight.candidateId, null);
+    assert.equal(preflight.ready, true);
+    assert.equal(preflight.ok, true);
     assert.equal(preflight.sourceHead, authorityHead);
     assert.equal(preflight.sourceBranch, 'main');
     assert.equal(preflight.sourceAuthority.ref, 'refs/remotes/origin/main');
