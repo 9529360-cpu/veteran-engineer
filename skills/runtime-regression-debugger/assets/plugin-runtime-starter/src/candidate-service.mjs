@@ -66,8 +66,12 @@ export class CandidateService {
     }
     const missionWt = await this.worktreeManager.ensureMissionWorktree(project, mission);
     const missionHead = (await git(missionWt.path, ['rev-parse', 'HEAD'])).stdout.trim();
+    const candidateId = mission.activeCandidateId || null;
     if (live.head === mission.baseSourceIdentity.head) {
       return {
+        missionId,
+        candidateId,
+        ready: true,
         ok: true,
         sourceDrift: false,
         sourceHead: live.head,
@@ -80,8 +84,12 @@ export class CandidateService {
     }
     const merge = await git(project.repoPath, ['merge-tree', '--write-tree', live.head, missionHead], { allowFailure: true });
     const mergeTree = parseMergeTree(merge.stdout);
+    const ready = merge.code === 0 && Boolean(mergeTree);
     return {
-      ok: merge.code === 0 && Boolean(mergeTree),
+      missionId,
+      candidateId,
+      ready,
+      ok: ready,
       sourceDrift: true,
       sourceHead: live.head,
       sourceBranch: live.branch,
