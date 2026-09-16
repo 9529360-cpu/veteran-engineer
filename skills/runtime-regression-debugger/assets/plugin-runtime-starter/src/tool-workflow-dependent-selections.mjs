@@ -5,6 +5,7 @@ import { toolOutputJsonSchema } from './tool-output-contracts.mjs';
 const EXPERIENCE_REVIEW_TARGET = 'experience_review';
 const ACTION_TARGET = 'action';
 const EXPERIENCE_ID_TARGET = 'experienceId';
+const DIRECT_REVIEW_ACTION_SOURCES = new Set(['experience_commit', 'experience_challenge']);
 
 function decodePointerSegment(segment) {
   return segment.replace(/~1/g, '/').replace(/~0/g, '~');
@@ -43,6 +44,24 @@ function schemaHasPointer(schema, pointer) {
   return schemasAtPointer(schema, pointer).length > 0;
 }
 
+function schemaPathGuaranteed(schema, segments) {
+  if (Array.isArray(schema?.anyOf) && schema.anyOf.length) {
+    return schema.anyOf.every((variant) => schemaPathGuaranteed(variant, segments));
+  }
+  if (segments.length === 0) return schema?.type !== 'null' && schema?.type !== undefined;
+  if (schema?.type !== 'object') return false;
+  const [segment, ...rest] = segments;
+  if (!(schema.required || []).includes(segment)) return false;
+  const child = schema.properties?.[segment];
+  if (!child) return false;
+  return schemaPathGuaranteed(child, rest);
+}
+
+function schemaPointerGuaranteed(schema, pointer) {
+  const segments = pointerSegments(pointer);
+  return segments !== null && schemaPathGuaranteed(schema, segments);
+}
+
 function arrayItemSchemasAtPointer(schema, collectionPointer) {
   return schemasAtPointer(schema, collectionPointer)
     .filter((candidate) => candidate?.type === 'array' && candidate.items)
@@ -73,6 +92,18 @@ function group(selectionValue, status) {
     when: Object.freeze({ target: EXPERIENCE_ID_TARGET, equals: selectionValue }),
     sourceState: status,
     candidates: Object.freeze([...experienceReviewActionsForStatus(status)])
+  });
+}
+
+function directActionSelection(result) {
+  const status = typeof result?.status === 'string' ? result.status : null;
+  return Object.freeze({
+    target: ACTION_TARGET,
+    cardinality: 'one',
+    requiredForRelation: true,
+    ...(status ? { sourceState: status } : {}),
+    candidates: Object.freeze(status ? [...experienceReviewActionsForStatus(status)] : []),
+    reason: 'Explicitly select one lifecycle action published for the source experience current status. Actions are projected from the shared Experience lifecycle authority and are never auto-bound.'
   });
 }
 
@@ -114,6 +145,7 @@ function compactActionSelection(result) {
 
 export function dependentWorkflowSelections(sourceTool, edge, result) {
   if (edge.tool !== EXPERIENCE_REVIEW_TARGET || edge.kind !== 'next') return Object.freeze([]);
+  if (DIRECT_REVIEW_ACTION_SOURCES.has(sourceTool)) return Object.freeze([directActionSelection(result)]);
   if (sourceTool === 'experience_audit') return Object.freeze([auditActionSelection(result)]);
   if (sourceTool === 'experience_compact') return Object.freeze([compactActionSelection(result)]);
   return Object.freeze([]);
@@ -128,6 +160,16 @@ function assertReviewActionTarget() {
   for (const status of ['candidate', 'active', 'challenged', 'retired']) {
     for (const action of experienceReviewActionsForStatus(status)) {
       if (!enumValues.has(action)) throw new Error(`Experience lifecycle action missing from experience_review.action enum: ${action}`);
+    }
+  }
+}
+
+function assertDirectSourceContract(sourceTool) {
+  const natural = toolOutputJsonSchema(sourceTool);
+  const legacy = toolOutputJsonSchema(sourceTool, { legacyEnvelope: true });
+  for (const [kind, schema] of [['natural', natural], ['legacy', legacy]]) {
+    if (!schemaPointerGuaranteed(schema, '/status')) {
+      throw new Error(`${sourceTool} ${kind} output must guarantee /status for direct review action discovery`);
     }
   }
 }
@@ -159,5 +201,6 @@ function assertCompactSourceContract() {
 }
 
 assertReviewActionTarget();
+for (const sourceTool of DIRECT_REVIEW_ACTION_SOURCES) assertDirectSourceContract(sourceTool);
 assertAuditSourceContract();
 assertCompactSourceContract();
