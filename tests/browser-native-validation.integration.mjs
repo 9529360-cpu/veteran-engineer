@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
@@ -117,8 +118,32 @@ test('validation_run owns a real Chromium UI-to-API full-stack proof with screen
     const summary = evidenceSummary(evidence);
     assert.equal(summary.browser.passed, true);
     assert.equal(summary.failureStage, null);
-    assert.ok(evidence.attachments.some((item) => item.name === '.veteran-browser-artifacts/fullstack.png' && item.kind === 'browser-screenshot'));
+    const screenshot = evidence.attachments.find((item) => item.name === '.veteran-browser-artifacts/fullstack.png' && item.kind === 'browser-screenshot');
+    assert.ok(screenshot);
+    const png = await fs.readFile(path.join(stateRoot, screenshot.artifactPointer));
+    assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+    assert.equal(png.toString('ascii', 12, 16), 'IHDR');
+    assert.ok(png.readUInt32BE(16) > 0 && png.readUInt32BE(20) > 0);
+    assert.equal(png.length, screenshot.bytes);
+    assert.equal(createHash('sha256').update(png).digest('hex'), screenshot.artifactHash);
     assert.ok(evidence.attachments.every((item) => item.bytes > 0 && item.artifactHash));
+
+    // Export only this synthetic fixture's verified PNG, never a user's state
+    // directory or arbitrary provider output. Retain it for visual inspection.
+    if (process.env.VETERAN_TEST_EVIDENCE_DIR) {
+      const output = process.env.VETERAN_TEST_EVIDENCE_DIR;
+      assert.equal(path.isAbsolute(output), true);
+      await fs.mkdir(output, { recursive: true });
+      await fs.writeFile(path.join(output, 'fullstack.png'), png, { mode: 0o600 });
+      await fs.writeFile(path.join(output, 'proof.json'), JSON.stringify({
+        platform: process.platform, node: process.version,
+        runtimeCommit: process.env.GITHUB_SHA || null,
+        fixtureCommit: result.commitSha, evidenceId: result.evidenceId,
+        passed: result.passed, assertions: result.browser.assertions,
+        screenshot: { name: 'fullstack.png', bytes: png.length, sha256: screenshot.artifactHash,
+          width: png.readUInt32BE(16), height: png.readUInt32BE(20) }
+      }, null, 2) + '\n', { mode: 0o600 });
+    }
   } finally {
     await cleanup(root);
   }
