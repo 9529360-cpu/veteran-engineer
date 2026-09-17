@@ -46,5 +46,9 @@ jobs:
       - name: Run release bootstrap contract tests
         run: node --test tests/release-bootstrap.test.mjs
 
+      - name: Run Remote Host Windows service smoke
+        if: runner.os == 'Windows'
+        run: node --test tests/remote-host-service.windows.integration.mjs
+
       - name: Probe host discovery
         run: node bin/veteran-engineer.mjs hosts
