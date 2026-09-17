@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
 import test from 'node:test';
-import { createVeteranApp } from '../src/app.mjs';
+import { initRemoteHostConfig } from '../src/remote-host-config.mjs';
+import { startRemoteHost } from '../src/remote-host-server.mjs';
 import { NATIVE_BROWSER_SCENARIO_CONTRACT } from '../src/browser-native-provider.mjs';
 import { createGitRepo, cleanup } from './helpers.mjs';
 
@@ -65,7 +66,7 @@ http.createServer((req, res) => {
 
 function evidenceSummary(evidence) { return JSON.parse(evidence.summary); }
 
-test('validation_run owns a real Chromium UI-to-API full-stack proof with screenshot evidence', { skip: !browserPath, timeout: 120_000 }, async () => {
+test('Remote Host MCP drives real Chromium UI-to-API validation with verified screenshot evidence', { skip: !browserPath, timeout: 120_000 }, async () => {
   assert.doesNotThrow(() => new Function(serverSource));
   assert.equal(path.isAbsolute(browserPath), true);
   const port = await freePort();
@@ -83,6 +84,7 @@ test('validation_run owns a real Chromium UI-to-API full-stack proof with screen
     'server.cjs': serverSource,
     'tests/browser/smoke.json': `${JSON.stringify(scenario, null, 2)}\n`
   } });
+  let running = null, client = null;
   try {
     await fs.mkdir(stateRoot, { recursive: true });
     await fs.writeFile(path.join(stateRoot, 'operator.json'), `${JSON.stringify({
@@ -103,9 +105,23 @@ test('validation_run owns a real Chromium UI-to-API full-stack proof with screen
       }
     }, null, 2)}\n`);
 
-    const app = await createVeteranApp({ stateRoot });
-    const project = await app.services.projectService.open({ repoPath: repo });
-    const result = await app.services.validationService.run({ projectId: project.id, capability: 'native-browser-fullstack' });
+    const configPath = path.join(root, 'remote-host.json');
+    const initialized = await initRemoteHostConfig({ configPath, stateRoot, workspaces: [repo], port: 0 });
+    running = await startRemoteHost({ configPath });
+    const { Client, StreamableHTTPClientTransport } = await import('@modelcontextprotocol/client');
+    client = new Client({ name: 'veteran-remote-browser-proof', version: '1.0.0' });
+    await client.connect(new StreamableHTTPClientTransport(new URL(running.endpoint), {
+      requestInit: { headers: { Authorization: `Bearer ${initialized.pairingToken}` } }
+    }));
+    const call = async (name, args) => {
+      const response = await client.callTool({ name, arguments: args });
+      assert.notEqual(response.isError, true, JSON.stringify(response));
+      return JSON.parse(response.content[0].text);
+    };
+    const health = await call('runtime_health', {});
+    assert.equal(health.surface.id, 'secure-tunnel');
+    const project = await call('project_open', { requestId: randomUUID(), repoPath: repo });
+    const result = await call('validation_run', { requestId: randomUUID(), projectId: project.id, capability: 'native-browser-fullstack' });
     assert.equal(result.passed, true, JSON.stringify(result, null, 2));
     assert.equal(result.failureStage, null);
     assert.equal(result.browser.contract, 'veteran-browser-validation-v1');
@@ -114,7 +130,7 @@ test('validation_run owns a real Chromium UI-to-API full-stack proof with screen
     assert.equal(result.browser.providerDiagnostics?.pageErrors, 0);
     assert.equal(result.browser.providerDiagnostics?.blockedExternalRequests, 0);
 
-    const [evidence] = await app.services.evidenceService.query({ ids: [result.evidenceId] });
+    const [evidence] = await call('evidence_query', { projectId: project.id, ids: [result.evidenceId] });
     const summary = evidenceSummary(evidence);
     assert.equal(summary.browser.passed, true);
     assert.equal(summary.failureStage, null);
@@ -136,6 +152,7 @@ test('validation_run owns a real Chromium UI-to-API full-stack proof with screen
       await fs.mkdir(output, { recursive: true });
       await fs.writeFile(path.join(output, 'fullstack.png'), png, { mode: 0o600 });
       await fs.writeFile(path.join(output, 'proof.json'), JSON.stringify({
+        transport: 'authenticated-streamable-http-mcp',
         platform: process.platform, node: process.version,
         runtimeCommit: process.env.GITHUB_SHA || null,
         fixtureCommit: result.commitSha, evidenceId: result.evidenceId,
@@ -145,6 +162,8 @@ test('validation_run owns a real Chromium UI-to-API full-stack proof with screen
       }, null, 2) + '\n', { mode: 0o600 });
     }
   } finally {
+    await client?.close().catch(() => {});
+    await running?.close().catch(() => {});
     await cleanup(root);
   }
 });
