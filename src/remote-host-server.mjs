@@ -1,48 +1,16 @@
 import crypto from 'node:crypto';
 import http from 'node:http';
 import { Readable } from 'node:stream';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { createVeteranApp } from './app.mjs';
 import { RUNTIME_NAME, RUNTIME_VERSION } from './constants.mjs';
-import { MCP_TRANSPORT_MODES } from './mcp-protocol-capability.mjs';
-import { TOOL_DEFINITIONS, TOOL_NAMES, toolInputZodSchema } from './tool-catalog.mjs';
-import { toolOutputStructuredContent, toolOutputZodSchema } from './tool-output-contracts.mjs';
-import { toolAnnotations } from './tool-annotations.mjs';
-import { toolWorkflowMeta } from './tool-workflow-relations.mjs';
-import { toolWorkflowBindingsMeta } from './tool-workflow-bindings.mjs';
-import { assertCurrentWorkflowBindingTypeSafety } from './tool-workflow-binding-type-safety.mjs';
-import { toolWorkflowSuggestionsMeta, toolWorkflowErrorSuggestionsMeta } from './tool-workflow-suggestions.mjs';
-import { assertMcpSdkIntegrity, inspectMcpSdkIntegrity } from './mcp-sdk-integrity.mjs';
 import { readRemoteHostConfig, tokenDigest } from './remote-host-config.mjs';
-import { assertLocalPathAllowed } from './workspace-policy.mjs';
+import {
+  assertRemoteMcpSdkReady,
+  createRemoteMcpServerFactory,
+  createRemoteVeteranApp,
+  remoteMcpErrorPayload
+} from './remote-mcp-surface.mjs';
 
 const MAX_REMOTE_REQUEST_BYTES = 8 * 1024 * 1024;
-assertCurrentWorkflowBindingTypeSafety();
-
-function jsonSafe(value) {
-  return JSON.stringify(value, (_key, item) => typeof item === 'bigint' ? String(item) : item);
-}
-
-function errorPayload(error) {
-  return {
-    code: error?.code || 'ERROR',
-    message: error?.message || String(error),
-    details: error?.details
-  };
-}
-
-function toolMeta(name) {
-  return { ...toolWorkflowMeta(name), ...toolWorkflowBindingsMeta(name) };
-}
-
-function toolErrorResult(name, args, error) {
-  const payload = errorPayload(error);
-  return {
-    isError: true,
-    content: [{ type: 'text', text: jsonSafe(payload) }],
-    ...(TOOL_NAMES.includes(name) ? { _meta: toolWorkflowErrorSuggestionsMeta(name, args || {}, payload.code) } : {})
-  };
-}
 
 function hostnameFromHostHeader(value) {
   if (typeof value !== 'string' || !value.trim()) return null;
@@ -83,23 +51,6 @@ function authenticated(req, config) {
   const expected = Buffer.from(config.tokenSha256, 'hex');
   const actual = Buffer.from(tokenDigest(token), 'hex');
   return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
-}
-
-async function authorizeRemoteToolInput(name, args, config) {
-  if (name !== 'project_open') return args || {};
-  const next = { ...(args || {}) };
-  if (typeof next.repoPath === 'string' && next.repoPath.trim()) {
-    next.repoPath = await assertLocalPathAllowed(next.repoPath, config.allowedLocalRoots, { label: 'project repository path' });
-  }
-  if (typeof next.repoUrl === 'string' && next.repoUrl.trim()) {
-    let url = null;
-    try { url = new URL(next.repoUrl); } catch {}
-    if (url?.protocol === 'file:') {
-      const allowed = await assertLocalPathAllowed(fileURLToPath(url), config.allowedLocalRoots, { label: 'file repository URL' });
-      next.repoUrl = pathToFileURL(allowed).href;
-    }
-  }
-  return next;
 }
 
 async function readRequestBody(req) {
@@ -150,36 +101,11 @@ function writeJson(res, status, value, headers = {}) {
 }
 
 async function createRemoteMcpHandler({ config, app }) {
-  const [{ createMcpHandler, McpServer }, zod] = await Promise.all([
+  const [{ createMcpHandler }, factory] = await Promise.all([
     import('@modelcontextprotocol/server'),
-    import('zod')
+    createRemoteMcpServerFactory({ config, app })
   ]);
-  const z = zod.z || zod.default || zod;
-  return createMcpHandler(() => {
-    const server = new McpServer({ name: RUNTIME_NAME, version: RUNTIME_VERSION });
-    for (const tool of TOOL_DEFINITIONS) {
-      server.registerTool(tool.name, {
-        description: tool.description,
-        inputSchema: toolInputZodSchema(z, tool.name),
-        outputSchema: toolOutputZodSchema(z, tool.name),
-        annotations: toolAnnotations(tool.name),
-        _meta: toolMeta(tool.name)
-      }, async (args) => {
-        try {
-          const authorizedArgs = await authorizeRemoteToolInput(tool.name, args || {}, config);
-          const result = await app.callTool(tool.name, authorizedArgs);
-          return {
-            content: [{ type: 'text', text: jsonSafe(result) }],
-            structuredContent: toolOutputStructuredContent(tool.name, result),
-            _meta: toolWorkflowSuggestionsMeta(tool.name, authorizedArgs, result)
-          };
-        } catch (error) {
-          return toolErrorResult(tool.name, args || {}, error);
-        }
-      });
-    }
-    return server;
-  });
+  return createMcpHandler(factory);
 }
 
 export async function startRemoteHost({
@@ -191,15 +117,10 @@ export async function startRemoteHost({
   app: suppliedApp = null
 } = {}) {
   const config = suppliedConfig || await readRemoteHostConfig(configPath);
-  const integrity = await inspectMcpSdkIntegrity(new URL('..', import.meta.url).pathname);
-  if (integrity.status !== 'verified') assertMcpSdkIntegrity(integrity);
+  await assertRemoteMcpSdkReady();
   const resolvedBind = bind || config.bind;
   const resolvedPort = port === null || port === undefined ? config.port : Number(port);
-  const app = suppliedApp || await createVeteranApp({
-    stateRoot: stateRoot || config.stateRoot,
-    protocolMode: MCP_TRANSPORT_MODES.OFFICIAL_SDK,
-    surfaceProfile: 'secure-tunnel'
-  });
+  const app = await createRemoteVeteranApp({ config, stateRoot, app: suppliedApp });
   const handler = await createRemoteMcpHandler({ config, app });
   const server = http.createServer(async (req, res) => {
     try {
@@ -245,7 +166,7 @@ export async function startRemoteHost({
       const response = await handler.fetch(request);
       await writeFetchResponse(res, response);
     } catch (error) {
-      if (!res.headersSent) writeJson(res, error?.code === 'REMOTE_REQUEST_TOO_LARGE' ? 413 : 500, errorPayload(error));
+      if (!res.headersSent) writeJson(res, error?.code === 'REMOTE_REQUEST_TOO_LARGE' ? 413 : 500, remoteMcpErrorPayload(error));
       else res.destroy(error);
     }
   });
