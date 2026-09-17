@@ -118,9 +118,8 @@ class Runtime {
   constructor(executable, cwd, env) { this.executable = executable; this.cwd = cwd; this.env = env; this.base = null; this.child = null; this.cdp = null; this.session = null; this.diag = this.blank(); this.stderrBytes = 0; }
   blank() { return { consoleMessages: 0, consoleErrors: 0, pageErrors: 0, requestFailures: 0, httpErrors: 0, blockedExternalRequests: 0, crashes: 0 }; }
   async start() {
-    if (process.platform === 'win32') throw fail('Native Chromium pipe provider is not yet supported on Windows', 'BROWSER_NATIVE_PLATFORM_UNSUPPORTED');
     const profile = path.join(this.env.HOME || os.tmpdir(), 'chromium-profile'); await fs.mkdir(profile, { recursive: true });
-    this.child = spawn(this.executable, ['--headless=new', '--remote-debugging-pipe', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', '--disable-background-networking', '--disable-component-update', '--disable-sync', '--metrics-recording-only', '--disable-default-apps', 'about:blank'], { cwd: this.cwd, env: this.env, shell: false, detached: true, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'] });
+    this.child = spawn(this.executable, ['--headless=new', '--remote-debugging-pipe', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', '--disable-background-networking', '--disable-component-update', '--disable-sync', '--metrics-recording-only', '--disable-default-apps', 'about:blank'], { cwd: this.cwd, env: this.env, shell: false, detached: process.platform !== 'win32', windowsHide: true, stdio: ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'] });
     this.child.stderr.on('data', (c) => { this.stderrBytes += Buffer.byteLength(c); });
     this.cdp = new Cdp(this.child); await this.cdp.request('Browser.getVersion', {}, null, 15_000);
     const target = await this.cdp.request('Target.createTarget', { url: 'about:blank' });
