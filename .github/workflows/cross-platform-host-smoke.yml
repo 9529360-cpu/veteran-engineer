@@ -66,6 +66,10 @@ jobs:
           & $browser --version
           "VETERAN_TEST_BROWSER_PATH=$browser" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+      - name: Diagnose Windows Chromium startup
+        if: runner.os == 'Windows'
+        run: node .github/scripts/browser-pipe-probe.mjs
+
       - name: Run real Windows Chromium UI-to-API validation
         if: runner.os == 'Windows'
         run: node --test tests/browser-native-validation.integration.mjs
