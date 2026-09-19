@@ -8,6 +8,17 @@ A change should carry enough structured evidence to explain what was changed, wh
 
 Do not treat evidence as timeless. A passing test against an old commit, old schema, old runtime, or old deployment cannot automatically prove a newer artifact.
 
+## Contents
+
+- Build claims before collecting evidence
+- Bind evidence to identity
+- Treat evidence as scoped
+- Evidence expiration
+- Bind decisions to clauses and semantic dependencies
+- Prefer falsifying evidence
+- Keep residual unknowns visible
+- Use the deterministic gate
+
 ## Build claims before collecting evidence
 
 For every material claim state:
@@ -37,7 +48,10 @@ Prefer evidence that names the exact thing tested:
 - browser/runtime version;
 - test fixture/data snapshot;
 - environment/region/cohort;
-- deployed release identity.
+- deployed release identity;
+- external rule-set, policy-pack, scanner-signature, benchmark, or guideline revision/content identity when the verdict depends on mutable review instructions.
+
+If a review, audit, or acceptance pass fetches rules from a mutable remote branch or service, bind the verdict to the exact fetched revision or content hash. A changed rule set creates a new review identity even when the candidate source is unchanged; do not reuse an old clean verdict as if only the code can invalidate review evidence. Prefer pinned or vendored rule sets for release-critical gates when reproducibility matters.
 
 "CI passed yesterday" is weak if today's head changed. "Production looked healthy" is weak if the candidate was not yet receiving traffic.
 
@@ -64,9 +78,23 @@ Evidence can become stale when any material dependency changes:
 - traffic shape or scale;
 - feature flag/default;
 - region/topology;
-- test data or fixture semantics.
+- test data or fixture semantics;
+- external review/policy/rule-set revision.
 
-For volatile evidence, define a practical maximum age or an invalidation trigger. Exact artifact identity is usually stronger than calendar age alone.
+For volatile evidence, define a practical maximum age or an invalidation trigger. Exact artifact identity is usually stronger than calendar age alone. For reusable proof caches, a proof bundle may declare top-level `current_bindings` such as source/build/schema/runtime identities and per-evidence `freshness_bindings`. `scripts/proof_bundle_gate.py` rejects evidence when a bound identity is missing or differs from the current binding, so unchanged evidence can be reused without rerunning it merely because time passed. Bind only identities that can actually invalidate that evidence; do not make every proof depend on every project identity.
+
+Separate **semantic change freshness** from **integration-topology freshness**. If a PR base, merge ref, or integration parent moves, invalidate proof bound to that topology, then compare the intended delta against the new target before invalidating everything else. Unchanged implementation/decision evidence may remain reusable when its own bindings still match; the eventual merge candidate still needs fresh proof for the exact intended head + base/merge topology. Do not respin code or duplicate a PR merely to make evidence look fresh when the existing artifact can be safely rebased/retargeted and revalidated.
+
+## Bind decisions to clauses and semantic dependencies
+
+For long multi-owner work, evidence freshness is not only artifact-level. Record important decisions as versioned provenance nodes when a later correction could otherwise force broad rework. Keep an immutable `decision_id` for the exact version and a stable `decision_key` for the logical choice across versions. Bind each decision to the contract clauses/evidence it supports and distinguish:
+
+- semantic `depends_on` edges, which participate in invalidation;
+- observational links, which explain why a decision was inspected but do not imply semantic dependence.
+
+When repository/runtime evidence invalidates a decision, use `scripts/decision_dependency_graph.py` to calculate the reverse affected closure. Before turning that closure into blanket rework, use `scripts/decision_revalidation_plan.py` to separate stale roots from downstream revalidation. Recompute or replace the stale roots first; then revalidate semantic dependents in dependency waves. If a replacement keeps the same semantic hash, mechanically prune downstream work. A fresh preservation proof may likewise create a change-pruning barrier for a downstream decision whose semantic output is unchanged. Absent equivalence or preservation proof, continue the affected branch conservatively. Keep exact version dependencies for provenance while using the stable decision key so a future replacement of the same logical decision can still affect preserved dependents. If provenance is incomplete, fall back to owner-lineage invalidation rather than guessing a narrower set.
+
+Converge executed revalidation work with `scripts/decision_revalidation_result_gate.py`. Bind every worker result to the exact revalidation-plan hash and expected owner authority. A proof-backed unchanged semantic output is **green** and may prune downstream work whose other dirty dependencies also converged green. A changed semantic output is **red**, but red is not permission to continue: keep dependents blocked until a replacement decision with the exact observed semantic hash is committed to the authoritative decision graph. Insufficient proof is **pending**; a result bound to another plan or owner is **stale-plan**. If the replacement changes the stable dependency topology, discard the old incremental plan and compute a fresh one rather than adapting it in place. This gate checks metadata, hashes, and graph state; engineering judgment still owns whether the declared semantic output and evidence are truthful.
 
 ## Prefer falsifying evidence
 

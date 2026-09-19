@@ -1,5 +1,20 @@
 # Notification and Outbound Delivery Product Engineering
 
+
+## Contents
+
+- Keep authorities separate
+- Give the logical notification stable identity
+- Re-check eligibility at irreversible handoff
+- Treat rendering and scheduling as versioned behavior
+- Model delivery outcomes truthfully
+- Bound retry, fanout, and provider degradation
+- Receipts, callbacks, and webhooks
+- Cancellation and supersession
+- Observability and validation
+- Compatibility and cleanup
+- Boundaries
+
 Use this when a product must notify a person or external endpoint through in-app notifications, push, email, SMS, scheduled delivery, digests, or outbound webhooks.
 
 The contract is not “enqueue a message”:

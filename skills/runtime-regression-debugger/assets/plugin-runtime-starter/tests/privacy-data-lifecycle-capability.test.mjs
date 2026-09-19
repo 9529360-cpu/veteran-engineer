@@ -63,7 +63,9 @@ test('privacy/data lifecycle routes to the focused owner and preserves convergen
   const ambiguous = runRouter(['--signals', 'data,delete,export,logging,tracking,cookie', '--json']);
   assert.ok(ambiguous);
   assert.equal(ambiguous.status, 0, ambiguous.stderr || ambiguous.stdout);
-  assert.deepEqual(JSON.parse(ambiguous.stdout).unmatched_signals, ['data', 'delete', 'export', 'logging', 'tracking', 'cookie']);
+  const ambiguousPayload = JSON.parse(ambiguous.stdout);
+  assert.deepEqual(ambiguousPayload.unmatched_signals, ['data', 'delete', 'export', 'tracking', 'cookie']);
+  assert.ok(ambiguousPayload.signals.includes('observability'));
 
   const specialist = await fs.readFile(reference, 'utf8');
   assert.match(specialist, /Authorization answers whether a principal may act on an object now/);

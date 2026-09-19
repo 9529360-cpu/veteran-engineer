@@ -1,5 +1,22 @@
 # Mobile product engineering
 
+
+## Contents
+
+- Compile the mobile contract
+- Recover platform authority before editing
+- State and lifecycle
+- Navigation and deep links
+- Permissions, privacy, and device capabilities
+- Networking, offline behavior, and synchronization
+- Background execution and notifications
+- Secure local storage
+- UI, accessibility, and device adaptation
+- Native boundaries in cross-platform apps
+- Release and compatibility
+- Validation shape
+- Finish the whole slice
+
 Use this for native and cross-platform mobile work: iOS, Android, React Native, Expo, Flutter, and mixed mobile/backend product slices. Treat a mobile app as a long-lived offline-capable client with platform lifecycle, permissions, release-store, and device constraints rather than as a small web page.
 
 ## Compile the mobile contract

@@ -1,5 +1,25 @@
 # Feature flags and progressive delivery
 
+
+## Contents
+
+- Delivery contract
+- Define the flag before writing branches
+- Choose evaluation authority deliberately
+- Stable subject identity and stickiness
+- Version configuration and stale reads
+- Progressive ramping
+- Kill switch semantics
+- Flag dependencies and precedence
+- Mixed-version clients and services
+- Server/client divergence
+- Experiments versus rollout safety
+- Overrides and support controls
+- Observability
+- Verification
+- Lifecycle and deletion
+- Boundaries
+
 Use this when a feature, behavior, migration, operational control, experiment treatment, or compatibility path is exposed gradually through a flag/config control plane rather than switched globally in one atomic release.
 
 Product analytics owns whether a measured change improved outcomes. This reference owns the runtime delivery semantics: **who gets what behavior, from which authority, at what version, under what failure mode, how exposure changes safely, and how the temporary control is eventually removed.**

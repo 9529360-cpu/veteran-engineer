@@ -30,7 +30,7 @@ async function makeFixture({ orphan = false } = {}) {
   await fs.mkdir(path.join(dir, 'references'), { recursive: true });
   await fs.writeFile(path.join(dir, 'SKILL.md'), 'Read `references/root.md`.\n', 'utf8');
   await fs.writeFile(path.join(dir, 'scripts', 'engineering_context_router.py'), `
-CORE = ['references/root.md']
+CORE = []
 ROUTES = {
   'auth': ['references/security.md'],
 }

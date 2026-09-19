@@ -45,9 +45,12 @@ test('collaboration/realtime routes to its owner and retains convergence/recover
   for (const expected of [
     'references/collaboration-realtime-product-engineering.md',
     'references/distributed-systems-consistency.md',
+    'references/async-edge-job-patterns.md',
+    'references/temporal-debugging-state-transitions.md',
     'references/data-consistency-migration-patterns.md',
-    'references/frontend-product-patterns.md',
-    'references/security-multitenancy-patterns.md'
+    'references/frontend-implementation-patterns.md',
+    'references/security-multitenancy-patterns.md',
+    'references/performance-scale-patterns.md'
   ]) assert.ok(refs.includes(expected), `expected route ${expected}`);
 
   const aliases = runRouter([

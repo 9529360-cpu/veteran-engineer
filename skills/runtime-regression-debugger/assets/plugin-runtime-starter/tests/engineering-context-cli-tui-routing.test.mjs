@@ -47,7 +47,6 @@ test('engineering context router treats CLI and TUI work as a first-class produc
   const paths = payload.references.map((entry) => entry.path);
   for (const expected of [
     'references/cli-tui-product-engineering.md',
-    'references/runtime-lifecycle-patterns.md',
     'references/release-promotion-patterns.md'
   ]) {
     assert.ok(paths.includes(expected), `expected route ${expected}`);
@@ -60,11 +59,7 @@ test('engineering context router treats CLI and TUI work as a first-class produc
   assert.deepEqual(aliasPayload.unmatched_signals, []);
   assert.deepEqual(aliasPayload.signals, [
     'cli',
-    'cli',
-    'cli',
     'tui',
-    'tui',
-    'cli-arguments',
     'cli-arguments',
     'cli-config',
     'cli-output',

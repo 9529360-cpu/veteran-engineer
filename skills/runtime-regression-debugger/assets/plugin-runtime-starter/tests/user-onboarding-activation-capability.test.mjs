@@ -24,7 +24,7 @@ test('product stewardship reaches a focused first-value onboarding owner', async
 
   const stewardshipText = await fs.readFile(stewardship, 'utf8');
   assert.match(stewardshipText, /user-onboarding-activation-product-engineering\.md/);
-  assert.match(stewardshipText, /activation as an authoritative product outcome/i);
+  assert.match(stewardshipText, /setup\/activation\/time-to-value/i);
 
   const specialist = await fs.readFile(reference, 'utf8');
   assert.match(specialist, /Activation is the product outcome/);

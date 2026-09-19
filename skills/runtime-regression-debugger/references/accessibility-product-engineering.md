@@ -6,7 +6,7 @@ The contract is:
 
 `user intent -> perceivable structure/control -> operable navigation/input -> understandable state/feedback -> authorized effect -> accessible completion or recovery`
 
-For web/UI implementation also use `frontend-product-patterns.md`; for native clients use `mobile-product-engineering.md`; for desktop shell surfaces use `host-shell-platform-patterns.md`.
+For web/UI implementation also use `frontend-implementation-patterns.md`; use `frontend-product-patterns.md` only when the experience/design itself is changing; for native clients use `mobile-product-engineering.md`; for desktop shell surfaces use `host-shell-platform-patterns.md`.
 
 ## Prefer platform semantics over imitation
 

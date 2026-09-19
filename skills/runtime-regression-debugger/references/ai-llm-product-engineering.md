@@ -1,5 +1,20 @@
 # AI and LLM product engineering
 
+
+## Contents
+
+- Keep deterministic authority outside the model
+- Bind behavior to exact identity
+- Keep context small and trust-aware
+- Validate structured output semantically
+- Tool calls are proposed actions
+- Make agent actions controllable, not merely visible
+- Memory is durable product state only when explicitly owned
+- Make latency, cost, failure, and fallback product behavior
+- Evaluate behavior, not demos
+- Observe without building a secret warehouse
+- Whole-stack completion
+
 Use this when a product depends on generative models, retrieval, tool calling, structured output, agent loops, or model-based automation. Treat the model as a probabilistic dependency inside an ordinary product contract:
 
 `user intent -> bounded trusted context -> model proposal -> deterministic validation/tool policy -> product effect -> visible result or recovery -> evaluation`
@@ -45,6 +60,46 @@ Consequential actions do not become safe because the model requested them confid
 Bound loops by positive time, step, and tool-call budgets. Stop repeated or behaviorally equivalent loops instead of retrying indefinitely. A model timeout never justifies blind replay of an ambiguous non-idempotent tool effect; reconcile the existing operation first.
 
 Use `ai_product_gate.py` only for machine-checkable execution structure: exact model/config identity, unique tool ids, required confirmation for consequential tools, and positive execution limits. Do not treat that gate as proof of prompt quality, safety, privacy, fallback, or rollout completeness.
+
+
+## Make agent actions controllable, not merely visible
+
+For an agent that can change the world, use an explicit action-trust contract:
+
+`intent/subject -> proposed action + effect -> trusted authorization/approval -> execution -> completion evidence -> recovery or escape`
+
+Keep these boundaries separate:
+
+- **recommendation/draft** - the agent may propose, preview, or prepare an action without implying execution authority;
+- **authorization/approval** - trusted product policy decides whether this principal may perform this exact action on this exact subject now;
+- **execution** - the tool/runtime performs the effect under bounded identity, scope, timeout, cancellation, and retry semantics;
+- **completion** - evidence proves what actually happened; a tool-call event, optimistic UI state, or model narration is not the durable/external postcondition;
+- **recovery/escape** - cancel, undo, compensate, reconcile, detach, retry, or human takeover has explicit semantics where the effect allows it.
+
+Approval UX must describe the decision the user is making, not merely the tool name. For a consequential action, surface enough of the current proposal to understand the target/subject, action and material effect, critical parameters/scope, important irreversible or monetary consequences, and whether the action can be undone or safely retried. Re-check current trusted state before execution when the proposal can go stale between preview and approval.
+
+Tool metadata, model confidence, MCP annotations, a tool's name, or a framework `requires_approval` flag are policy inputs or hints, not authority by themselves. Authorization remains at a trusted application boundary. A tool labeled read-only still requires the same tenant/object authorization as the underlying read. A broad shell or browser tool must not silently bypass a product approval boundary that a dedicated action would have exposed.
+
+Treat **Stop**, **Cancel**, **Interrupt**, **Undo**, and **Detach** as different contracts. Never render a Stop/Cancel affordance that only closes a stream or hides progress while the executor continues an effect the user reasonably believes stopped. Propagate cancellation to the owning executor when cancellation is supported, fence stale work from committing after cancellation, and wait for a trustworthy terminal/idle boundary before showing stopped. If an irreversible/external action may already have committed, show the outcome as unknown/needs-reconciliation until authority is re-read; do not pretend cancellation rewound it.
+
+Give users an escape hatch proportional to the stakes. Reversible work should expose undo/revert where the product genuinely owns one. Long-running work should expose cancel, detach/background, or human takeover as appropriate. Irreversible actions should not advertise fake undo; instead use stronger preview/approval plus visible confirmation and repair/compensation guidance.
+
+When durable memory, hidden project context, or previous-session state materially changes the proposed action, make enough of that dependency legible that a surprising action can be understood and corrected. Do not use stale hidden context to silently broaden scope or infer authorization.
+
+Represent uncertainty through evidence and state, not decorative probability. If the agent lacks a required fact or authority, prefer `needs-input`, `blocked`, `unknown-outcome`, or a bounded draft/recommendation state over guessing a high-consequence semantic choice.
+
+
+### Keep capability, intent, and approval honest across agent surfaces
+
+Define an intentional capability map for every materially different execution surface: foreground chat, background session, delegated worker, scheduled run, webhook/job, or other autonomous entry. For each required product action, either provide a supported structured action/tool path or expose the limitation explicitly. Do not promise one product capability while silently provisioning a weaker tool/context set on another surface. Exact one-to-one parity is not required when the difference is intentional, but the delta must not produce invisible amnesia, missing actions, or different authority semantics.
+
+Prefer tools at meaningful product transitions. A giant `do_everything` action hides partial failure and approval scope; only low-level shell/browser primitives can hide the business action inside opaque commands. Use action-specific typed tools when they create a real authorization, staleness, audit, retry, or review boundary, while keeping lower-level primitives for work that genuinely belongs at that level.
+
+Use an **intent handshake** when both are true: (1) the agent inferred material scope/meaning rather than receiving it explicitly, and (2) acting on that inference could create consequential, broad, external, destructive, costly, or hard-to-review effects. At that decision point, make the target, intended outcome, material scope, and important non-goals/consequences visible and resolve the ambiguity before action. Do not turn this into confirmation theater for explicit, ordinary, reversible work the current contract already authorizes.
+
+Interactive approval does not automatically cover unattended execution. For cron/webhook/background/batch entry points where nobody can answer a prompt, use an explicit pre-authorized policy envelope, defer the action for human review, downgrade to draft/read-only work, or block visibly. Never convert `no human is present` into implicit approval. Keep the same principal/tenant/object/action boundary across interactive and unattended paths.
+
+Treat completion signals as product protocol, not absence of activity. A stream ending, model turn ending, client disconnect, or worker silence is not by itself proof that all delegated/tool effects reached their intended terminal state. Use explicit terminal/blocked/needs-input/reconciling state plus the relevant authoritative evidence.
 
 ## Memory is durable product state only when explicitly owned
 
