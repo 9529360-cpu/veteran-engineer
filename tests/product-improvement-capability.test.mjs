@@ -68,7 +68,6 @@ test('engineering context router treats product improvement as a first-class ful
   assert.deepEqual(aliasPayload.unmatched_signals, []);
   assert.deepEqual(aliasPayload.signals, [
     'product-analytics',
-    'product-analytics',
     'instrumentation',
     'funnel-analysis',
     'retention-analysis',
