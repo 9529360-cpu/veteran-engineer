@@ -31,8 +31,8 @@ function toolMeta(name) {
   return { ...toolWorkflowMeta(name), ...toolWorkflowBindingsMeta(name) };
 }
 
-const REMOTE_RUNTIME_WIDE_PROJECT_TOOLS = new Set(['runtime_cleanup']);
-const REMOTE_OPTIONAL_GLOBAL_PROJECT_TOOLS = new Set(['evidence_query', 'experience_audit', 'runtime_maintenance']);
+const REMOTE_RUNTIME_WIDE_PROJECT_TOOLS = new Set(['runtime_integrity', 'runtime_cleanup', 'runtime_maintenance']);
+const REMOTE_OPTIONAL_GLOBAL_PROJECT_TOOLS = new Set(['evidence_query', 'experience_audit']);
 
 function remoteScopeError(code, message, details = null) {
   const error = new Error(message);
@@ -87,8 +87,9 @@ async function authorizeStoredRemoteScope(name, args, config, app) {
     addProjectId(evidence.projectId);
   }
 
+  const explicitEmptyEvidenceIds = name === 'evidence_query' && Array.isArray(args?.ids) && args.ids.length === 0;
   const requiresAllProjects = REMOTE_RUNTIME_WIDE_PROJECT_TOOLS.has(name)
-    || (REMOTE_OPTIONAL_GLOBAL_PROJECT_TOOLS.has(name) && projectIds.size === 0);
+    || (REMOTE_OPTIONAL_GLOBAL_PROJECT_TOOLS.has(name) && projectIds.size === 0 && !explicitEmptyEvidenceIds);
   if (requiresAllProjects) {
     for (const projectId of Object.keys(state.projects || {})) addProjectId(projectId);
   }

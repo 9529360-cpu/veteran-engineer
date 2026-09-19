@@ -302,6 +302,20 @@ test('official MCP client can use the same Veteran tools remotely and local path
     assert.equal(broadEvidenceQuery.isError, true, JSON.stringify(broadEvidenceQuery));
     assert.match(broadEvidenceQuery.content?.[0]?.text || '', /REMOTE_WORKSPACE_NOT_ALLOWED/);
 
+    const emptyEvidenceQuery = await client.callTool({
+      name: 'evidence_query',
+      arguments: { ids: [] }
+    });
+    assert.equal(emptyEvidenceQuery.isError, undefined, JSON.stringify(emptyEvidenceQuery));
+    assert.equal(structuredArray(emptyEvidenceQuery).length, 0);
+
+    const integrityBlocked = await client.callTool({
+      name: 'runtime_integrity',
+      arguments: {}
+    });
+    assert.equal(integrityBlocked.isError, true, JSON.stringify(integrityBlocked));
+    assert.match(integrityBlocked.content?.[0]?.text || '', /REMOTE_WORKSPACE_NOT_ALLOWED/);
+
     const cleanupBlocked = await client.callTool({
       name: 'runtime_cleanup',
       arguments: { requestId: crypto.randomUUID(), apply: false }
