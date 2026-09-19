@@ -309,7 +309,14 @@ export async function createVeteranApp({
 
   async function toolContent(name, args = {}, result = null) {
     if (name !== 'evidence_query' || args?.includeImages !== true) return [];
-    return evidenceService.queryImageContent(result, { maxImages: args.maxImages });
+    const images = await evidenceService.readQueryImages(result, { maxImages: args.maxImages });
+    return images.flatMap((image) => [
+      {
+        type: 'text',
+        text: `Evidence image metadata: ${JSON.stringify({ evidenceId: image.evidenceId, attachment: image.attachment, sha256: image.sha256, bytes: image.bytes })}`
+      },
+      { type: 'image', data: image.data.toString('base64'), mimeType: image.mimeType }
+    ]);
   }
 
   return {

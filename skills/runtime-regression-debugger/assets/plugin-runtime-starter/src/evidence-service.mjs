@@ -170,19 +170,19 @@ export class EvidenceService {
     }
   }
 
-  async queryImageContent(records, { maxImages = 1 } = {}) {
+  async readQueryImages(records, { maxImages = 1 } = {}) {
     if (!Array.isArray(records)) throw new TypeError('evidence image content requires queried evidence records');
     const requested = Number(maxImages ?? 1);
     const imageLimit = Number.isInteger(requested) ? Math.max(1, Math.min(requested, MAX_QUERY_IMAGES)) : 1;
     const artifactsRoot = path.resolve(this.store.artifactsDir);
     const realArtifactsRoot = await fs.realpath(artifactsRoot);
-    const content = [];
+    const images = [];
     let imageCount = 0;
     let totalBytes = 0;
 
     for (const record of records) {
       for (const attachment of Array.isArray(record?.attachments) ? record.attachments : []) {
-        if (imageCount >= imageLimit) return content;
+        if (imageCount >= imageLimit) return images;
         if (attachment?.kind !== 'browser-screenshot') continue;
         const extension = path.extname(String(attachment.name || attachment.artifactPointer || '')).toLowerCase();
         if (extension !== REMOTE_SCREENSHOT_EXTENSION) continue;
@@ -254,14 +254,17 @@ export class EvidenceService {
         }
         totalBytes += data.length;
         imageCount += 1;
-        content.push({
-          type: 'text',
-          text: `Evidence image metadata: ${JSON.stringify({ evidenceId: record.id, attachment: String(attachment.name).slice(0, 240), sha256: actualHash, bytes: data.length })}`
+        images.push({
+          evidenceId: record.id,
+          attachment: String(attachment.name).slice(0, 240),
+          sha256: actualHash,
+          bytes: data.length,
+          mimeType: REMOTE_SCREENSHOT_MIME_TYPE,
+          data
         });
-        content.push({ type: 'image', data: data.toString('base64'), mimeType: REMOTE_SCREENSHOT_MIME_TYPE });
       }
     }
-    return content;
+    return images;
   }
 
   async query({ projectId, missionId, taskId, type, ids, limit = 50 }) {
