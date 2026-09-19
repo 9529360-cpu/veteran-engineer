@@ -47,7 +47,7 @@ That commit is merge #453 (`fix(workflow): gate execution progress on readiness`
 - Package Plugin Artifacts run `35120655016` completed successfully.
 - the latest public GitHub Release is `v0.4.0`; the repository development package is `0.5.0`.
 
-The open #454 -> #461 stack is not main authority. Each exact current stack head has successful CI, Cross-platform host smoke, Package Plugin Artifacts, and Release dry-run workflows, but those proofs are bound to the stacked base/head identities and must be refreshed if ancestry changes.
+The active non-Draft development line is now #456 -> #461. #456 was retargeted directly to current `main`, and fresh post-retarget CI, Cross-platform host smoke, Package Plugin Artifacts, Release dry-run, and Skill Engineering Tools runs all succeeded for head `6599e452122fb38017c95ca75eb80c16e649f120`. #457 -> #461 remain stacked above #456; their existing proofs stay bound to their exact base/head identities and must be refreshed if ancestry changes.
 
 ## Recent convergence line
 
@@ -59,20 +59,18 @@ The latest settled mainline authority includes the proof/readiness convergence t
 - **#453** — gate Mission execution progress on current readiness.
 - current `main` HEAD: `ccd2f296d45604a50828c296d7b8fea5063cd9fe`.
 
-An open, structurally coherent development stack currently starts from that exact main:
+The current non-Draft development line is:
 
-- **#454** — fail closed on incomplete user outcome delivery.
-- **#455** — make semantic review prove every Mission obligation.
-- **#456** — re-enter Mission execution after failed review/remediation.
+- **#456** — consolidated outcome closure: preserve multi-clause intent, require evidence-bearing semantic review for every Mission obligation, and safely re-enter the same Mission for bounded remediation. It now bases directly on current `main`.
 - **#457** — add the Veteran Remote Host control plane.
 - **#458** — supervise Veteran Remote Host on Windows.
 - **#459** — bootstrap Veteran Remote Host on a clean Windows machine.
 - **#460** — add Secure MCP Tunnel stdio transport.
 - **#461** — validate native Chromium screenshots on Windows.
 
-#454 bases directly on current main; every child base SHA equals its parent head. This means the stack is not stale by ancestry at this checkpoint, but no layer is merged merely because the stack is green.
+#454 and #455 were staging predecessors for the same outcome-closure chain. They are closed as superseded by #456; their implementation remains reachable in #456's history. #457 -> #461 keep their original parent/head chain above #456 because they represent separate product/runtime boundaries.
 
-The older `native-*` PR family (#381, #385, #388, #390, #391, #393, #395, #397-#400, #402-#404, #406) is materially stale against current main: the branches are roughly 112-179 commits behind. Treat their old CI as historical evidence only. Reuse requires a current-owner/capability-overlap review and replay onto current main rather than blind merge.
+The older `native-*` PR family (#381, #385, #388, #390, #391, #393, #395, #397-#400, #402-#404, #406) remains materially stale against current main at roughly 112-179 commits behind. All 15 are now parked as Draft with explicit replay conditions. Their code/history is retained, but old CI is historical evidence only; reuse requires a current-owner/capability-overlap review and replay onto current main rather than blind merge.
 
 ## Adaptive Mission authority
 
