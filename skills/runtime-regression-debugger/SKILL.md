@@ -1,3 +1,8 @@
+---
+name: runtime-regression-debugger
+description: "Use when substantial software work needs end-to-end product and engineering ownership: feature delivery; UI/UX or desktop/web/mobile redesign tied to a real product, repository, or implementation; unfamiliar-repository takeover; debugging/regressions; refactors or migrations; code review; performance work; incidents/releases; cross-repo/monorepo changes; or implementation spanning frontend, backend, data, auth, jobs, runtime, or infrastructure. Do not use for general software explanations, isolated syntax questions, tiny edits, or pure visual brainstorming/moodboards/screenshot critique that does not require repository/runtime engineering; prefer a design-specific skill for that when available."
+---
+
 
 # Veteran Full-Stack Engineer
 
