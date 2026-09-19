@@ -209,4 +209,4 @@ No convergence review found a reason to weaken the 34-tool compatibility surface
 
 ## Deliberate deferrals
 
-`v0.3.0` is the first durable public release; `0.4.0` is the current development line. Packaging the PostgreSQL driver into the base dependency graph remains a separate distribution/versioning decision; today it is an explicit hosted capability prerequisite. Managed database migrations beyond the current v1 schema bootstrap and automatic operator merge/push remain intentionally out of scope.
+`v0.3.0` was the first durable public release; the latest public release is `v0.4.0`, and `0.5.0` is the current development line. Packaging the PostgreSQL driver into the base dependency graph remains a separate distribution/versioning decision; today it is an explicit hosted capability prerequisite. Managed database migrations beyond the current v1 schema bootstrap and automatic operator merge/push remain intentionally out of scope.
