@@ -271,7 +271,7 @@ test('official MCP client can use the same Veteran tools remotely and local path
     const preexistingOutside = await running.app.services.projectService.open({ repoPath: outside.repo });
     const outsideSnapshot = await client.callTool({
       name: 'project_snapshot',
-      arguments: { projectId: preexistingOutside.id }
+      arguments: { requestId: crypto.randomUUID(), projectId: preexistingOutside.id }
     });
     assert.equal(outsideSnapshot.isError, true, JSON.stringify(outsideSnapshot));
     assert.match(outsideSnapshot.content?.[0]?.text || '', /REMOTE_WORKSPACE_NOT_ALLOWED/);
