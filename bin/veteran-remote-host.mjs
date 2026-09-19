@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { readRemoteHostConfig, initRemoteHostConfig, rotateRemoteHostToken, defaultRemoteHostConfigPath } from '../src/remote-host-config.mjs';
 import { startRemoteHost } from '../src/remote-host-server.mjs';
+import { startRemoteHostTunnelStdio } from '../src/remote-host-tunnel.mjs';
 import {
   controlRemoteHostService,
   defaultRemoteHostServiceRoot,
@@ -57,7 +58,7 @@ function parse(argv) {
 }
 
 function usage() {
-  return `Veteran Remote Host ${RUNTIME_VERSION}\n\nUsage:\n  veteran-remote-host init --workspace <path> [--workspace <path> ...] [options]\n  veteran-remote-host start [options]\n  veteran-remote-host status [--json] [--config <path>]\n  veteran-remote-host rotate-token [--json] [--config <path>]\n  veteran-remote-host install-service [--no-start] [--force] [service options]\n  veteran-remote-host repair-service [service options]\n  veteran-remote-host service-status [--json] [service options]\n  veteran-remote-host service-start [service options]\n  veteran-remote-host service-stop [service options]\n  veteran-remote-host service-pause [service options]\n  veteran-remote-host service-resume [service options]\n  veteran-remote-host uninstall-service [--purge-logs] [service options]\n  veteran-remote-host supervise [service options]\n\nOptions:\n  --config <path>         Remote Host config path\n  --service-root <path>   Service-owned state/log directory\n  --state-root <path>     Veteran durable state directory\n  --workspace <path>      Allowed local workspace root; repeatable\n  --bind <address>        Listen address (default 127.0.0.1)\n  --port <port>           Listen port (default 8765, 0 for ephemeral test/dev)\n  --origin <origin>       Allowed browser Origin; repeatable\n  --allowed-host <host>   Allowed HTTP Host header hostname; repeatable\n  --force                 Replace config during init or repair service registration\n  --no-start              Install/register the Windows service without starting it now\n  --purge-logs            Remove service logs during uninstall\n  --json                  Emit machine-readable output where applicable\n\nWindows service mode uses an explicit current-user Task Scheduler registration whose launcher, control state, PID state, and bounded logs live under Veteran-owned directories. The supervisor restarts the Remote Host child with bounded backoff and supports start/stop/pause/resume without moving Mission state ownership.\n\nSecurity default: loopback-only. Put TLS / an approved tunnel in front of this process instead of binding it directly to the public internet.\n`;
+  return `Veteran Remote Host ${RUNTIME_VERSION}\n\nUsage:\n  veteran-remote-host init --workspace <path> [--workspace <path> ...] [options]\n  veteran-remote-host start [options]\n  veteran-remote-host tunnel-stdio [--config <path>] [--state-root <path>]\n  veteran-remote-host status [--json] [--config <path>]\n  veteran-remote-host rotate-token [--json] [--config <path>]\n  veteran-remote-host install-service [--no-start] [--force] [service options]\n  veteran-remote-host repair-service [service options]\n  veteran-remote-host service-status [--json] [service options]\n  veteran-remote-host service-start [service options]\n  veteran-remote-host service-stop [service options]\n  veteran-remote-host service-pause [service options]\n  veteran-remote-host service-resume [service options]\n  veteran-remote-host uninstall-service [--purge-logs] [service options]\n  veteran-remote-host supervise [service options]\n\nOptions:\n  --config <path>         Remote Host config path\n  --service-root <path>   Service-owned state/log directory\n  --state-root <path>     Veteran durable state directory\n  --workspace <path>      Allowed local workspace root; repeatable\n  --bind <address>        Listen address (default 127.0.0.1)\n  --port <port>           Listen port (default 8765, 0 for ephemeral test/dev)\n  --origin <origin>       Allowed browser Origin; repeatable\n  --allowed-host <host>   Allowed HTTP Host header hostname; repeatable\n  --force                 Replace config during init or repair service registration\n  --no-start              Install/register the Windows service without starting it now\n  --purge-logs            Remove service logs during uninstall\n  --json                  Emit machine-readable output where applicable\n\nSecure MCP Tunnel mode:\n  tunnel-stdio exposes the same allowlisted Veteran MCP surface over local stdio only. It does not open a network listener and does not use the Remote Host pairing token on stdin/stdout; remote authentication and tunnel association remain the responsibility of the approved outer tunnel.\n\nWindows service mode uses an explicit current-user Task Scheduler registration whose launcher, control state, PID state, and bounded logs live under Veteran-owned directories. The supervisor restarts the Remote Host child with bounded backoff and supports start/stop/pause/resume without moving Mission state ownership.\n\nSecurity default: loopback-only for HTTP Remote Host. Prefer an approved Secure MCP Tunnel for ChatGPT Web/private-machine connectivity instead of binding the HTTP server directly to the public internet.\n`;
 }
 
 function publicConfig(config) {
@@ -179,6 +180,15 @@ async function main() {
       serviceRoot: args.serviceRoot,
       signal: controller.signal
     });
+    return;
+  }
+  if (args.command === 'tunnel-stdio') {
+    const running = await startRemoteHostTunnelStdio({
+      configPath: args.configPath,
+      ...(args.stateRoot ? { stateRoot: args.stateRoot } : {})
+    });
+    process.stderr.write(`[veteran-remote-host] device=${running.config.deviceId} transport=stdio surface=secure-tunnel\n`);
+    process.stderr.write(`[veteran-remote-host] workspaces=${running.config.allowedLocalRoots.join(',')}\n`);
     return;
   }
   if (args.command === 'start') {
