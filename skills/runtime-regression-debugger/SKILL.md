@@ -35,7 +35,7 @@ Reduce consequential work to:
 
 `actor -> intent -> validated entry -> authorized transition -> durable/external effect -> visible completion or recovery`
 
-Keep only decision-relevant requirements/non-goals, compatibility obligations, state owners/invariants, material failure postconditions, and unresolved product-sensitive choices. Maintain `user clause -> observable postcondition -> active owner -> validation evidence`.
+Keep only decision-relevant requirements/non-goals, compatibility obligations, state owners/invariants, material failure postconditions, and unresolved product-sensitive choices. Maintain `user clause -> observable postcondition -> active owner -> validation evidence`. For natural-language requests with multiple independently visible clauses, route to `references/outcome-fulfillment-contract.md`; use `scripts/outcome_contract_gate.py` when a structured closure manifest helps prevent partial relevance from being reported as completion.
 
 Advance only the **decision frontier** needed for the next safe action. Freeze settled semantics; reopen only what fresh evidence invalidates. Do not ask the user to choose repository-local mechanics current evidence can resolve.
 
