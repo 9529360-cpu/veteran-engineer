@@ -125,15 +125,31 @@ test('Windows Task Scheduler runs, restarts, and stops the real Remote Host supe
     const killed = signalProcessTree(firstChildPid, 'SIGKILL');
     assert.equal(killed.signalled, true, killed.reason || 'failed to terminate Remote Host child');
 
-    const restarted = await waitFor(async () => {
-      const status = await remoteHostServiceStatus({ serviceRoot });
-      return status.runtimeState === 'running'
-        && status.pid?.supervisorPid === firstSupervisorPid
-        && status.pid?.childPid
-        && status.pid.childPid !== firstChildPid
-        ? status
-        : null;
-    }, 'Remote Host supervisor did not restart the failed child');
+    let lastRestartStatus = null;
+    let restarted;
+    try {
+      restarted = await waitFor(async () => {
+        const status = await remoteHostServiceStatus({ serviceRoot });
+        lastRestartStatus = status;
+        return status.runtimeState === 'running'
+          && status.pid?.supervisorPid === firstSupervisorPid
+          && status.pid?.childPid
+          && status.pid.childPid !== firstChildPid
+          ? status
+          : null;
+      }, 'Remote Host supervisor did not restart the failed child');
+    } catch (error) {
+      const logTail = (await fs.readFile(running.logPath, 'utf8').catch(() => '')).slice(-4000);
+      const status = lastRestartStatus ? {
+        registration: lastRestartStatus.registration,
+        desiredState: lastRestartStatus.desiredState,
+        runtimeState: lastRestartStatus.runtimeState,
+        supervisor: lastRestartStatus.supervisor,
+        child: lastRestartStatus.child,
+        pid: lastRestartStatus.pid
+      } : null;
+      throw new Error(`${error.message}; lastStatus=${JSON.stringify(status)}; logTail=${JSON.stringify(logTail)}`, { cause: error });
+    }
     assert.equal(await waitFor(() => healthReady(port), 'Restarted Remote Host health endpoint did not become ready'), true);
 
     const log = await fs.readFile(restarted.logPath, 'utf8');
