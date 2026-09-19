@@ -39,6 +39,8 @@ Capture only what changes the engineering decision:
 
 Acceptance criteria describe observable behavior, not implementation trivia. "Return 200" or "add a hook" is insufficient when the user-visible contract extends beyond it.
 
+For natural-language requests with multiple independently visible clauses, read `outcome-fulfillment-contract.md`; use `scripts/outcome_contract_gate.py` when a structured closure manifest helps prevent partial relevance from being reported as completion.
+
 ### Preserve request semantics before simplifying implementation
 
 Compress implementation complexity, not user intent. Parse explicit conjunctions and qualifiers into separate material rows before choosing the smallest implementation.
