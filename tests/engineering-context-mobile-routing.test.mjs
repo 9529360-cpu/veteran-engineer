@@ -46,7 +46,6 @@ test('engineering context router treats mobile engineering as a first-class prod
   assert.deepEqual(payload.unmatched_signals, []);
   const paths = payload.references.map((entry) => entry.path);
   assert.ok(paths.includes('references/mobile-product-engineering.md'));
-  assert.ok(paths.includes('references/full-stack-product-engineering.md'));
   assert.ok(paths.includes('references/frontend-product-patterns.md'));
   assert.ok(paths.includes('references/notification-delivery-product-engineering.md'));
   assert.ok(paths.includes('references/async-edge-job-patterns.md'));

@@ -108,7 +108,7 @@ test('proactive stewardship links a dedicated visual UI quality specialist', asy
 
   const stewardshipText = await fs.readFile(stewardship, 'utf8');
   assert.match(stewardshipText, /visual-ui-quality-assurance-product-engineering\.md/);
-  assert.match(stewardshipText, /scripts\/visual_quality_gate\.py/);
+  assert.match(stewardshipText, /rendered\/task evidence and repair/);
 
   const specialist = await fs.readFile(reference, 'utf8');
   assert.match(specialist, /technically work but are confusing, brittle, inconsistent, or visibly unfinished/);

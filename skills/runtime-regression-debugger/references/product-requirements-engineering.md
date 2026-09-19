@@ -299,6 +299,8 @@ Examples:
 
 If a criterion cannot be mapped to an evidence boundary, it is probably too vague or the validation plan is incomplete.
 
+When a structured requirements artifact is useful, run `scripts/requirements_gate.py` to check actor/scope, requirement, acceptance, failure/recovery, and traceability shape. When implementation slices must remain traceable to requirements and evidence, run `scripts/requirements_delivery_trace_gate.py`. These gates validate structure; they do not invent missing product semantics.
+
 ## Change control
 
 Requirements can change after implementation begins, but drift must be explicit.

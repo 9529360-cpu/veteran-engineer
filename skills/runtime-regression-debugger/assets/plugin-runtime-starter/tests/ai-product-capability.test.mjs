@@ -46,7 +46,6 @@ test('AI/LLM routing retains deterministic-authority and tool-boundary guidance'
   const paths = payload.references.map((entry) => entry.path);
   for (const expected of [
     'references/ai-llm-product-engineering.md',
-    'references/full-stack-product-engineering.md',
     'references/search-relevance-serving.md',
     'references/api-backend-patterns.md',
     'references/async-edge-job-patterns.md',

@@ -53,7 +53,7 @@ test('engineering context router treats product improvement as a first-class ful
   assert.deepEqual(payload.unmatched_signals, []);
   const paths = payload.references.map((entry) => entry.path);
   assert.ok(paths.includes('references/product-analytics-experimentation.md'));
-  assert.ok(paths.includes('references/full-stack-product-engineering.md'));
+  assert.ok(paths.includes('references/proactive-product-stewardship.md'));
   assert.ok(paths.includes('references/operability-control-plane-contract.md'));
 
   const aliases = runPython(router, [

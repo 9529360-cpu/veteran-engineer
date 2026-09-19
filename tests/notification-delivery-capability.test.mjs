@@ -67,7 +67,9 @@ test('notification signals route to the focused delivery owner and relevant comp
   const ambiguous = runPython(['--signals', 'email,sms,push,message,webhook,template,broadcast', '--json']);
   assert.ok(ambiguous);
   assert.equal(ambiguous.status, 0, ambiguous.stderr || ambiguous.stdout);
-  assert.deepEqual(JSON.parse(ambiguous.stdout).unmatched_signals, ['email', 'sms', 'push', 'message', 'webhook', 'template', 'broadcast']);
+  const ambiguousPayload = JSON.parse(ambiguous.stdout);
+  assert.deepEqual(ambiguousPayload.unmatched_signals, ['email', 'sms', 'push', 'message', 'template', 'broadcast']);
+  assert.ok(ambiguousPayload.signals.includes('webhook-delivery'));
 
   const specialist = await fs.readFile(reference, 'utf8');
   assert.match(specialist, /one durable logical notification intent/);

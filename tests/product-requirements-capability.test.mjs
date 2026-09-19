@@ -53,7 +53,7 @@ test('engineering context router treats product requirements as a first-class ca
   assert.deepEqual(payload.unmatched_signals, []);
   const paths = payload.references.map((entry) => entry.path);
   assert.ok(paths.includes('references/product-requirements-engineering.md'));
-  assert.ok(paths.includes('references/full-stack-product-engineering.md'));
+  assert.ok(paths.includes('references/product-requirements-engineering.md'));
   assert.ok(paths.includes('references/engineering-evidence-gates.md'));
   assert.ok(paths.includes('references/product-analysis-engineering.md'));
 

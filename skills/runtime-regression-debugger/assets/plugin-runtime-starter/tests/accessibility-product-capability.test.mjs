@@ -44,8 +44,7 @@ test('accessibility routes to the focused cross-client owner and retains task-le
   const refs = payload.references.map((entry) => entry.path);
   for (const expected of [
     'references/accessibility-product-engineering.md',
-    'references/full-stack-product-engineering.md',
-    'references/frontend-product-patterns.md',
+    'references/frontend-implementation-patterns.md',
     'references/mobile-product-engineering.md',
     'references/host-shell-platform-patterns.md'
   ]) assert.ok(refs.includes(expected), `expected route ${expected}`);

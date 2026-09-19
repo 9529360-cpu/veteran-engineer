@@ -47,6 +47,18 @@ def optional_string_list(row: dict, key: str, path: str) -> list[str]:
     return result
 
 
+
+def optional_string_map(value, path: str) -> dict[str, str]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"{path} must be an object of non-empty string identities")
+    out: dict[str, str] = {}
+    for key, item in value.items():
+        clean_key = require_nonempty_string(key, f"{path}.<key>")
+        out[clean_key] = require_nonempty_string(item, f"{path}.{clean_key}")
+    return out
+
 def validate_bundle(data: dict, *, now: dt.datetime | None = None) -> dict:
     """Return the proof-bundle verdict without duplicating CLI freshness logic."""
     if not isinstance(data, dict):
@@ -54,6 +66,7 @@ def validate_bundle(data: dict, *, now: dt.datetime | None = None) -> dict:
     change_identity = require_nonempty_string(data.get("change_identity"), "change_identity")
     claims = data.get("claims")
     evidence = data.get("evidence")
+    current_bindings = optional_string_map(data.get("current_bindings"), "current_bindings")
     if not isinstance(claims, list) or not claims or not isinstance(evidence, list):
         raise ValueError("require a non-empty claims list and an evidence list")
     now = (now or dt.datetime.now(dt.timezone.utc)).astimezone(dt.timezone.utc)
@@ -81,6 +94,16 @@ def validate_bundle(data: dict, *, now: dt.datetime | None = None) -> dict:
         result = result_value.strip().lower() if isinstance(result_value, str) else ""
         if result not in {"pass", "supports"}:
             problems.append("not_supporting")
+        freshness_bindings = optional_string_map(
+            ev.get("freshness_bindings"),
+            f"evidence[{i - 1}].freshness_bindings",
+        )
+        for binding_key, expected_identity in freshness_bindings.items():
+            current_identity = current_bindings.get(binding_key)
+            if current_identity is None:
+                problems.append(f"freshness_unverifiable:{binding_key}")
+            elif current_identity != expected_identity:
+                problems.append(f"stale_identity:{binding_key}")
         max_age = ev.get("max_age_hours")
         observed_value = ev.get("observed_at")
         if max_age is not None:
@@ -149,6 +172,7 @@ def validate_bundle(data: dict, *, now: dt.datetime | None = None) -> dict:
 
     return {
         "change_identity": change_identity,
+        "current_bindings": current_bindings,
         "claims": rows,
         "evidence_problems": {k: v for k, v in ev_problems.items() if v},
         "gate_passed": not blockers,

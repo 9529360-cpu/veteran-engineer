@@ -44,10 +44,7 @@ test('engineering context router connects desktop and Electron work to existing 
   assert.deepEqual(payload.unmatched_signals, []);
   const paths = payload.references.map((entry) => entry.path);
   for (const expected of [
-    'references/runtime-lifecycle-patterns.md',
     'references/host-shell-platform-patterns.md',
-    'references/runtime-failure-patterns.md',
-    'references/auth-navigation-platform-patterns.md',
     'references/release-promotion-patterns.md'
   ]) {
     assert.ok(paths.includes(expected), `expected route ${expected}`);

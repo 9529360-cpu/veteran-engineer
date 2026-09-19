@@ -1,5 +1,20 @@
 # User onboarding and activation product engineering
 
+
+## Contents
+
+- Start from first value
+- Keep setup, education, activation, and progress separate
+- Scope identity and re-entry correctly
+- Model only states that change behavior
+- Make every step earn its place
+- Preserve continuity and safe recovery
+- Existing users and migration
+- Measure activation, not clicks
+- Quality and verification
+- Lifecycle cleanup
+- Boundaries
+
 Use this when a product must guide a new, returning, invited, migrated, or newly entitled user to a meaningful first successful outcome.
 
 Onboarding is not a slideshow or checklist. The product contract is:

@@ -47,7 +47,7 @@ test('current engineering context router has no dangling references or aliases',
   assert.equal(payload.gate_passed, true);
   assert.deepEqual(payload.blockers, []);
   assert.ok(Array.isArray(payload.redundant_aliases));
-  assert.ok(payload.core_references > 0);
+  assert.equal(payload.core_references, 0);
   assert.ok(payload.route_count > 0);
   assert.ok(payload.alias_count > 0);
 });
@@ -60,7 +60,7 @@ test('router integrity fails closed on missing references, dangling aliases, sem
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'veteran-router-integrity-'));
   try {
     const fixture = await writeFixture(dir, `
-CORE = ['references/ok.md']
+CORE = []
 ROUTES = {
   'good': ['references/ok.md'],
   'missing': ['references/missing.md'],
@@ -94,7 +94,7 @@ test('router integrity surfaces canonical identity aliases as harmless redundanc
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'veteran-router-identity-alias-'));
   try {
     const fixture = await writeFixture(dir, `
-CORE = ['references/ok.md']
+CORE = []
 ROUTES = {
   'good': ['references/ok.md'],
 }
@@ -122,7 +122,7 @@ test('router integrity rejects duplicate route and alias ownership plus malforme
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'veteran-router-duplicates-'));
   try {
     const fixture = await writeFixture(dir, `
-CORE = ['references/ok.md']
+CORE = []
 ROUTES = {
   'good': ['references/ok.md'],
   'empty': [],

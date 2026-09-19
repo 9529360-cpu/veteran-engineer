@@ -12,6 +12,7 @@ Use this when the request is broader than one local fix: large backlog cleanup, 
 - Create worker packets another AI can execute independently
 - Integrate in waves
 - Keep shared truth fresh across parallel workers
+- Renew context deliberately
 - Resume safely after interruption
 - Avoid batch-execution anti-patterns
 - Know when to stop batching
@@ -54,9 +55,27 @@ For each task record:
 - integration or migration ordering requirement;
 - expected handoff artifact.
 
-Use `scripts/work_graph.py` when the task count, dependency graph, or parallel write conflicts are non-trivial.
+Use `scripts/work_graph.py` when the task count, dependency graph, or parallel write conflicts are non-trivial. For provenance-driven repair, `scripts/decision_revalidation_plan.py` identifies recompute/revalidation waves and `scripts/decision_revalidation_mission.py` can scaffold them into mission tasks. Dependency independence alone is **not** permission to execute in parallel: the adapter must remain planning-only until each task has a repository-derived write set, explicit risk class, and validation oracle, after which `work_graph.py` still arbitrates write conflicts and risk. After a worker returns, route the result through `scripts/decision_revalidation_result_gate.py` before marking its mission dependency complete. Green results may change-prune blocked descendants; pending results unlock nothing; stale-plan results are discarded; red results remain non-terminal until the replacement decision is committed to the Decision Ledger/dependency graph. Mission scheduling therefore consumes converged decision state, not worker self-reported `done`.
 
 Treat write sets as forecasts, not truth. Recompute conflicts after each wave because implementation evidence can reveal hidden coupling.
+
+## Create independence before parallelism
+
+Parallelism is useful only after the problem has independent owners or independently falsifiable work. If every worker is blocked on the same public contract, schema decision, root-cause uncertainty, central file, or missing oracle, adding workers multiplies duplicate effort and merge conflict rather than throughput.
+
+Before fan-out, create separability where possible:
+
+`stabilize authority/contract -> create bounded task/oracle seams -> predict write sets -> then parallelize independent work`
+
+If no honest seam exists, keep the authority-defining step serial. A mission being large is not evidence that it is parallelizable.
+
+## Escalate decomposition only when the lighter form fails
+
+Do not jump from “large task” to a deep hierarchy of plans, specs, or workers. Escalate structure only as context pressure or dependency evidence requires it:
+
+`one bounded run -> scope to a phase/task slice -> delegate independent slices -> combine scoping + delegation -> decompose into separately specified sub-features`
+
+At each step, stop escalating when the current form preserves the contract, keeps the active context high-signal, and exposes a usable validation oracle. Deeper decomposition adds coordination and reconciliation cost; use it only when a smaller unit still cannot be executed or verified coherently. Keep the roadmap shallow: name intent, scope boundary, dependency, and status, but defer detailed design until the slice becomes active.
 
 ## Prefer throughput by safe parallelism
 
@@ -174,6 +193,18 @@ Before the next dependent task:
 - rerun the cheapest boundary test that proves the new shared state.
 
 A worker packet is a snapshot. It is not an eternal contract.
+
+## Renew context deliberately
+
+Do not treat context reset, compaction, or fresh workers as universal rituals. Choose the cheapest renewal mode that preserves decision quality:
+
+- **continue current context** when the task is coherent and the active evidence remains high-signal;
+- **compact** when prior decisions still matter but logs/exploration are crowding the working set;
+- **fresh worker** for a bounded independently executable task or when parallelism has a real seam;
+- **fresh reviewer/evaluator** when independent judgment materially reduces implementer bias;
+- **hard reset + structured handoff** when stale assumptions, context pollution, or session limits are degrading decisions.
+
+A worker/session handoff is a projection, not authority. Before dependent work continues, reconcile declared state against current git/files/runtime/project authority. Invalidate packets whose base revision, schema, design decision, central config, or accepted contract changed.
 
 ## Resume safely after interruption
 

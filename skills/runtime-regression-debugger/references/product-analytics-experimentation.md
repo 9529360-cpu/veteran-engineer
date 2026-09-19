@@ -295,6 +295,8 @@ Useful checks include:
 
 Bind evidence to the exact event/metric/experiment version and source build when definitions can change.
 
+For a structured product-improvement proposal or experiment handoff, use `scripts/product_improvement_gate.py` to check that the decision question, metric/guardrails, data-quality checks, experiment/rollout semantics, and follow-up action are explicit. Treat it as a completeness check, not a substitute for product judgment.
+
 ## Interpret results without overclaiming
 
 Separate:
