@@ -37,11 +37,11 @@ Pinned MCP SDK graph remains:
 
 The product/runtime stack through #466, the post-merge authority refresh #468, and the clean V16 Skill-brain replay #469 are now merged into `main`.
 
-Current authoritative repository baseline:
+Last behavior-bearing repository checkpoint captured by this handoff:
 
-`main = ed3b9a90759f17e348c19a06be15ad85b7d5a4ef`
+`behavior checkpoint = ed3b9a90759f17e348c19a06be15ad85b7d5a4ef` (`#469`)
 
-That main commit is the merge of #469. The recent convergence sequence was:
+The live `main` branch is remote authority and must be refreshed before consequential work. #470 later merged documentation-only as `ab992cf9fe9776b7d792a1f7f7a6936659999201`; documentation-only descendants do not change runtime/Skill behavior and must not be used as a reason to rewrite this checkpoint. The recent behavior-bearing convergence sequence was:
 
 - #456 -> `4295cfcea94ce2ae41847b0523f73f52e1728c8c`
 - #457 -> `ab7db508a693a3830f51cf84288f5517fea4b30d`
@@ -68,7 +68,7 @@ The resulting mainline includes:
 
 The latest public GitHub Release remains `v0.4.0`; the repository development package remains `0.5.0`. No release/publish action has been authorized or performed.
 
-Post-merge authority refresh #468 and the V16 Skill-brain replay #469 are also merged. `ed3b9a90759f17e348c19a06be15ad85b7d5a4ef` is the authoritative main checkpoint for this handoff; refresh live `main` from GitHub before any later consequential action.
+Post-merge authority refresh #468 and the V16 Skill-brain replay #469 are merged, followed by documentation-only #470 at `ab992cf9fe9776b7d792a1f7f7a6936659999201`. `ed3b9a90759f17e348c19a06be15ad85b7d5a4ef` remains the last behavior-bearing checkpoint captured here; exact live `main` is always refreshed from GitHub before consequential action.
 
 ## Recent convergence line
 
@@ -86,10 +86,11 @@ Merged convergence:
 - **#465** — shared-state Remote Host workspace authorization, including fail-closed future unclassified tool scope.
 - **#468** — post-merge repository/Remote Host authority refresh after the runtime stack landed.
 - **#469** — clean V16 Optimized Skill-brain replay on current desktop-runtime main; 133-file Skill/test/workflow write set only.
+- **#470** — documentation-only V16 authority cap; merged as `ab992cf9fe9776b7d792a1f7f7a6936659999201` with no runtime, Skill, package, or release-intent mutation.
 
 #454 and #455 remain closed staging predecessors superseded by #456. #463 remains closed as the duplicate image-delivery exploration whose stronger exact-id/output-schema ideas were reused in #464. #462 remains closed because its parallel documentation branch was superseded by this final stack-cap documentation line.
 
-With #469 merged and #467 closed as superseded, there is no remaining non-Draft product/runtime/Skill PR from this convergence line. The older `native-*` family (#381, #385, #388, #390, #391, #393, #395, #397-#400, #402-#404, #406) remains parked as Draft. Treat their historical CI as non-current and recompute current-main drift before any replay.
+With #470 merged and #467 closed as superseded, there is no remaining non-Draft product/runtime/Skill PR from this convergence line. The older `native-*` family (#381, #385, #388, #390, #391, #393, #395, #397-#400, #402-#404, #406) remains parked as Draft. Treat their historical CI as non-current and recompute current-main drift before any replay.
 
 Issue **#338** remains the repository-governance frontier: repository rulesets are still empty and the current GitHub App receives `403 Resource not accessible by integration` for `main` branch-protection inspection. Do not confuse green engineering evidence with enforced merge governance.
 

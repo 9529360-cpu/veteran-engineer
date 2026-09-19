@@ -14,7 +14,7 @@ That entire sequence has **not** been proven on the user's spare machine.
 
 Repository: `9529360-cpu/veteran-engineer`.
 
-Current repository baseline: `main = ed3b9a90759f17e348c19a06be15ad85b7d5a4ef`. The former Remote Host stack is merged; later #468 only refreshed authority docs and #469 replayed the V16 Skill brain without changing Remote Host runtime ownership. There is no active non-Draft Remote Host PR from that line.
+Last behavior-bearing repository checkpoint relevant to this handoff is `ed3b9a90759f17e348c19a06be15ad85b7d5a4ef` (#469). The former Remote Host stack is merged; #468 refreshed authority docs, #469 replayed the V16 Skill brain without changing Remote Host runtime ownership, and #470 merged documentation-only as `ab992cf9fe9776b7d792a1f7f7a6936659999201`. Refresh live `main` from GitHub before consequential work rather than treating this checkpoint as a branch-head promise. There is no active non-Draft Remote Host PR from that line.
 
 The merged implementation line was:
 
