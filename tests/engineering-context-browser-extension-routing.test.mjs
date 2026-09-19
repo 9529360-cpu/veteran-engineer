@@ -44,7 +44,7 @@ test('engineering context router treats browser extensions as a first-class prod
   assert.equal(direct.status, 0, direct.stderr || direct.stdout);
   const payload = JSON.parse(direct.stdout);
   assert.deepEqual(payload.unmatched_signals, []);
-  const paths = payload.references.map((entry) => entry.path);
+  const paths = [...payload.references, ...payload.deferred_references].map((entry) => entry.path);
   for (const expected of [
     'references/browser-extension-product-engineering.md',
     'references/frontend-implementation-patterns.md',
