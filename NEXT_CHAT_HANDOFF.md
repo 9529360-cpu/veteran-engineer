@@ -35,13 +35,13 @@ Pinned MCP SDK graph remains:
 
 ## Current executable evidence
 
-The product/runtime stack through #466 is now merged into `main`.
+The product/runtime stack through #466, the post-merge authority refresh #468, and the clean V16 Skill-brain replay #469 are now merged into `main`.
 
-Current merged product/runtime base:
+Current authoritative repository baseline:
 
-`main = 628399e41d663fae5931ad7ba7677725a9d5d605`
+`main = ed3b9a90759f17e348c19a06be15ad85b7d5a4ef`
 
-That main commit is the merge of the final authority-docs cap #466. The merge sequence was:
+That main commit is the merge of #469. The recent convergence sequence was:
 
 - #456 -> `4295cfcea94ce2ae41847b0523f73f52e1728c8c`
 - #457 -> `ab7db508a693a3830f51cf84288f5517fea4b30d`
@@ -52,6 +52,8 @@ That main commit is the merge of the final authority-docs cap #466. The merge se
 - #464 -> `14f989d31bd71e8debe7377b4fcbd4670722713a`
 - #465 -> `9f1859e792fd81ba185ac84befe3acbaeb5e02b7`
 - #466 -> `628399e41d663fae5931ad7ba7677725a9d5d605`
+- #468 -> `eda67060d78f7bf6ef58f5d9e5a036b675350cfe`
+- #469 -> `ed3b9a90759f17e348c19a06be15ad85b7d5a4ef`
 
 #456 and #457 were freshly revalidated after retargeting to the evolving `main`; #458 also completed fresh post-retarget validation. For #459 onward, merge proof was selectively reused only after proving that each newly merged `main` tree was byte-identical to the parent PR head tree, the child remained mergeable with the intended current-main diff, and the child's exact head already had green CI, Cross-platform host smoke, Package Plugin Artifacts, and Release dry-run evidence. No release was published.
 
@@ -61,11 +63,12 @@ The resulting mainline includes:
 - Veteran Remote Host control plane, Windows supervised service, clean-machine bootstrap, and Secure MCP Tunnel stdio transport;
 - live pairing-token invalidation, real Windows service restart lifecycle proof, and native Windows Chromium screenshot validation;
 - bounded verified screenshot image delivery through the existing `evidence_query` tool without increasing the 34-tool public surface;
-- Remote Host workspace authorization for pre-existing shared-state project/Mission/candidate/evidence/experience identities, plus fail-closed handling of future unclassified unscoped tools.
+- Remote Host workspace authorization for pre-existing shared-state project/Mission/candidate/evidence/experience identities, plus fail-closed handling of future unclassified unscoped tools;
+- the V16 Optimized Skill brain replayed cleanly on the merged desktop runtime authority, including current routing/evidence/frontier/journal/decision machinery, eval fixtures, and specialist references without replacing runtime ownership.
 
 The latest public GitHub Release remains `v0.4.0`; the repository development package remains `0.5.0`. No release/publish action has been authorized or performed.
 
-The documentation cap #466 is now merged. `628399e41d663fae5931ad7ba7677725a9d5d605` is the authoritative main checkpoint for this handoff; refresh live `main` from GitHub before any later consequential action.
+Post-merge authority refresh #468 and the V16 Skill-brain replay #469 are also merged. `ed3b9a90759f17e348c19a06be15ad85b7d5a4ef` is the authoritative main checkpoint for this handoff; refresh live `main` from GitHub before any later consequential action.
 
 ## Recent convergence line
 
@@ -81,10 +84,12 @@ Merged convergence:
 - **#461** — native Windows Chromium screenshot validation, live token invalidation, and the real Windows supervisor restart repair.
 - **#464** — bounded verified MCP image delivery through existing `evidence_query`, exact-id scoped and metadata-contract aware.
 - **#465** — shared-state Remote Host workspace authorization, including fail-closed future unclassified tool scope.
+- **#468** — post-merge repository/Remote Host authority refresh after the runtime stack landed.
+- **#469** — clean V16 Optimized Skill-brain replay on current desktop-runtime main; 133-file Skill/test/workflow write set only.
 
 #454 and #455 remain closed staging predecessors superseded by #456. #463 remains closed as the duplicate image-delivery exploration whose stronger exact-id/output-schema ideas were reused in #464. #462 remains closed because its parallel documentation branch was superseded by this final stack-cap documentation line.
 
-With #466 merged, there is no remaining non-Draft product/runtime PR from the former stack. The older `native-*` family (#381, #385, #388, #390, #391, #393, #395, #397-#400, #402-#404, #406) remains parked as Draft. Treat their historical CI as non-current and recompute current-main drift before any replay.
+With #469 merged and #467 closed as superseded, there is no remaining non-Draft product/runtime/Skill PR from this convergence line. The older `native-*` family (#381, #385, #388, #390, #391, #393, #395, #397-#400, #402-#404, #406) remains parked as Draft. Treat their historical CI as non-current and recompute current-main drift before any replay.
 
 Issue **#338** remains the repository-governance frontier: repository rulesets are still empty and the current GitHub App receives `403 Resource not accessible by integration` for `main` branch-protection inspection. Do not confuse green engineering evidence with enforced merge governance.
 
@@ -241,6 +246,8 @@ Install/repair/upgrade synchronizes one shared distribution. Host adapters stay 
 8. Update this handoff when executable counts, core lifecycle authority, or the active convergence line materially changes.
 
 ## Next product work
+
+Current V16 brain integration is release-candidate-validated at merge head `439ad41707ed30e0ccee4fddf19bb4ec65f8a784`: Skill Engineering Tools **108 passed**; Node `npm run check` **683 / 683**; Linux/macOS/Windows host smoke, PostgreSQL, Docker, Chromium, Electron, packaging, and Release dry-run all succeeded; publish remained skipped. The clean replay changed only Skill/test/workflow owners and preserved the desktop runtime authority.
 
 There is no evidence-backed reason to add another subsystem merely to continue development. Continue convergence from concrete defects, drift, or product requirements. Repository governance issue #338 remains a real RC blocker: the ruleset collection is empty and the current GitHub App cannot read/configure `main` branch protection (`403 Resource not accessible by integration`), so that policy must be configured and verified outside the current connector boundary before an RC release.
 

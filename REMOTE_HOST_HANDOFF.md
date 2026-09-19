@@ -14,7 +14,7 @@ That entire sequence has **not** been proven on the user's spare machine.
 
 Repository: `9529360-cpu/veteran-engineer`.
 
-Current merged baseline: `main = 628399e41d663fae5931ad7ba7677725a9d5d605`. The former Remote Host stack is merged; there is no active non-Draft Remote Host PR from that line.
+Current repository baseline: `main = ed3b9a90759f17e348c19a06be15ad85b7d5a4ef`. The former Remote Host stack is merged; later #468 only refreshed authority docs and #469 replayed the V16 Skill brain without changing Remote Host runtime ownership. There is no active non-Draft Remote Host PR from that line.
 
 The merged implementation line was:
 
