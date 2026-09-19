@@ -15,7 +15,7 @@ jobs:
   host-smoke:
     name: ${{ matrix.os }} / Node 20 host smoke
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 12
     strategy:
       fail-fast: false
       matrix:
@@ -46,9 +46,43 @@ jobs:
       - name: Run release bootstrap contract tests
         run: node --test tests/release-bootstrap.test.mjs
 
+      - name: Run browser environment and startup contracts
+        run: node --test tests/browser-isolated-environment.test.mjs tests/browser-native-startup.test.mjs
+
       - name: Run Remote Host Windows service smoke
         if: runner.os == 'Windows'
         run: node --test tests/remote-host-service.windows.integration.mjs
+
+      - name: Resolve Windows Chromium browser
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $candidates = @(
+            "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
+            "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
+            "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe",
+            "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
+          )
+          $browser = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+          if (-not $browser) { throw "No supported Chromium browser found on the Windows hosted runner" }
+          Write-Host "Using browser: $browser"
+          Write-Host "Browser version: $((Get-Item $browser).VersionInfo.ProductVersion)"
+          "VETERAN_TEST_BROWSER_PATH=$browser" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Run real Windows Chromium UI-to-API validation
+        if: runner.os == 'Windows'
+        env:
+          VETERAN_TEST_EVIDENCE_DIR: ${{ github.workspace }}/dist/windows-browser-evidence
+        run: node --test tests/browser-native-validation.integration.mjs
+
+      - name: Upload verified Windows browser evidence
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-browser-evidence-${{ github.event.pull_request.head.sha || github.sha }}
+          path: dist/windows-browser-evidence/
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Probe host discovery
         run: node bin/veteran-engineer.mjs hosts

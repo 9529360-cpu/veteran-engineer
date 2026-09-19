@@ -65,10 +65,12 @@ function normalizeCapability(raw) {
 }
 
 async function resolveWorktreeCwd(worktree, relativeCwd, label = 'Validation') {
-  const cwd = path.resolve(worktree, relativeCwd);
-  const realCwd = await fs.realpath(cwd).catch(() => cwd);
   const root = path.resolve(worktree);
-  if (!realCwd.startsWith(`${root}${path.sep}`) && realCwd !== root) {
+  const cwd = path.resolve(root, relativeCwd);
+  const realRoot = await fs.realpath(root).catch(() => root);
+  const realCwd = await fs.realpath(cwd).catch(() => cwd);
+  const relative = path.relative(realRoot, realCwd);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
     throw Object.assign(new Error(`${label} cwd escapes detached worktree`), { code: 'VALIDATION_CWD_ESCAPE' });
   }
   return cwd;

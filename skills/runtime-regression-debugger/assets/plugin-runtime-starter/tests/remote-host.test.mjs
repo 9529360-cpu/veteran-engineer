@@ -5,7 +5,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import test from 'node:test';
-import { initRemoteHostConfig } from '../src/remote-host-config.mjs';
+import { initRemoteHostConfig, rotateRemoteHostToken } from '../src/remote-host-config.mjs';
 import { startRemoteHost } from '../src/remote-host-server.mjs';
 import { TOOL_NAMES } from '../src/tool-catalog.mjs';
 import { createGitRepo, cleanup } from './helpers.mjs';
@@ -101,6 +101,62 @@ test('remote host exposes authenticated MCP while rejecting untrusted origins an
     const statusBody = await status.json();
     assert.equal(statusBody.deviceId, initialized.config.deviceId);
     assert.equal(statusBody.surfaceProfile, 'secure-tunnel');
+  } finally {
+    await running?.close().catch(() => {});
+    await cleanup(fixture.root);
+  }
+});
+
+test('running remote host rejects the old pairing token immediately after rotation', { skip: !officialSdkAvailable }, async () => {
+  const fixture = await createGitRepo({ files: { 'README.md': 'allowed\n' } });
+  let running = null;
+  try {
+    const configPath = path.join(fixture.root, 'remote-host.json');
+    const initialized = await initRemoteHostConfig({
+      configPath,
+      stateRoot: fixture.stateRoot,
+      workspaces: [fixture.root],
+      port: 0
+    });
+    running = await startRemoteHost({ configPath, port: 0 });
+    const base = new URL(running.endpoint);
+
+    const before = await fetch(new URL('/status', base), {
+      headers: { Authorization: `Bearer ${initialized.pairingToken}` }
+    });
+    assert.equal(before.status, 200);
+
+    const rotated = await rotateRemoteHostToken(configPath);
+
+    const oldStatus = await fetch(new URL('/status', base), {
+      headers: { Authorization: `Bearer ${initialized.pairingToken}` }
+    });
+    assert.equal(oldStatus.status, 401);
+
+    const oldMcp = await fetch(running.endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${initialized.pairingToken}`,
+        'content-type': 'application/json'
+      },
+      body: '{}'
+    });
+    assert.equal(oldMcp.status, 401);
+
+    const newStatus = await fetch(new URL('/status', base), {
+      headers: { Authorization: `Bearer ${rotated.pairingToken}` }
+    });
+    assert.equal(newStatus.status, 200);
+
+    const newMcp = await fetch(running.endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${rotated.pairingToken}`,
+        'content-type': 'application/json'
+      },
+      body: '{}'
+    });
+    assert.notEqual(newMcp.status, 401);
   } finally {
     await running?.close().catch(() => {});
     await cleanup(fixture.root);

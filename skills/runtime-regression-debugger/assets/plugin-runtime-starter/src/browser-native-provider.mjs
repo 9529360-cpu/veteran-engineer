@@ -71,6 +71,9 @@ class Cdp {
     this.child = child; this.id = 0; this.pending = new Map(); this.handlers = new Set(); this.buffer = Buffer.alloc(0); this.closed = false;
     child.stdio[4].on('data', (chunk) => this.onData(chunk));
     child.stdio[4].on('error', () => this.close('BROWSER_NATIVE_CDP_PIPE_FAILED'));
+    child.stdio[4].once('end', () => this.close('BROWSER_NATIVE_CDP_PIPE_FAILED'));
+    child.stdio[3].on('error', () => this.close('BROWSER_NATIVE_CDP_PIPE_FAILED'));
+    child.once('error', () => this.close('BROWSER_NATIVE_SPAWN_FAILED'));
     child.once('exit', () => this.close('BROWSER_NATIVE_PROCESS_EXITED'));
   }
   on(handler) { this.handlers.add(handler); }
@@ -118,9 +121,12 @@ class Runtime {
   constructor(executable, cwd, env) { this.executable = executable; this.cwd = cwd; this.env = env; this.base = null; this.child = null; this.cdp = null; this.session = null; this.diag = this.blank(); this.stderrBytes = 0; }
   blank() { return { consoleMessages: 0, consoleErrors: 0, pageErrors: 0, requestFailures: 0, httpErrors: 0, blockedExternalRequests: 0, crashes: 0 }; }
   async start() {
-    if (process.platform === 'win32') throw fail('Native Chromium pipe provider is not yet supported on Windows', 'BROWSER_NATIVE_PLATFORM_UNSUPPORTED');
     const profile = path.join(this.env.HOME || os.tmpdir(), 'chromium-profile'); await fs.mkdir(profile, { recursive: true });
-    this.child = spawn(this.executable, ['--headless=new', '--remote-debugging-pipe', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', '--disable-background-networking', '--disable-component-update', '--disable-sync', '--metrics-recording-only', '--disable-default-apps', 'about:blank'], { cwd: this.cwd, env: this.env, shell: false, detached: true, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'] });
+    this.child = spawn(this.executable, ['--headless=new', '--remote-debugging-pipe', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', '--disable-background-networking', '--disable-component-update', '--disable-sync', '--metrics-recording-only', '--disable-default-apps', 'about:blank'], { cwd: this.cwd, env: this.env, shell: false, detached: process.platform !== 'win32', windowsHide: true, stdio: ['pipe', 'pipe', 'pipe', 'pipe', 'pipe'] });
+    // Keep valid standard handles alongside CDP fds 3/4 on Windows. Drain
+    // browser stdout without forwarding it into the provider JSON protocol.
+    this.child.stdin.on('error', () => {});
+    this.child.stdout.resume();
     this.child.stderr.on('data', (c) => { this.stderrBytes += Buffer.byteLength(c); });
     this.cdp = new Cdp(this.child); await this.cdp.request('Browser.getVersion', {}, null, 15_000);
     const target = await this.cdp.request('Target.createTarget', { url: 'about:blank' });
@@ -194,7 +200,33 @@ async function execute(runtime, payload, cwd) {
   return { contract: RESULT_CONTRACT, passed, summary: passed ? `Native browser scenario passed ${assertions.length} assertion(s) across ${scenario.steps.length} step(s).` : `Native browser scenario failed${failedAt === null ? '' : ` at step ${failedAt + 1}`}: ${message || code}`, assertions, currentUrl: current, diagnostics, ...(passed ? {} : { failureCode: code || 'BROWSER_ASSERTION_FAILED' }) };
 }
 function args(argv) { let executable = null, session = false; for (let i = 0; i < argv.length; i += 1) { if (argv[i] === '--session') session = true; else if (argv[i] === '--executable') executable = argv[++i] || null; } if (!executable) throw fail('Native browser provider requires --executable', 'BROWSER_NATIVE_EXECUTABLE_REQUIRED'); return { executable, session }; }
-async function one(executable) { let input = ''; process.stdin.setEncoding('utf8'); for await (const c of process.stdin) input += c; const runtime = new Runtime(executable, process.cwd(), process.env); try { await runtime.start(); process.stdout.write(JSON.stringify(await execute(runtime, JSON.parse(input), process.cwd()))); } finally { await runtime.close().catch(() => {}); } }
+async function one(executable) {
+  let input = '';
+  process.stdin.setEncoding('utf8');
+  for await (const c of process.stdin) input += c;
+  const runtime = new Runtime(executable, process.cwd(), process.env);
+  let phase = 'startup', result;
+  try {
+    await runtime.start();
+    phase = 'scenario';
+    result = await execute(runtime, JSON.parse(input), process.cwd());
+  } catch (error) {
+    // A failed browser is a failed validation result, not a broken provider
+    // protocol. Preserve the bounded code without persisting raw stderr,
+    // executable paths, environment values, or a secret-bearing stack trace.
+    const failureCode = /^BROWSER_[A-Z0-9_]{1,100}$/.test(error?.code || '')
+      ? error.code : 'BROWSER_NATIVE_STARTUP_FAILED';
+    result = {
+      contract: RESULT_CONTRACT, passed: false, failureCode,
+      summary: `Native browser ${phase} failed (${failureCode}).`,
+      assertions: [], currentUrl: null,
+      diagnostics: { phase, browserExitCode: runtime.child?.exitCode ?? -1, stderrBytes: runtime.stderrBytes }
+    };
+  } finally {
+    await runtime.close().catch(() => {});
+  }
+  process.stdout.write(JSON.stringify(result));
+}
 async function persistent(executable) {
   const runtime = new Runtime(executable, process.cwd(), process.env); await runtime.start(); let buffer = '', chain = Promise.resolve(); process.stdin.setEncoding('utf8');
   process.stdin.on('data', (chunk) => { buffer += chunk; let end; while ((end = buffer.indexOf('\n')) >= 0) { const line = buffer.slice(0, end).trim(); buffer = buffer.slice(end + 1); if (!line) continue; chain = chain.then(async () => { const raw = JSON.parse(line); if (raw.sessionContract !== SESSION_CONTRACT || raw.operation !== 'observe' || !raw.requestId) throw fail('Native browser session request is invalid', 'BROWSER_NATIVE_REQUEST_INVALID'); const result = await execute(runtime, raw, process.cwd()); process.stdout.write(`${JSON.stringify({ sessionContract: SESSION_CONTRACT, requestId: raw.requestId, ...result })}\n`); }).catch(async (e) => { process.stderr.write(`${String(e?.stack || e)}\n`); await runtime.close().catch(() => {}); process.exitCode = 1; }); } });

@@ -194,6 +194,16 @@ export async function createBrowserIsolatedEnvironment(allowlist, environment) {
     env.USERPROFILE = home;
     env.XDG_CONFIG_HOME = path.join(home, '.config');
     env.XDG_CACHE_HOME = path.join(home, '.cache');
+    if (process.platform === 'win32') {
+      // Chrome needs a resolvable Windows profile even with --user-data-dir.
+      // Keep all locations inside the private home, never the caller profile.
+      env.APPDATA = path.join(home, 'AppData', 'Roaming');
+      env.LOCALAPPDATA = path.join(home, 'AppData', 'Local');
+      env.HOMEDRIVE = path.parse(home).root.replace(/[\\/]$/, '');
+      env.HOMEPATH = home.slice(env.HOMEDRIVE.length);
+      await fs.mkdir(env.APPDATA, { recursive: true });
+      await fs.mkdir(env.LOCALAPPDATA, { recursive: true });
+    }
     for (const key of allowlist) {
       if (typeof environment?.[key] === 'string') env[key] = environment[key];
     }

@@ -37,6 +37,24 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const WINDOWS_REPLACE_RETRY_CODES = new Set(['EPERM', 'EACCES', 'EBUSY']);
+const WINDOWS_REPLACE_MAX_ATTEMPTS = 8;
+
+async function renameWithTransientWindowsRetry(source, target) {
+  for (let attempt = 0; attempt < WINDOWS_REPLACE_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      await fs.rename(source, target);
+      return;
+    } catch (error) {
+      const retryable = process.platform === 'win32'
+        && WINDOWS_REPLACE_RETRY_CODES.has(error?.code)
+        && attempt < WINDOWS_REPLACE_MAX_ATTEMPTS - 1;
+      if (!retryable) throw error;
+      await delay(Math.min(200, 10 * (2 ** attempt)));
+    }
+  }
+}
+
 function servicePaths(serviceRoot = defaultRemoteHostServiceRoot()) {
   const root = path.resolve(serviceRoot);
   const logDir = path.join(root, 'logs');
@@ -123,7 +141,12 @@ async function atomicWriteJson(target, value) {
   await fs.mkdir(path.dirname(target), { recursive: true });
   const temporary = `${target}.${process.pid}.${crypto.randomUUID()}.tmp`;
   await fs.writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
-  await fs.rename(temporary, target);
+  try {
+    await renameWithTransientWindowsRetry(temporary, target);
+  } catch (error) {
+    await fs.rm(temporary, { force: true }).catch(() => {});
+    throw error;
+  }
   await fs.chmod(target, 0o600).catch(() => {});
 }
 
@@ -211,7 +234,12 @@ async function writeLauncher(spec) {
   await fs.mkdir(path.dirname(spec.launcherPath), { recursive: true });
   const temporary = `${spec.launcherPath}.${process.pid}.${crypto.randomUUID()}.tmp`;
   await fs.writeFile(temporary, spec.launcherContent, { mode: 0o600 });
-  await fs.rename(temporary, spec.launcherPath);
+  try {
+    await renameWithTransientWindowsRetry(temporary, spec.launcherPath);
+  } catch (error) {
+    await fs.rm(temporary, { force: true }).catch(() => {});
+    throw error;
+  }
   await fs.chmod(spec.launcherPath, 0o600).catch(() => {});
 }
 
@@ -633,6 +661,7 @@ export async function superviseRemoteHostService({
     childStartedAt: null
   });
   await logger.write('supervisor', `started pid=${process.pid} service=${state.serviceId}`);
+  let supervisorFailure = null;
   try {
     while (!signal?.aborted) {
       const control = await readControl(paths);
@@ -709,13 +738,23 @@ export async function superviseRemoteHostService({
       await logger.write('supervisor', `restarting after ${backoff}ms consecutiveFailures=${consecutiveFailures}`);
       await sleep(backoff);
     }
+  } catch (error) {
+    supervisorFailure = error;
+    const failure = String(error?.code ? `${error.code}: ${error.message || error}` : error?.message || error)
+      .replace(/[\r\n]+/g, ' ')
+      .slice(0, 2000);
+    await logger.write('supervisor', `failed: ${failure}`).catch(() => {});
+    throw error;
   } finally {
     if (active) {
       await stopManagedChild(active, { platform, kill, runSync, signalTree, sleep, shutdownGraceMs, logger }).catch(async (error) => {
         await logger.write('supervisor', `child shutdown failed: ${error?.code || error?.message || String(error)}`);
       });
     }
-    await logger.write('supervisor', signal?.aborted ? 'stopped by process signal' : 'stopped by desired state');
+    await logger.write(
+      'supervisor',
+      signal?.aborted ? 'stopped by process signal' : supervisorFailure ? 'stopped after failure' : 'stopped by desired state'
+    );
     await logger.flush();
     await Promise.all([
       fs.rm(paths.pidPath, { force: true }),

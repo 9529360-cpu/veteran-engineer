@@ -45,10 +45,17 @@ function bearerToken(req) {
   return match?.[1] || null;
 }
 
-function authenticated(req, config) {
+async function authenticated(req, tokenSha256Provider) {
   const token = bearerToken(req);
   if (!token) return false;
-  const expected = Buffer.from(config.tokenSha256, 'hex');
+  let tokenSha256;
+  try {
+    tokenSha256 = await tokenSha256Provider();
+  } catch {
+    return false;
+  }
+  if (typeof tokenSha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(tokenSha256)) return false;
+  const expected = Buffer.from(tokenSha256, 'hex');
   const actual = Buffer.from(tokenDigest(token), 'hex');
   return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
 }
@@ -117,6 +124,9 @@ export async function startRemoteHost({
   app: suppliedApp = null
 } = {}) {
   const config = suppliedConfig || await readRemoteHostConfig(configPath);
+  const tokenSha256Provider = suppliedConfig
+    ? async () => config.tokenSha256
+    : async () => (await readRemoteHostConfig(configPath)).tokenSha256;
   await assertRemoteMcpSdkReady();
   const resolvedBind = bind || config.bind;
   const resolvedPort = port === null || port === undefined ? config.port : Number(port);
@@ -138,7 +148,7 @@ export async function startRemoteHost({
         return;
       }
       if (pathname === '/status') {
-        if (!authenticated(req, config)) {
+        if (!(await authenticated(req, tokenSha256Provider))) {
           writeJson(res, 401, { error: 'REMOTE_AUTH_REQUIRED' }, { 'www-authenticate': 'Bearer' });
           return;
         }
@@ -158,7 +168,7 @@ export async function startRemoteHost({
         writeJson(res, 404, { error: 'NOT_FOUND' });
         return;
       }
-      if (!authenticated(req, config)) {
+      if (!(await authenticated(req, tokenSha256Provider))) {
         writeJson(res, 401, { error: 'REMOTE_AUTH_REQUIRED' }, { 'www-authenticate': 'Bearer' });
         return;
       }
