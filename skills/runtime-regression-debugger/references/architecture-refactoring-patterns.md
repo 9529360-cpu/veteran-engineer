@@ -165,6 +165,8 @@ Validate:
 - rollback/cutover works;
 - deleted owners/callers are actually gone.
 
+For long-lived legacy modernization where compatibility windows, organizational ownership, deprecation horizons, and multi-year deletion risk dominate, load `references/legacy-modernization-longevity.md` rather than bloating ordinary refactor context.
+
 ## Mature references
 
 - Martin Fowler Architecture Decision Record: https://martinfowler.com/bliki/ArchitectureDecisionRecord.html

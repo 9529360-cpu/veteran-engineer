@@ -1,0 +1,57 @@
+[
+  {
+    "query": "Redesign this Electron desktop workspace. The hierarchy is weak, the layout feels generic, and the interaction flow needs to feel intentional.",
+    "should_trigger": true,
+    "expected_lane": "desktop-ui"
+  },
+  {
+    "query": "Take over this unfamiliar monorepo and implement the feature end to end across the frontend, API, database, and tests.",
+    "should_trigger": true,
+    "expected_lane": "fullstack"
+  },
+  {
+    "query": "Here is the repository. Take ownership of the product, get it running, decide what is most important to improve, design the UI when needed, implement it, test it, and keep going without waiting for me to write every ticket.",
+    "should_trigger": true,
+    "expected_lane": "takeover"
+  },
+  {
+    "query": "This production regression only happens after reconnect. Reproduce it, find the real owner, and fix it safely.",
+    "should_trigger": true,
+    "expected_lane": "bug"
+  },
+  {
+    "query": "Refactor this legacy package without breaking old clients, then prove the migration is complete.",
+    "should_trigger": true,
+    "expected_lane": "refactor"
+  },
+  {
+    "query": "Review this implemented dashboard visually and fix hierarchy, spacing, content-pressure, and responsive problems.",
+    "should_trigger": true,
+    "expected_lane": "design-review"
+  },
+  {
+    "query": "The Electron app crashes during shutdown after a background worker exits.",
+    "should_trigger": true,
+    "expected_lane": "desktop"
+  },
+  {
+    "query": "What does HTTP 404 mean?",
+    "should_trigger": false,
+    "expected_lane": null
+  },
+  {
+    "query": "Write a one-line JavaScript function that adds two numbers.",
+    "should_trigger": false,
+    "expected_lane": null
+  },
+  {
+    "query": "Translate this sentence into Italian.",
+    "should_trigger": false,
+    "expected_lane": null
+  },
+  {
+    "query": "Explain the difference between a stack and a queue.",
+    "should_trigger": false,
+    "expected_lane": null
+  }
+]

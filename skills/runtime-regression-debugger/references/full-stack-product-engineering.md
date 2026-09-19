@@ -2,12 +2,11 @@
 
 Use this for feature/product work, especially sparse requests or changes that cross UI, API, auth, data, async, runtime, or delivery boundaries. Own one product contract across every specialist layer.
 
-For natural-language outcome requests, broad product changes, or any request with multiple independently visible clauses, read `outcome-fulfillment-contract.md` before implementation. Preserve each material user clause as an independently testable acceptance row; related work is not substitute work. Use `scripts/outcome_contract_gate.py` when a structured closure manifest will prevent partial relevance from being reported as completion.
-
 ## Contents
 
 - Compile the product contract
 - Separate requirement sources
+- Advance only the decision frontier needed now
 - Recover active repository truth
 - Build the thinnest complete vertical slice
 - Control scope and companion responsibilities
@@ -40,7 +39,36 @@ Capture only what changes the engineering decision:
 
 Acceptance criteria describe observable behavior, not implementation trivia. "Return 200" or "add a hook" is insufficient when the user-visible contract extends beyond it.
 
-For a multi-clause request, do not collapse those acceptance criteria back into one vague sentence after compiling them. Keep a clause-to-delivery map through implementation and final review so a locally successful change cannot erase an unimplemented part of the original request.
+### Preserve request semantics before simplifying implementation
+
+Compress implementation complexity, not user intent. Parse explicit conjunctions and qualifiers into separate material rows before choosing the smallest implementation.
+
+Examples:
+
+- `Codex-style workspace layout + OS-style liquid-glass theme` contains at least a **structure/layout** requirement and a **visual-system/theme** requirement. A palette or opacity change can satisfy neither layout by itself nor the full theme system.
+- `add search and make results keyboard navigable` contains a **functional retrieval** requirement and an **interaction/accessibility** requirement. Shipping search alone is incomplete.
+- `replace the legacy sync flow and keep old clients working` contains a **behavioral migration** requirement and a **compatibility** requirement. New-path correctness alone is incomplete.
+
+Translate language into the product dimension it actually names:
+
+- layout/workspace/shell/navigation -> composition, hierarchy, panels, routing, sizing/resizing, persistence, responsive/window behavior as repository precedent requires;
+- theme/style/material/visual language -> tokens, surfaces/materials, elevation/borders, blur/transparency where supported, typography/color roles, interaction states, overlays, contrast, and light/dark consistency as relevant;
+- workflow/functionality -> reachable actions, state transitions, data/effects, failure/recovery, and visible completion;
+- "like X" / "X-style" -> recover the reference's relevant interaction/layout/visual principles from available current evidence; do not reduce the reference to its most obvious color.
+
+Do not invent unrelated features to make a request sound bigger. The rule is complete semantic coverage of what was asked, not maximal scope.
+
+## Advance only the decision frontier needed now
+
+Do not confuse a detailed plan with a proven design. Early in a task, decide only what must be stable for the next safe action. Leave reversible mechanics open until repository/runtime evidence can answer them.
+
+Use this split:
+
+- **must settle now** - user-visible semantics, public/schema contracts, authorization policy, migration/cutover meaning, accepted design dimensions, or another choice that downstream work would otherwise guess differently;
+- **can defer** - filenames, helper structure, library-local mechanics, test placement, or other reversible details the active repository can answer later;
+- **must reopen** - a previously frozen clause contradicted by fresh evidence. Reopen only that clause, record the evidence and downstream consequence, then re-freeze it before dependent work continues.
+
+A planner that cannot inspect the real implementation should define outcomes, constraints, and acceptance evidence rather than inventing low-level mechanisms that later workers are forced to honor without evidence. Implementation difficulty is not evidence that product intent changed.
 
 ## Separate requirement sources
 
@@ -73,6 +101,28 @@ Before implementation, inspect only what the contract requires:
 - tests that claim to protect the behavior.
 
 Prefer live source/config/runtime evidence over stale architecture prose. File existence or a familiar class name is not proof that the path is active.
+
+## Preserve process handoffs for user-facing work
+
+When a feature's success is materially visual, navigational, or interaction-driven, do not jump directly from product intent to component implementation. Keep explicit handoff artifacts, even when each artifact is compact:
+
+`experience/design contract -> technical slice -> implementation -> requirement/spec review -> code-quality review -> rendered product review`
+
+The experience/design contract is owned by `frontend-product-patterns.md`; rendered closure is owned by `visual-ui-quality-assurance-product-engineering.md`. Platform references such as desktop runtime, mobile, browser-extension, or host shell are secondary specialists unless the requested outcome is primarily a platform/runtime mechanism.
+
+This is composition, not ceremony. Reuse context already recovered by an earlier phase; do not make every specialist rediscover the same product facts or re-ask answered questions. A downstream phase may challenge stale or contradictory evidence, but should otherwise consume the prior phase's accepted contract.
+
+Treat each material handoff as a small validated interface. Name the minimum required artifact identity, contract/acceptance rows, state or schema shape, and proof needed by the downstream owner. Before work starts, the downstream owner should check those preconditions rather than silently invent missing values. If a required input is absent, stale, ambiguous, or incompatible, return the gap to the upstream owner that has authority to produce or revise it; do not let a downstream implementation, review, or release stage manufacture product semantics just to keep the pipeline moving. Optional context may be omitted without blocking when the downstream contract remains complete.
+
+Use the lightest stage outputs that make the next owner deterministic:
+
+- **outcome contract** - material clauses, non-goals, authority, decision frontier, and clause-to-proof rows;
+- **experience contract** when user-facing - accepted hierarchy/workflow/state/visual dimensions plus a revision or other freshness identity when stale implementation is plausible;
+- **technical change contract** - authoritative code/data/runtime owners, interfaces/seams, compatibility and failure/recovery rules, and validation boundaries;
+- **implementation candidate** - exact source/diff/artifact identity plus changed owners and known residuals;
+- **delivery state** when shipping - exact promoted artifact/environment plus public/runtime verification and rollback or forward-repair status.
+
+Do not create a detached review artifact that silently competes with the thing it reviewed. A pre-implementation product/design/engineering review that changes intent should repair or version the owning contract/plan so downstream work consumes one accepted source. A post-implementation review may keep a findings record, but every finding must bind to the exact candidate it inspected and return unresolved gaps to convergence rather than redefining requirements from the review report.
 
 ## Build the thinnest complete vertical slice
 
@@ -191,9 +241,16 @@ Use the lowest-cost test that can falsify the changed owner, then cross the real
 
 Use `scripts/delivery_slice_gate.py` only when a structured closure record reduces omissions. Within a delivery slice, `transition`, `companion`, and `consumer` names are trace-link identities: names must be unique inside each kind so a requirements-to-delivery link cannot ambiguously target multiple rows. The same text may appear in different kinds because the trace identity is the pair `(kind, name)`. Treat malformed scalar/container values in these deterministic delivery/trace manifests as structured validation failures rather than letting Python collection operations decide behavior or escape as tracebacks; a gate is useful to automation only when bad input still produces a stable fail-closed verdict.
 
-For requests whose main risk is omission rather than transition correctness, prefer `scripts/outcome_contract_gate.py`. It checks that each material user-request clause still has an explicit delivered row and validation evidence, and that visible/runtime requirements are not upgraded beyond the boundary actually observed.
-
 ## Finish at the visible boundary
+
+For implementation-authorized work, the default handoff condition is observed outcome closure, not source mutation. Maintain a compact trace from each explicit clause to its visible/runtime proof. If the first run shows that a clause did not materially change, reopen that clause and continue. Do not reinterpret the user's request downward after seeing the cost of the real implementation.
+
+When a user-visible contract can be exercised black-box, make the first acceptance pass **source-blind enough to avoid implementation bias**: start from the requested job, observable behavior, and runtime surface rather than using the code you just wrote to explain why the result should count. If the visible behavior fails or is ambiguous, then inspect source, DOM/runtime state, logs, and ownership to diagnose the cause. Source explains or repairs the outcome; it does not substitute for observing the outcome.
+
+Do not force source-blindness onto backend-only invariants, security proofs, migrations, or debugging where source/authority inspection is the actual evidence. This is an acceptance-bias control for observable product behavior, not a ban on implementation evidence.
+
+For UI work, distinguish at least these dimensions when requested: structure/layout, visual system/theme, interaction, responsive/window behavior, accessibility presentation, and functional wiring. One dimension cannot silently stand in for another.
+
 
 A feature is not done because code exists, an endpoint returns success, a row commits, or one layer's tests pass.
 
@@ -202,8 +259,6 @@ Distinguish:
 `code exists -> active caller wired -> focused behavior passes -> failure/compatibility passes -> integration/E2E passes -> release candidate passes -> deployed -> production-visible contract verified`
 
 Re-check the compiled contract after implementation. If discovered evidence changed an inferred requirement, exposed a missing companion, or revealed a real product decision, resolve that drift before claiming completion.
-
-When the request includes visible layout, visual-style, interaction, responsive, accessibility-presentation, or user-workflow clauses and a real browser/desktop/runtime boundary is available, observe that boundary before reporting the corresponding clause complete. A successful build is not a rendered result.
 
 ## Evidence-backed no-change
 

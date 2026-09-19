@@ -191,6 +191,10 @@ Report:
 
 Do not claim a performance win from one local timing sample.
 
+Use `scripts/capacity_budget.py` for rough concurrency, retry-amplification, queue-drain, DB-pool, or storage-growth arithmetic when explicit assumptions are available. Treat its output as a planning estimate, not a benchmark.
+
+When the dominant mechanism is partitioning, hotspot control, shard imbalance, or global fan-out rather than ordinary service performance, load `references/hyperscale-partitioning-hotspots.md` instead of expanding this general guide.
+
 ## Mature references
 
 - Core Web Vitals: https://web.dev/articles/vitals
