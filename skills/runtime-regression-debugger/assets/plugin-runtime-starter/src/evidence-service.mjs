@@ -9,12 +9,9 @@ const MAX_ATTACHMENT_TOTAL_BYTES = 64 * 1024 * 1024;
 const MAX_QUERY_IMAGES = 4;
 const MAX_QUERY_IMAGE_BYTES = 4 * 1024 * 1024;
 const MAX_QUERY_IMAGE_TOTAL_BYTES = 8 * 1024 * 1024;
-const IMAGE_MIME_TYPES = new Map([
-  ['.png', 'image/png'],
-  ['.jpg', 'image/jpeg'],
-  ['.jpeg', 'image/jpeg'],
-  ['.webp', 'image/webp']
-]);
+const REMOTE_SCREENSHOT_EXTENSION = '.png';
+const REMOTE_SCREENSHOT_MIME_TYPE = 'image/png';
+const PNG_SIGNATURE = Buffer.from('89504e470d0a1a0a', 'hex');
 
 function attachmentExtension(name) {
   const ext = path.extname(String(name || '')).toLowerCase();
@@ -188,8 +185,7 @@ export class EvidenceService {
         if (imageCount >= imageLimit) return content;
         if (attachment?.kind !== 'browser-screenshot') continue;
         const extension = path.extname(String(attachment.name || attachment.artifactPointer || '')).toLowerCase();
-        const mimeType = IMAGE_MIME_TYPES.get(extension);
-        if (!mimeType) continue;
+        if (extension !== REMOTE_SCREENSHOT_EXTENSION) continue;
         const bytes = Number(attachment.bytes);
         if (!Number.isInteger(bytes) || bytes <= 0 || bytes > MAX_QUERY_IMAGE_BYTES) {
           throw evidenceImageError('EVIDENCE_IMAGE_SIZE_INVALID', 'Evidence screenshot is outside the remote image size bound', {
@@ -250,13 +246,19 @@ export class EvidenceService {
             actualHash
           });
         }
+        if (data.length < PNG_SIGNATURE.length || !data.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
+          throw evidenceImageError('EVIDENCE_IMAGE_FORMAT_INVALID', 'Evidence screenshot is not a valid PNG payload', {
+            evidenceId: record.id,
+            name: attachment.name
+          });
+        }
         totalBytes += data.length;
         imageCount += 1;
         content.push({
           type: 'text',
           text: `Evidence image metadata: ${JSON.stringify({ evidenceId: record.id, attachment: String(attachment.name).slice(0, 240), sha256: actualHash, bytes: data.length })}`
         });
-        content.push({ type: 'image', data: data.toString('base64'), mimeType });
+        content.push({ type: 'image', data: data.toString('base64'), mimeType: REMOTE_SCREENSHOT_MIME_TYPE });
       }
     }
     return content;
