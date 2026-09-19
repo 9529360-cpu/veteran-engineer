@@ -23,6 +23,13 @@ const officialSdkAvailable = (() => {
   }
 })();
 
+function structuredArray(result) {
+  const structured = result?.structuredContent;
+  const items = Array.isArray(structured) ? structured : structured?.result;
+  assert.ok(Array.isArray(items), `Expected array structuredContent or legacy { result: [] } envelope: ${JSON.stringify(structured)}`);
+  return items;
+}
+
 function requestWithHost(url, headers = {}) {
   const target = new URL(url);
   return new Promise((resolve, reject) => {
@@ -224,9 +231,10 @@ test('official MCP client can use the same Veteran tools remotely and local path
     assert.equal(imageBlocks.length, 1);
     assert.equal(imageBlocks[0].mimeType, 'image/png');
     assert.deepEqual(Buffer.from(imageBlocks[0].data, 'base64'), screenshotBytes);
-    assert.equal(withImage.structuredContent[0].id, evidence.id);
-    assert.equal(withImage.structuredContent[0].attachments[0].artifactHash, evidence.attachments[0].artifactHash);
-    assert.equal(Object.hasOwn(withImage.structuredContent[0].attachments[0], 'data'), false);
+    const structuredEvidence = structuredArray(withImage);
+    assert.equal(structuredEvidence[0].id, evidence.id);
+    assert.equal(structuredEvidence[0].attachments[0].artifactHash, evidence.attachments[0].artifactHash);
+    assert.equal(Object.hasOwn(structuredEvidence[0].attachments[0], 'data'), false);
 
     await fs.writeFile(path.join(allowed.stateRoot, evidence.attachments[0].artifactPointer), Buffer.from('tampered'));
     const tampered = await client.callTool({
