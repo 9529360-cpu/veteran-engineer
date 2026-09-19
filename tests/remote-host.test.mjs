@@ -264,6 +264,17 @@ test('official MCP client can use the same Veteran tools remotely and local path
     });
     assert.equal(rejected.isError, true);
     assert.match(rejected.content?.[0]?.text || '', /REMOTE_WORKSPACE_NOT_ALLOWED/);
+
+    // A shared durable state root may already contain projects that were opened
+    // locally before Remote Host starts. The remote token must not bypass the
+    // configured workspace roots merely by reusing one of those stable ids.
+    const preexistingOutside = await running.app.services.projectService.open({ repoPath: outside.repo });
+    const outsideSnapshot = await client.callTool({
+      name: 'project_snapshot',
+      arguments: { projectId: preexistingOutside.id }
+    });
+    assert.equal(outsideSnapshot.isError, true, JSON.stringify(outsideSnapshot));
+    assert.match(outsideSnapshot.content?.[0]?.text || '', /REMOTE_WORKSPACE_NOT_ALLOWED/);
   } finally {
     await client?.close().catch(() => {});
     await running?.close().catch(() => {});
