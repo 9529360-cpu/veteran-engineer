@@ -304,7 +304,7 @@ test('official MCP client can use the same Veteran tools remotely and local path
 
     const maintenanceBlocked = await client.callTool({
       name: 'runtime_maintenance',
-      arguments: { projectId: opened.structuredContent.id }
+      arguments: { requestId: crypto.randomUUID(), projectId: opened.structuredContent.id }
     });
     assert.equal(maintenanceBlocked.isError, true, JSON.stringify(maintenanceBlocked));
     assert.match(maintenanceBlocked.content?.[0]?.text || '', /REMOTE_WORKSPACE_NOT_ALLOWED/);
