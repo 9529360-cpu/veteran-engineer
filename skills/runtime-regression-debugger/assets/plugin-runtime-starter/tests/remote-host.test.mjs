@@ -268,6 +268,12 @@ test('official MCP client can use the same Veteran tools remotely and local path
     // A shared durable state root may already contain projects that were opened
     // locally before Remote Host starts. The remote token must not bypass the
     // configured workspace roots merely by reusing one of those stable ids.
+    const runtimeHealth = await client.callTool({
+      name: 'runtime_health',
+      arguments: {}
+    });
+    assert.equal(runtimeHealth.isError, undefined, JSON.stringify(runtimeHealth));
+
     const broadEvidenceQuery = await client.callTool({
       name: 'evidence_query',
       arguments: {}

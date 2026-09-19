@@ -33,6 +33,7 @@ function toolMeta(name) {
 
 const REMOTE_RUNTIME_WIDE_PROJECT_TOOLS = new Set(['runtime_integrity', 'runtime_cleanup', 'runtime_maintenance']);
 const REMOTE_OPTIONAL_GLOBAL_PROJECT_TOOLS = new Set(['evidence_query', 'experience_audit']);
+const REMOTE_UNSCOPED_SAFE_TOOLS = new Set(['runtime_health']);
 
 function remoteScopeError(code, message, details = null) {
   const error = new Error(message);
@@ -83,7 +84,14 @@ async function authorizeStoredRemoteScope(name, args, config, app) {
       { tool: name }
     );
   }
-  if (!hasDirectScope) return args || {};
+  if (!hasDirectScope) {
+    if (!workspaceConstrained || REMOTE_UNSCOPED_SAFE_TOOLS.has(name)) return args || {};
+    throw remoteScopeError(
+      'REMOTE_PROJECT_SCOPE_REQUIRED',
+      `Remote Host tool ${name} has no resolvable project scope and is not explicitly classified as safe without one`,
+      { tool: name }
+    );
+  }
   if (!app?.store?.read) throw remoteScopeError('REMOTE_PROJECT_SCOPE_UNAVAILABLE', 'Remote Host state scope is unavailable');
 
   const state = await app.store.read();
