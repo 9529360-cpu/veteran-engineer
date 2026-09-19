@@ -42,9 +42,12 @@ test('engineering context router connects desktop and Electron work to existing 
   assert.equal(direct.status, 0, direct.stderr || direct.stdout);
   const payload = JSON.parse(direct.stdout);
   assert.deepEqual(payload.unmatched_signals, []);
-  const paths = payload.references.map((entry) => entry.path);
+  const paths = [...payload.references, ...payload.deferred_references].map((entry) => entry.path);
   for (const expected of [
+    'references/runtime-lifecycle-patterns.md',
     'references/host-shell-platform-patterns.md',
+    'references/runtime-failure-patterns.md',
+    'references/auth-navigation-platform-patterns.md',
     'references/release-promotion-patterns.md'
   ]) {
     assert.ok(paths.includes(expected), `expected route ${expected}`);
@@ -57,13 +60,8 @@ test('engineering context router connects desktop and Electron work to existing 
   assert.deepEqual(aliasPayload.unmatched_signals, []);
   assert.deepEqual(aliasPayload.signals, [
     'desktop',
-    'desktop',
-    'electron',
     'electron',
     'desktop-runtime',
-    'desktop-runtime',
-    'electron',
-    'desktop-packaging',
     'desktop-packaging',
     'electron-ipc'
   ]);
