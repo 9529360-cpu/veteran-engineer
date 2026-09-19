@@ -269,12 +269,45 @@ test('official MCP client can use the same Veteran tools remotely and local path
     // locally before Remote Host starts. The remote token must not bypass the
     // configured workspace roots merely by reusing one of those stable ids.
     const preexistingOutside = await running.app.services.projectService.open({ repoPath: outside.repo });
+
+    const allowedSnapshot = await client.callTool({
+      name: 'project_snapshot',
+      arguments: { requestId: crypto.randomUUID(), projectId: opened.structuredContent.id }
+    });
+    assert.equal(allowedSnapshot.isError, undefined, JSON.stringify(allowedSnapshot));
+
     const outsideSnapshot = await client.callTool({
       name: 'project_snapshot',
       arguments: { requestId: crypto.randomUUID(), projectId: preexistingOutside.id }
     });
     assert.equal(outsideSnapshot.isError, true, JSON.stringify(outsideSnapshot));
     assert.match(outsideSnapshot.content?.[0]?.text || '', /REMOTE_WORKSPACE_NOT_ALLOWED/);
+
+    const outsideEvidence = await running.app.services.evidenceService.record({
+      projectId: preexistingOutside.id,
+      type: 'outside-proof',
+      summary: 'Must remain unreachable through the Remote Host token.'
+    });
+    const outsideEvidenceQuery = await client.callTool({
+      name: 'evidence_query',
+      arguments: { ids: [outsideEvidence.id] }
+    });
+    assert.equal(outsideEvidenceQuery.isError, true, JSON.stringify(outsideEvidenceQuery));
+    assert.match(outsideEvidenceQuery.content?.[0]?.text || '', /REMOTE_WORKSPACE_NOT_ALLOWED/);
+
+    const broadEvidenceQuery = await client.callTool({
+      name: 'evidence_query',
+      arguments: {}
+    });
+    assert.equal(broadEvidenceQuery.isError, true, JSON.stringify(broadEvidenceQuery));
+    assert.match(broadEvidenceQuery.content?.[0]?.text || '', /REMOTE_WORKSPACE_NOT_ALLOWED/);
+
+    const cleanupBlocked = await client.callTool({
+      name: 'runtime_cleanup',
+      arguments: { requestId: crypto.randomUUID(), apply: false }
+    });
+    assert.equal(cleanupBlocked.isError, true, JSON.stringify(cleanupBlocked));
+    assert.match(cleanupBlocked.content?.[0]?.text || '', /REMOTE_WORKSPACE_NOT_ALLOWED/);
   } finally {
     await client?.close().catch(() => {});
     await running?.close().catch(() => {});
