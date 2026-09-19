@@ -70,13 +70,11 @@ test('desktop export carries the outcome-closure and visible-validation Skill ke
     const desktop = path.join(temp, 'desktop.zip');
     runPython([exporter, skillRoot, '--profile', 'desktop', '--output', desktop]);
     const skill = zipText(desktop, 'veteran-engineer/skills/runtime-regression-debugger/SKILL.md');
-    assert.match(skill, /Every material clause must become an observable acceptance row/);
-    assert.match(skill, /Clause closure/);
-    assert.match(skill, /Semantic-dimension match/);
-    assert.match(skill, /Visible-boundary proof/);
-    assert.match(skill, /Self-repair before handoff/);
-    assert.match(skill, /layout request is not satisfied by color tokens/);
-    assert.match(skill, /rendered validation by default/);
+    assert.match(skill, /Authorized implementation is an outcome contract/);
+    assert.match(skill, /outcome-fulfillment-contract\.md/);
+    assert.match(skill, /user clause -> observable postcondition -> active owner -> validation evidence/);
+    assert.match(skill, /finish at the visible boundary/);
+    assert.match(skill, /UI\/interaction claims require live rendered\/task evidence/);
   } finally {
     await cleanup(temp);
   }

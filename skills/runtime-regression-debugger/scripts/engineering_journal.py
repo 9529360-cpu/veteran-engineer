@@ -12,8 +12,17 @@ Examples:
   engineering_journal.py /tmp/work.json attempt --name retry-handler --assumption "timeout means no commit" --outcome failed --equivalence-class symptom-retry --forbid symptom-retry
   engineering_journal.py /tmp/work.json reconsider --equivalence-class symptom-retry --basis "provider contract changed" --new-evidence "current provider docs plus fresh integration probe"
   engineering_journal.py /tmp/work.json blocker --kind authorization --note "production deploy not authorized" --requires production
-  engineering_journal.py /tmp/work.json decision --action "reconcile by operation id" --basis "provider shows committed charge"
+  engineering_journal.py /tmp/work.json decision --key retry-policy --action "reconcile by operation id" --basis "provider shows committed charge"
+  engineering_journal.py /tmp/work.json frontier --key fix-auth --action "repair auth owner" --basis "active path leaks tenant scope" --owner security --rank 10
+  engineering_journal.py /tmp/work.json activate-frontier --key fix-auth
+  engineering_journal.py /tmp/work.json frontier-status --key fix-auth --state done --note "focused + negative-path proof passed"
+  engineering_journal.py /tmp/work.json next-frontier
   engineering_journal.py /tmp/work.json assess
+  engineering_journal.py /tmp/work.json resume
+  engineering_journal.py /tmp/work.json route-event --router-json /tmp/route.json
+  engineering_journal.py /tmp/work.json tool-event --class github --outcome success --decision-impact changed --note "resolved exact PR head"
+  engineering_journal.py /tmp/work.json host-event --kind tool-call-ceiling --note "reduce fan-out for this session"
+  engineering_journal.py /tmp/work.json stats
   engineering_journal.py /tmp/work.json summary
 """
 
@@ -24,6 +33,8 @@ import datetime as dt
 import json
 import pathlib
 import sys
+
+from skill_identity import compute_identity
 
 
 def now() -> str:
@@ -44,6 +55,15 @@ def fresh() -> dict:
         "decisions": [],
         "blockers": [],
         "checkpoints": [],
+        "frontiers": [],
+        "frontier_events": [],
+        "skill_identity": None,
+        "telemetry": {
+            "resume_count": 0,
+            "route_events": [],
+            "tool_events": [],
+            "host_events": [],
+        },
         "closed": False,
     }
 
@@ -63,6 +83,16 @@ def load(path: pathlib.Path) -> dict:
     data.setdefault("blockers", [])
     data.setdefault("checkpoints", [])
     data.setdefault("equivalence_class_reviews", [])
+    data.setdefault("frontiers", [])
+    data.setdefault("frontier_events", [])
+    data.setdefault("skill_identity", None)
+    telemetry = data.setdefault("telemetry", {})
+    if not isinstance(telemetry, dict):
+        raise RuntimeError("journal telemetry must be an object")
+    telemetry.setdefault("resume_count", 0)
+    telemetry.setdefault("route_events", [])
+    telemetry.setdefault("tool_events", [])
+    telemetry.setdefault("host_events", [])
     for item in data.setdefault("attempts", []):
         item.setdefault("equivalence_class", None)
         item.setdefault("forbidden_equivalent_class", None)
@@ -117,6 +147,77 @@ def forbidden_equivalence_classes(data: dict) -> set[str]:
     }
 
 
+
+def frontier_index(data: dict, key: str) -> int | None:
+    for index, item in enumerate(data.get("frontiers", [])):
+        if isinstance(item, dict) and item.get("key") == key:
+            return index
+    return None
+
+
+def frontier_by_key(data: dict, key: str) -> dict | None:
+    index = frontier_index(data, key)
+    if index is None:
+        return None
+    item = data.get("frontiers", [])[index]
+    return item if isinstance(item, dict) else None
+
+
+def active_frontier(data: dict) -> dict | None:
+    active = [
+        item
+        for item in data.get("frontiers", [])
+        if isinstance(item, dict) and item.get("state") == "active"
+    ]
+    if len(active) > 1:
+        raise RuntimeError("journal contains multiple active frontiers")
+    return active[0] if active else None
+
+
+def frontier_ready(data: dict, item: dict) -> bool:
+    if item.get("state") != "ready":
+        return False
+    for dep in item.get("depends_on", []) or []:
+        parent = frontier_by_key(data, dep)
+        if not parent or parent.get("state") != "done":
+            return False
+    return True
+
+
+def ordered_ready_frontiers(data: dict) -> list[dict]:
+    rows: list[tuple[int, int, dict]] = []
+    for index, item in enumerate(data.get("frontiers", [])):
+        if not isinstance(item, dict) or not frontier_ready(data, item):
+            continue
+        rank = item.get("rank")
+        if not isinstance(rank, int):
+            rank = 100
+        rows.append((rank, index, item))
+    rows.sort(key=lambda row: (row[0], row[1]))
+    return [item for _, _, item in rows]
+
+
+def checkpoint_stalled(data: dict) -> tuple[bool, str | None]:
+    checkpoints = [item for item in data.get("checkpoints", []) if isinstance(item, dict)]
+    if len(checkpoints) < 3:
+        return False, None
+    last = checkpoints[-3:]
+    frontier_keys = [item.get("frontier_key") for item in last]
+    actions = [item.get("next_action") for item in last]
+    if not frontier_keys[0] or len(set(frontier_keys)) != 1 or len(set(actions)) != 1:
+        return False, None
+    progress = [
+        (
+            item.get("evidence_count"),
+            item.get("attempt_count"),
+            item.get("decision_count"),
+        )
+        for item in last
+    ]
+    if len(set(progress)) == 1:
+        return True, frontier_keys[0]
+    return False, None
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("journal")
@@ -124,6 +225,7 @@ def main() -> int:
 
     p = sub.add_parser("init")
     p.add_argument("--contract", required=True)
+    p.add_argument("--skill-root", default="", help="Optional Skill root to bind the journal to deterministic content bytes")
 
     p = sub.add_parser("checkpoint")
     p.add_argument(
@@ -132,6 +234,7 @@ def main() -> int:
         choices=["discover", "reproduce", "design", "implement", "validate", "release", "verify"],
     )
     p.add_argument("--next-action", required=True)
+    p.add_argument("--frontier-key", default="")
     p.add_argument("--note", default="")
 
     p = sub.add_parser("hypothesis")
@@ -157,9 +260,29 @@ def main() -> int:
     p.add_argument("--new-evidence", required=True)
 
     p = sub.add_parser("decision")
+    p.add_argument("--key", default="", help="Optional stable logical decision key; repeated identical writes become idempotent")
     p.add_argument("--action", required=True)
     p.add_argument("--basis", required=True)
     p.add_argument("--risk", default="")
+
+    p = sub.add_parser("frontier")
+    p.add_argument("--key", required=True)
+    p.add_argument("--action", required=True)
+    p.add_argument("--basis", required=True)
+    p.add_argument("--owner", default="")
+    p.add_argument("--rank", type=int, default=100)
+    p.add_argument("--depends-on", action="append", default=[])
+
+    p = sub.add_parser("activate-frontier")
+    p.add_argument("--key", required=True)
+    p.add_argument("--preempt-reason", default="")
+
+    p = sub.add_parser("frontier-status")
+    p.add_argument("--key", required=True)
+    p.add_argument("--state", choices=["ready", "blocked", "done", "stale"], required=True)
+    p.add_argument("--note", default="")
+
+    sub.add_parser("next-frontier")
 
     p = sub.add_parser("blocker")
     p.add_argument(
@@ -174,7 +297,27 @@ def main() -> int:
     p.add_argument("--evidence-level", required=True)
     p.add_argument("--residual-risk", action="append", default=[])
 
+    p = sub.add_parser("route-event")
+    p.add_argument("--router-json", required=True, help="Path to engineering_context_router --json output, or - for stdin")
+    p.add_argument("--note", default="")
+
+    p = sub.add_parser("tool-event")
+    p.add_argument("--class", dest="tool_class", required=True)
+    p.add_argument("--outcome", choices=["success", "failure", "partial", "blocked"], required=True)
+    p.add_argument("--decision-impact", choices=["changed", "confirmed", "none", "unknown"], default="unknown")
+    p.add_argument("--signature", default="")
+    p.add_argument("--note", default="")
+
+    p = sub.add_parser("host-event")
+    p.add_argument("--kind", required=True)
+    p.add_argument("--note", default="")
+
     sub.add_parser("assess")
+    p = sub.add_parser("resume")
+    p.add_argument("--max-decisions", type=int, default=5)
+    p.add_argument("--max-blockers", type=int, default=3)
+    p.add_argument("--max-frontiers", type=int, default=5)
+    sub.add_parser("stats")
     sub.add_parser("summary")
     args = parser.parse_args()
 
@@ -185,6 +328,19 @@ def main() -> int:
         if path.exists() and (data.get("hypotheses") or data.get("attempts") or data.get("evidence")):
             raise RuntimeError("journal already contains investigation data")
         data["contract"] = args.contract
+        if args.skill_root.strip():
+            root = pathlib.Path(args.skill_root).resolve()
+            if not (root / "SKILL.md").is_file():
+                raise RuntimeError(f"not a Skill root: {root}")
+            digest, file_count, byte_count = compute_identity(root)
+            data["skill_identity"] = {
+                "algorithm": "sha256",
+                "content_hash": digest,
+                "file_count": file_count,
+                "byte_count": byte_count,
+                "observed_at": now(),
+                "identity_scope": "observed-skill-root-bytes",
+            }
         data["updated_at"] = now()
         save(path, data)
     elif args.command == "checkpoint":
@@ -193,6 +349,10 @@ def main() -> int:
             "at": now(),
             "phase": args.phase,
             "next_action": args.next_action,
+            "frontier_key": args.frontier_key.strip() or None,
+            "evidence_count": len(data.get("evidence", [])),
+            "attempt_count": len(data.get("attempts", [])),
+            "decision_count": len(data.get("decisions", [])),
             "note": args.note or None,
         }
         data["phase"] = args.phase
@@ -276,14 +436,193 @@ def main() -> int:
         save(path, data)
     elif args.command == "decision":
         require_open(data)
-        data["decisions"].append({
+        decision_key = args.key.strip()
+        action = args.action.strip()
+        basis = args.basis.strip()
+        risk = args.risk.strip() or None
+        if not action or not basis:
+            raise RuntimeError("--action and --basis must not be empty")
+        latest_index = None
+        latest_same_key = None
+        if decision_key:
+            for index in range(len(data["decisions"]) - 1, -1, -1):
+                item = data["decisions"][index]
+                if isinstance(item, dict) and item.get("decision_key") == decision_key:
+                    latest_index = index
+                    latest_same_key = item
+                    break
+            if latest_same_key and (
+                latest_same_key.get("action") == action
+                and latest_same_key.get("basis") == basis
+                and latest_same_key.get("risk") == risk
+            ):
+                print("decision: unchanged")
+                return 0
+        row = {
             "at": now(),
-            "action": args.action,
-            "basis": args.basis,
-            "risk": args.risk or None,
-        })
+            "decision_key": decision_key or None,
+            "action": action,
+            "basis": basis,
+            "risk": risk,
+        }
+        if latest_index is not None:
+            row["supersedes_decision_index"] = latest_index
+        data["decisions"].append(row)
         data["updated_at"] = now()
         save(path, data)
+    elif args.command == "frontier":
+        require_open(data)
+        key = args.key.strip()
+        action = args.action.strip()
+        basis = args.basis.strip()
+        owner = args.owner.strip() or None
+        depends_on = [value.strip() for value in args.depends_on if value.strip()]
+        if not key or not action or not basis:
+            raise RuntimeError("--key, --action, and --basis must not be empty")
+        if key in depends_on:
+            raise RuntimeError("frontier cannot depend on itself")
+        unknown = [dep for dep in depends_on if frontier_by_key(data, dep) is None]
+        if unknown:
+            raise RuntimeError("unknown frontier dependencies: " + ", ".join(unknown))
+        existing = frontier_by_key(data, key)
+        if existing and existing.get("state") == "done":
+            raise RuntimeError("completed frontier cannot be silently reopened; use a new key for materially new work")
+        if existing:
+            same = (
+                existing.get("action") == action
+                and existing.get("basis") == basis
+                and existing.get("owner") == owner
+                and existing.get("rank", 100) == args.rank
+                and (existing.get("depends_on") or []) == depends_on
+                and existing.get("state") == "ready"
+            )
+            if same:
+                print("frontier: unchanged")
+                return 0
+            current_state = existing.get("state")
+            if current_state not in {"ready", "active"}:
+                current_state = "ready"
+            existing.update({
+                "action": action,
+                "basis": basis,
+                "owner": owner,
+                "rank": args.rank,
+                "depends_on": depends_on,
+                "state": current_state,
+                "note": None,
+                "updated_at": now(),
+            })
+        else:
+            data["frontiers"].append({
+                "key": key,
+                "action": action,
+                "basis": basis,
+                "owner": owner,
+                "rank": args.rank,
+                "depends_on": depends_on,
+                "state": "ready",
+                "note": None,
+                "created_at": now(),
+                "updated_at": now(),
+            })
+        data["updated_at"] = now()
+        save(path, data)
+    elif args.command == "activate-frontier":
+        require_open(data)
+        key = args.key.strip()
+        item = frontier_by_key(data, key)
+        if not item:
+            raise RuntimeError(f"unknown frontier: {key}")
+        if item.get("state") in {"done", "blocked", "stale"}:
+            raise RuntimeError(f"frontier is not activatable from state {item.get('state')}: {key}")
+        current = active_frontier(data)
+        if current and current.get("key") == key:
+            print("frontier: already-active")
+            return 0
+        reason = args.preempt_reason.strip()
+        if current and not reason:
+            raise RuntimeError(
+                f"active frontier exists: {current.get('key')}; close/block/stale it or provide --preempt-reason"
+            )
+        at = now()
+        preempted_key = None
+        if current:
+            preempted_key = current.get("key")
+            current["state"] = "ready"
+            current["note"] = f"preempted: {reason}"
+            current["updated_at"] = at
+        item["state"] = "active"
+        item["note"] = None
+        item["activated_at"] = at
+        item["updated_at"] = at
+        data["frontier_events"].append({
+            "at": at,
+            "event": "activate",
+            "key": key,
+            "preempted": preempted_key,
+            "preempt_reason": reason or None,
+        })
+        data["updated_at"] = at
+        save(path, data)
+    elif args.command == "frontier-status":
+        require_open(data)
+        key = args.key.strip()
+        item = frontier_by_key(data, key)
+        if not item:
+            raise RuntimeError(f"unknown frontier: {key}")
+        previous_state = item.get("state")
+        at = now()
+        item["state"] = args.state
+        item["note"] = args.note.strip() or None
+        item["updated_at"] = at
+        if args.state == "done":
+            item["completed_at"] = at
+        data["frontier_events"].append({
+            "at": at,
+            "event": "status",
+            "key": key,
+            "from": previous_state,
+            "to": args.state,
+            "note": args.note.strip() or None,
+        })
+        data["updated_at"] = at
+        save(path, data)
+    elif args.command == "next-frontier":
+        active = active_frontier(data)
+        ready = ordered_ready_frontiers(data)
+        if active:
+            item = active
+            print(json.dumps({
+                "status": "active",
+                "frontier": {
+                    "key": item.get("key"),
+                    "action": item.get("action"),
+                    "basis": item.get("basis"),
+                    "owner": item.get("owner"),
+                    "rank": item.get("rank"),
+                    "depends_on": item.get("depends_on", []),
+                },
+            }, indent=2, sort_keys=True))
+        elif ready:
+            item = ready[0]
+            print(json.dumps({
+                "status": "ready",
+                "frontier": {
+                    "key": item.get("key"),
+                    "action": item.get("action"),
+                    "basis": item.get("basis"),
+                    "owner": item.get("owner"),
+                    "rank": item.get("rank"),
+                    "depends_on": item.get("depends_on", []),
+                },
+            }, indent=2, sort_keys=True))
+        else:
+            remaining = [
+                {"key": item.get("key"), "state": item.get("state"), "note": item.get("note")}
+                for item in data.get("frontiers", [])
+                if isinstance(item, dict) and item.get("state") not in {"done", "stale"}
+            ]
+            print(json.dumps({"status": "no-ready-frontier", "remaining": remaining}, indent=2, sort_keys=True))
     elif args.command == "blocker":
         require_open(data)
         data["blockers"].append({
@@ -303,6 +642,58 @@ def main() -> int:
         data["next_action"] = None
         data["updated_at"] = now()
         save(path, data)
+    elif args.command == "route-event":
+        require_open(data)
+        if args.router_json == "-":
+            raw = sys.stdin.read()
+        else:
+            raw = pathlib.Path(args.router_json).read_text(encoding="utf-8")
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"invalid router JSON: {exc}") from exc
+        if not isinstance(payload, dict):
+            raise RuntimeError("router JSON must be an object")
+        event = {
+            "at": now(),
+            "signals": payload.get("signals", []),
+            "primary_signal": payload.get("primary_signal"),
+            "primary_stage": payload.get("primary_stage"),
+            "active_references": [item.get("path") for item in payload.get("references", []) if isinstance(item, dict)],
+            "deferred_references": [item.get("path") for item in payload.get("deferred_references", []) if isinstance(item, dict)],
+            "unmatched_signals": payload.get("unmatched_signals", []),
+            "selected_reference_bytes": payload.get("selected_reference_bytes"),
+            "route_byte_budget": payload.get("route_byte_budget"),
+            "context_profile": payload.get("context_profile"),
+            "note": args.note.strip() or None,
+        }
+        data["telemetry"]["route_events"].append(event)
+        data["updated_at"] = event["at"]
+        save(path, data)
+    elif args.command == "tool-event":
+        require_open(data)
+        event = {
+            "at": now(),
+            "class": args.tool_class.strip(),
+            "outcome": args.outcome,
+            "decision_impact": args.decision_impact,
+            "signature": args.signature.strip() or None,
+            "note": args.note.strip() or None,
+        }
+        if not event["class"]:
+            raise RuntimeError("--class must not be empty")
+        data["telemetry"]["tool_events"].append(event)
+        data["updated_at"] = event["at"]
+        save(path, data)
+    elif args.command == "host-event":
+        require_open(data)
+        kind = args.kind.strip()
+        if not kind:
+            raise RuntimeError("--kind must not be empty")
+        event = {"at": now(), "kind": kind, "note": args.note.strip() or None}
+        data["telemetry"]["host_events"].append(event)
+        data["updated_at"] = event["at"]
+        save(path, data)
     elif args.command == "assess":
         failed = [item for item in data["attempts"] if item.get("outcome") == "failed"]
         blockers = data.get("blockers", [])
@@ -312,6 +703,7 @@ def main() -> int:
             b = failed[-2].get("equivalence_class")
             if a and a == b:
                 same_class = a
+        stalled, frontier_key = checkpoint_stalled(data)
         if blockers:
             latest = blockers[-1]
             print("action: stop-at-blocker")
@@ -322,9 +714,176 @@ def main() -> int:
         elif same_class:
             print("action: rebuild-ownership-dataflow")
             print("reason: two consecutive failed attempts share equivalence class", same_class)
+        elif stalled:
+            print("action: replan-stalled-frontier")
+            print("reason: three checkpoints repeated the same frontier/action without new evidence, attempts, or decisions -", frontier_key)
         else:
             print("action: continue-with-cheapest-falsifier")
             print("reason: no deterministic escalation threshold reached")
+    elif args.command == "resume":
+        data["telemetry"]["resume_count"] = int(data["telemetry"].get("resume_count", 0)) + 1
+        data["updated_at"] = now()
+        save(path, data)
+        max_decisions = max(0, args.max_decisions)
+        max_blockers = max(0, args.max_blockers)
+        max_frontiers = max(0, args.max_frontiers)
+        active_hypotheses = [
+            {
+                "id": key,
+                "mechanism": value.get("mechanism"),
+                "falsifier": value.get("falsifier"),
+            }
+            for key, value in data.get("hypotheses", {}).items()
+            if isinstance(value, dict) and value.get("status") == "active"
+        ]
+        latest_keyed: dict[str, dict] = {}
+        unkeyed: list[dict] = []
+        for item in data.get("decisions", []):
+            if not isinstance(item, dict):
+                continue
+            key = item.get("decision_key")
+            compact = {
+                "decision_key": key,
+                "action": item.get("action"),
+                "basis": item.get("basis"),
+                "risk": item.get("risk"),
+                "at": item.get("at"),
+            }
+            if isinstance(key, str) and key.strip():
+                latest_keyed[key] = compact
+            else:
+                unkeyed.append(compact)
+        decisions = list(latest_keyed.values())
+        if len(decisions) < max_decisions:
+            decisions.extend(unkeyed[-(max_decisions - len(decisions)):])
+        decisions = decisions[-max_decisions:] if max_decisions else []
+        active = active_frontier(data)
+        compact_active = None
+        if active:
+            compact_active = {
+                "key": active.get("key"),
+                "action": active.get("action"),
+                "basis": active.get("basis"),
+                "owner": active.get("owner"),
+                "rank": active.get("rank"),
+                "depends_on": active.get("depends_on", []),
+            }
+        ready_frontiers = ordered_ready_frontiers(data)
+        compact_frontiers = [
+            {
+                "key": item.get("key"),
+                "action": item.get("action"),
+                "basis": item.get("basis"),
+                "owner": item.get("owner"),
+                "rank": item.get("rank"),
+                "depends_on": item.get("depends_on", []),
+            }
+            for item in ready_frontiers[:max_frontiers]
+        ] if max_frontiers else []
+        payload = {
+            "contract": data.get("contract"),
+            "phase": data.get("phase"),
+            "next_action": data.get("next_action"),
+            "active_hypotheses": active_hypotheses,
+            "forbidden_equivalence_classes": sorted(forbidden_equivalence_classes(data)),
+            "settled_decisions": decisions,
+            "blockers": data.get("blockers", [])[-max_blockers:] if max_blockers else [],
+            "active_frontier": compact_active,
+            "ready_frontiers": compact_frontiers,
+            "latest_checkpoint": (data.get("checkpoints") or [None])[-1],
+            "counts": {
+                "evidence": len(data.get("evidence", [])),
+                "attempts": len(data.get("attempts", [])),
+                "decisions": len(data.get("decisions", [])),
+                "checkpoints": len(data.get("checkpoints", [])),
+                "frontiers": len(data.get("frontiers", [])),
+                "resume_invocations": int(data.get("telemetry", {}).get("resume_count", 0)),
+                "journaled_route_events": len(data.get("telemetry", {}).get("route_events", [])),
+                "journaled_tool_events": len(data.get("telemetry", {}).get("tool_events", [])),
+                "journaled_host_events": len(data.get("telemetry", {}).get("host_events", [])),
+            },
+            "closed": bool(data.get("closed")),
+            "evidence_level": data.get("evidence_level"),
+            "residual_risks": data.get("residual_risks", []),
+            "note": "Compact resume state only. Revalidate any source/runtime fact whose freshness boundary may have changed.",
+        }
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    elif args.command == "stats":
+        telemetry = data.get("telemetry", {})
+        route_events = [item for item in telemetry.get("route_events", []) if isinstance(item, dict)]
+        tool_events = [item for item in telemetry.get("tool_events", []) if isinstance(item, dict)]
+        host_events = [item for item in telemetry.get("host_events", []) if isinstance(item, dict)]
+        frontier_states: dict[str, int] = {}
+        for item in data.get("frontiers", []):
+            if isinstance(item, dict):
+                state = str(item.get("state") or "unknown")
+                frontier_states[state] = frontier_states.get(state, 0) + 1
+        tool_classes: dict[str, int] = {}
+        tool_outcomes: dict[str, int] = {}
+        decision_impacts: dict[str, int] = {}
+        for item in tool_events:
+            tool_class = str(item.get("class") or "unknown")
+            outcome = str(item.get("outcome") or "unknown")
+            impact = str(item.get("decision_impact") or "unknown")
+            tool_classes[tool_class] = tool_classes.get(tool_class, 0) + 1
+            tool_outcomes[outcome] = tool_outcomes.get(outcome, 0) + 1
+            decision_impacts[impact] = decision_impacts.get(impact, 0) + 1
+        host_kinds: dict[str, int] = {}
+        for item in host_events:
+            kind = str(item.get("kind") or "unknown")
+            host_kinds[kind] = host_kinds.get(kind, 0) + 1
+        route_primary_stages: dict[str, int] = {}
+        unmatched: dict[str, int] = {}
+        max_active_refs = 0
+        max_active_bytes = 0
+        for item in route_events:
+            stage = str(item.get("primary_stage") or "unknown")
+            route_primary_stages[stage] = route_primary_stages.get(stage, 0) + 1
+            refs = item.get("active_references") or []
+            if isinstance(refs, list):
+                max_active_refs = max(max_active_refs, len(refs))
+            byte_count = item.get("selected_reference_bytes")
+            if isinstance(byte_count, int):
+                max_active_bytes = max(max_active_bytes, byte_count)
+            for signal in item.get("unmatched_signals") or []:
+                key = str(signal)
+                unmatched[key] = unmatched.get(key, 0) + 1
+        preemptions = sum(1 for item in data.get("frontier_events", []) if isinstance(item, dict) and item.get("preempted"))
+        stalled, stalled_frontier = checkpoint_stalled(data)
+        payload = {
+            "skill_identity": data.get("skill_identity"),
+            "counts": {
+                "evidence": len(data.get("evidence", [])),
+                "attempts": len(data.get("attempts", [])),
+                "decisions": len(data.get("decisions", [])),
+                "blockers": len(data.get("blockers", [])),
+                "checkpoints": len(data.get("checkpoints", [])),
+                "frontiers": len(data.get("frontiers", [])),
+                "frontier_events": len(data.get("frontier_events", [])),
+                "preemptions": preemptions,
+                "resume_invocations": int(telemetry.get("resume_count", 0)),
+                "journaled_route_events": len(route_events),
+                "journaled_tool_events": len(tool_events),
+                "journaled_host_events": len(host_events),
+            },
+            "frontier_states": frontier_states,
+            "route": {
+                "primary_stages": route_primary_stages,
+                "unmatched_signals": unmatched,
+                "max_active_references": max_active_refs,
+                "max_active_reference_bytes": max_active_bytes,
+            },
+            "tools": {
+                "classes": tool_classes,
+                "outcomes": tool_outcomes,
+                "decision_impact": decision_impacts,
+            },
+            "host_events": host_kinds,
+            "stalled_current_frontier": stalled_frontier if stalled else None,
+            "closed": bool(data.get("closed")),
+            "note": "Tool/host counts cover journaled evaluation events only; they are not host-global totals unless the host routes every event through this journal.",
+        }
+        print(json.dumps(payload, indent=2, sort_keys=True))
     elif args.command == "summary":
         active = [key for key, value in data["hypotheses"].items() if value.get("status") == "active"]
         failed = [item for item in data["attempts"] if item.get("outcome") == "failed"]
@@ -341,6 +900,14 @@ def main() -> int:
         print("decisions:", len(data["decisions"]))
         print("blockers:", len(data.get("blockers", [])))
         print("checkpoints:", len(data.get("checkpoints", [])))
+        frontier_states: dict[str, int] = {}
+        for item in data.get("frontiers", []):
+            if isinstance(item, dict):
+                state = str(item.get("state") or "unknown")
+                frontier_states[state] = frontier_states.get(state, 0) + 1
+        print("frontiers:", len(data.get("frontiers", [])), frontier_states)
+        active = active_frontier(data)
+        print("active frontier:", active.get("key") if active else "none")
         print("closed:", bool(data.get("closed")))
         if data.get("evidence_level"):
             print("evidence level:", data["evidence_level"])

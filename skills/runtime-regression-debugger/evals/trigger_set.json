@@ -1,0 +1,90 @@
+[
+  {
+    "query": "Take over this unfamiliar monorepo, implement the feature end to end, run the real app, and fix anything that breaks.",
+    "should_trigger": true
+  },
+  {
+    "query": "Here is the repository. Own the product end to end: get it running, identify the highest-value improvements, design the UI, implement them, and keep validating real behavior.",
+    "should_trigger": true
+  },
+  {
+    "query": "Redesign this Electron desktop workspace. The current hierarchy and workflow are ugly; implement the redesign and verify the actual desktop renderer.",
+    "should_trigger": true
+  },
+  {
+    "query": "Audit this implemented repository UI against the accepted design and the real rendered app. Tell me what is actually wrong; do not redesign it yet.",
+    "should_trigger": true
+  },
+  {
+    "query": "This background AI task says stopped but the worker keeps mutating files. Trace the cancellation path and fix it across UI and runtime.",
+    "should_trigger": true
+  },
+  {
+    "query": "Migrate this public API without breaking old clients, update consumers, and prove mixed-version compatibility.",
+    "should_trigger": true
+  },
+  {
+    "query": "Review everything changed since main against the spec and repository standards, then identify only blocking issues.",
+    "should_trigger": true
+  },
+  {
+    "query": "The release pipeline published the wrong artifact after merge. Recover the live topology, repair it safely, and verify production identity.",
+    "should_trigger": true
+  },
+  {
+    "query": "This race only appears after reconnect. Reproduce it, find the real state owner, patch it, and add a regression test.",
+    "should_trigger": true
+  },
+  {
+    "query": "What is Electron?",
+    "should_trigger": false
+  },
+  {
+    "query": "How do I center a div with CSS?",
+    "should_trigger": false
+  },
+  {
+    "query": "Give me five nice dark-mode color hex values.",
+    "should_trigger": false
+  },
+  {
+    "query": "Explain optimistic updates in React Query.",
+    "should_trigger": false
+  },
+  {
+    "query": "Rename this local variable from data to userData.",
+    "should_trigger": false
+  },
+  {
+    "query": "What does git rebase --onto do?",
+    "should_trigger": false
+  },
+  {
+    "query": "Suggest names for my mobile app.",
+    "should_trigger": false
+  },
+  {
+    "query": "Translate this JavaScript error message into Chinese.",
+    "should_trigger": false
+  },
+  {
+    "query": "Is 16px the same as 1rem in the browser?",
+    "should_trigger": false
+  },
+  {
+    "query": "Write a tiny regex that matches UUIDs.",
+    "should_trigger": false
+  },
+  {
+    "query": "Show me three visual directions and a moodboard for a new finance app. No code or repository work yet.",
+    "should_trigger": false
+  },
+  {
+    "query": "Critique this attached screenshot for hierarchy, typography, and visual balance only. Do not inspect or change code.",
+    "should_trigger": false
+  },
+  {
+    "query": "Redesign and implement this existing desktop app repository, then compare the actual rendered desktop against the accepted design.",
+    "should_trigger": true
+  }
+]

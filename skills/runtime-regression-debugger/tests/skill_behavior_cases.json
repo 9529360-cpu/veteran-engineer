@@ -1,0 +1,428 @@
+[
+  {
+    "name": "desktop-redesign-is-design-first",
+    "signal": "desktop-redesign",
+    "must_include": [
+      "references/frontend-product-patterns.md",
+      "references/desktop-product-experience.md"
+    ],
+    "must_not_be_design_free": true,
+    "must_exclude": [
+      "references/visual-ui-quality-assurance-product-engineering.md",
+      "references/full-stack-product-engineering.md",
+      "references/host-shell-platform-patterns.md",
+      "references/runtime-lifecycle-patterns.md"
+    ]
+  },
+  {
+    "name": "frontend-redesign-is-design-first",
+    "signal": "frontend-redesign",
+    "must_include": [
+      "references/frontend-product-patterns.md",
+      "references/frontend-design-governance.md"
+    ],
+    "must_not_be_design_free": true,
+    "must_exclude": [
+      "references/visual-ui-quality-assurance-product-engineering.md",
+      "references/full-stack-product-engineering.md",
+      "references/frontend-visual-system-patterns.md"
+    ]
+  },
+  {
+    "name": "visual-polish-loads-visual-system-only",
+    "signal": "visual-polish",
+    "must_include": [
+      "references/frontend-visual-system-patterns.md"
+    ],
+    "must_exclude": [
+      "references/frontend-product-patterns.md",
+      "references/frontend-design-governance.md",
+      "references/visual-ui-quality-assurance-product-engineering.md",
+      "references/full-stack-product-engineering.md"
+    ]
+  },
+  {
+    "name": "visual-qa-routes-live-review",
+    "signal": "visual-qa",
+    "must_include": [
+      "references/visual-ui-quality-assurance-product-engineering.md"
+    ],
+    "must_exclude": [
+      "references/frontend-product-patterns.md",
+      "references/full-stack-product-engineering.md"
+    ]
+  },
+  {
+    "name": "desktop-runtime-does-not-force-design",
+    "signal": "desktop",
+    "must_include": [
+      "references/runtime-lifecycle-patterns.md",
+      "references/host-shell-platform-patterns.md"
+    ],
+    "must_exclude": [
+      "references/frontend-product-patterns.md",
+      "references/visual-ui-quality-assurance-product-engineering.md"
+    ]
+  },
+  {
+    "name": "backend-bug-does-not-pull-design",
+    "signal": "bug",
+    "must_include": [
+      "references/decision-compression-learning-loop.md",
+      "references/causal-debugging-experiment-design.md"
+    ],
+    "must_exclude": [
+      "references/frontend-product-patterns.md",
+      "references/visual-ui-quality-assurance-product-engineering.md",
+      "references/full-stack-product-engineering.md"
+    ]
+  },
+  {
+    "name": "requirements-stage-does-not-preload-implementation",
+    "signal": "product-requirements",
+    "must_include": [
+      "references/product-requirements-engineering.md"
+    ],
+    "must_exclude": [
+      "references/full-stack-product-engineering.md",
+      "references/frontend-product-patterns.md",
+      "references/visual-ui-quality-assurance-product-engineering.md"
+    ]
+  },
+  {
+    "name": "analysis-stage-does-not-preload-implementation",
+    "signal": "product-analysis",
+    "must_include": [
+      "references/product-analysis-engineering.md"
+    ],
+    "must_exclude": [
+      "references/full-stack-product-engineering.md",
+      "references/frontend-product-patterns.md",
+      "references/visual-ui-quality-assurance-product-engineering.md"
+    ]
+  },
+  {
+    "name": "generic-accessibility-loads-the-domain-owner-only",
+    "signal": "accessibility",
+    "must_include": [
+      "references/accessibility-product-engineering.md"
+    ],
+    "must_exclude": [
+      "references/frontend-product-patterns.md",
+      "references/full-stack-product-engineering.md",
+      "references/visual-ui-quality-assurance-product-engineering.md"
+    ]
+  },
+  {
+    "name": "plugin-runtime-does-not-preload-worker-or-state-owners",
+    "signal": "plugin-runtime",
+    "must_include": [
+      "references/plugin-control-plane.md"
+    ],
+    "must_exclude": [
+      "references/worker-execution-runtime.md",
+      "references/hosted-state-backend-engineering.md",
+      "references/autonomous-repository-engineering.md"
+    ]
+  },
+  {
+    "name": "worker-orchestration-does-not-preload-plugin-or-state-owners",
+    "signal": "worker-orchestration",
+    "must_include": [
+      "references/worker-execution-runtime.md",
+      "references/batch-mission-orchestration.md",
+      "references/autonomous-repository-engineering.md"
+    ],
+    "must_exclude": [
+      "references/plugin-control-plane.md",
+      "references/hosted-state-backend-engineering.md",
+      "references/full-stack-product-engineering.md"
+    ]
+  },
+  {
+    "name": "hosted-state-backend-loads-the-state-owner-only",
+    "signal": "hosted-state-backend",
+    "must_include": [
+      "references/hosted-state-backend-engineering.md"
+    ],
+    "must_exclude": [
+      "references/plugin-control-plane.md",
+      "references/worker-execution-runtime.md",
+      "references/full-stack-product-engineering.md"
+    ]
+  },
+  {
+    "name": "explicit-fullstack-loads-implementation-without-design-preload",
+    "signal": "fullstack",
+    "must_include": [
+      "references/full-stack-product-engineering.md"
+    ],
+    "must_exclude": [
+      "references/frontend-product-patterns.md",
+      "references/visual-ui-quality-assurance-product-engineering.md"
+    ]
+  },
+  {
+    "name": "design-keeps-security-active-and-defers-migration-release",
+    "signal": "product-design,security,migration,release",
+    "primary_signal": "product-design",
+    "primary_stage": "design",
+    "must_include": [
+      "references/frontend-product-patterns.md",
+      "references/security-multitenancy-patterns.md"
+    ],
+    "must_exclude": [
+      "references/data-consistency-migration-patterns.md",
+      "references/release-promotion-patterns.md"
+    ],
+    "deferred_signal_include": [
+      "migration",
+      "release"
+    ],
+    "deferred_must_include": [
+      "references/data-consistency-migration-patterns.md",
+      "references/release-promotion-patterns.md"
+    ]
+  },
+  {
+    "name": "diagnostic-primary-keeps-failing-mechanisms-active",
+    "signal": "bug,async,desktop,ai-product",
+    "primary_signal": "bug",
+    "primary_stage": "diagnostic",
+    "must_include": [
+      "references/decision-compression-learning-loop.md",
+      "references/causal-debugging-experiment-design.md",
+      "references/async-edge-job-patterns.md",
+      "references/runtime-lifecycle-patterns.md",
+      "references/ai-llm-product-engineering.md"
+    ],
+    "deferred_signal_exclude": [
+      "async",
+      "desktop",
+      "ai-product"
+    ]
+  },
+  {
+    "name": "requirements-keep-domain-constraints-and-defer-frontend-implementation",
+    "signal": "product-requirements,subscription-billing,auth,frontend",
+    "primary_signal": "product-requirements",
+    "primary_stage": "requirements",
+    "must_include": [
+      "references/product-requirements-engineering.md",
+      "references/subscription-billing-entitlements-product-engineering.md",
+      "references/security-multitenancy-patterns.md"
+    ],
+    "must_exclude": [
+      "references/frontend-product-patterns.md"
+    ],
+    "deferred_signal_include": [
+      "frontend"
+    ],
+    "deferred_must_include": [
+      "references/frontend-implementation-patterns.md"
+    ]
+  },
+  {
+    "name": "incident-primary-keeps-migration-and-provider-context-active",
+    "signal": "incident,migration,external",
+    "primary_signal": "incident",
+    "primary_stage": "incident",
+    "must_include": [
+      "references/incident-command-uncertainty.md",
+      "references/data-consistency-migration-patterns.md",
+      "references/dependency-outcome-degradation.md"
+    ],
+    "deferred_signal_exclude": [
+      "migration",
+      "external"
+    ]
+  },
+  {
+    "name": "frontend-styling-implementation-does-not-reopen-design",
+    "signal": "frontend-style",
+    "primary_signal": "frontend-style",
+    "primary_stage": "implementation",
+    "must_include": [
+      "references/frontend-styling-implementation-patterns.md"
+    ],
+    "must_exclude": [
+      "references/frontend-product-patterns.md",
+      "references/frontend-visual-system-patterns.md",
+      "references/frontend-design-governance.md"
+    ]
+  },
+  {
+    "name": "product-design-defers-css-implementation-owner",
+    "signal": "product-design,frontend-style",
+    "primary_signal": "product-design",
+    "primary_stage": "design",
+    "must_include": [
+      "references/frontend-product-patterns.md"
+    ],
+    "must_exclude": [
+      "references/frontend-styling-implementation-patterns.md"
+    ],
+    "deferred_signal_include": [
+      "frontend-style"
+    ],
+    "deferred_must_include": [
+      "references/frontend-styling-implementation-patterns.md"
+    ]
+  },
+  {
+    "name": "public-website-uses-site-experience-owner-without-css-preload",
+    "signal": "landing-page",
+    "primary_signal": "website",
+    "primary_stage": "design",
+    "must_include": [
+      "references/website-experience-patterns.md",
+      "references/frontend-product-patterns.md"
+    ],
+    "must_exclude": [
+      "references/frontend-styling-implementation-patterns.md",
+      "references/visual-ui-quality-assurance-product-engineering.md"
+    ]
+  },
+  {
+    "name": "repo-autopilot-starts-with-takeover-and-stewardship-without-preloading-ui-design",
+    "signal": "repo-autopilot",
+    "primary_signal": "repo-autopilot",
+    "primary_stage": "technical",
+    "must_include": [
+      "references/project-takeover-engineering.md",
+      "references/proactive-product-stewardship.md"
+    ],
+    "must_exclude": [
+      "references/design-synthesis-prototyping.md",
+      "references/frontend-product-patterns.md",
+      "references/full-stack-product-engineering.md"
+    ]
+  },
+  {
+    "name": "unresolved-design-synthesis-precedes-styling-implementation",
+    "signal": "design-synthesis,frontend-style",
+    "primary_signal": "design-synthesis",
+    "primary_stage": "design",
+    "must_include": [
+      "references/design-synthesis-prototyping.md"
+    ],
+    "must_exclude": [
+      "references/frontend-styling-implementation-patterns.md"
+    ],
+    "deferred_signal_include": [
+      "frontend-style"
+    ],
+    "deferred_must_include": [
+      "references/frontend-styling-implementation-patterns.md"
+    ]
+  },
+  {
+    "name": "project-intelligence-alias-uses-takeover-owner-only",
+    "signal": "project-intelligence",
+    "primary_signal": "takeover",
+    "primary_stage": "technical",
+    "must_include": [
+      "references/project-takeover-engineering.md"
+    ],
+    "must_exclude": [
+      "references/product-analysis-engineering.md",
+      "references/proactive-product-stewardship.md"
+    ]
+  },
+  {
+    "name": "product-health-scan-alias-uses-stewardship-owner",
+    "signal": "product-health-scan",
+    "primary_signal": "product-stewardship",
+    "must_include": [
+      "references/proactive-product-stewardship.md"
+    ],
+    "must_exclude": [
+      "references/product-analysis-engineering.md",
+      "references/frontend-product-patterns.md"
+    ]
+  },
+  {
+    "name": "repo-autopilot-on-chatgpt-web-adds-only-host-execution-companion",
+    "signal": "repo-autopilot,chatgpt-web",
+    "primary_signal": "repo-autopilot",
+    "primary_stage": "technical",
+    "must_include": [
+      "references/project-takeover-engineering.md",
+      "references/proactive-product-stewardship.md",
+      "references/chatgpt-web-host-execution.md"
+    ],
+    "must_exclude": [
+      "references/full-stack-product-engineering.md",
+      "references/plugin-control-plane.md",
+      "references/worker-execution-runtime.md"
+    ]
+  },
+  {
+    "name": "generic-product-improvement-does-not-preload-analytics",
+    "signal": "product-improvement",
+    "must_include": [
+      "references/proactive-product-stewardship.md"
+    ],
+    "must_exclude": [
+      "references/product-analytics-experimentation.md"
+    ]
+  },
+  {
+    "name": "generic-validation-does-not-preload-mutation-testing",
+    "signal": "validation",
+    "must_include": [
+      "references/testing-quality-patterns.md",
+      "references/engineering-evidence-gates.md"
+    ],
+    "must_exclude": [
+      "references/mutation-metamorphic-regression-testing.md"
+    ]
+  },
+  {
+    "name": "generic-release-does-not-preload-infrastructure",
+    "signal": "release",
+    "must_include": [
+      "references/release-promotion-patterns.md",
+      "references/operations-reliability-patterns.md"
+    ],
+    "must_exclude": [
+      "references/infrastructure-deployment-patterns.md"
+    ]
+  },
+  {
+    "name": "plain-desktop-ui-does-not-preload-redesign-governance",
+    "signal": "desktop-ui",
+    "must_include": [
+      "references/frontend-product-patterns.md",
+      "references/desktop-product-experience.md"
+    ],
+    "must_exclude": [
+      "references/frontend-design-governance.md"
+    ]
+  },
+  {
+    "name": "explicit-deployment-loads-infrastructure",
+    "signal": "deploy",
+    "must_include": [
+      "references/release-promotion-patterns.md",
+      "references/infrastructure-deployment-patterns.md"
+    ],
+    "must_exclude": []
+  },
+  {
+    "name": "foreground-web-agent-keeps-takeover-stewardship-and-host-execution-together",
+    "signal": "continuous-web-agent",
+    "primary_signal": "foreground-agent",
+    "primary_stage": "technical",
+    "must_include": [
+      "references/project-takeover-engineering.md",
+      "references/proactive-product-stewardship.md",
+      "references/chatgpt-web-host-execution.md"
+    ],
+    "must_exclude": [
+      "references/plugin-control-plane.md",
+      "references/worker-execution-runtime.md",
+      "references/hosted-state-backend-engineering.md"
+    ]
+  }
+]

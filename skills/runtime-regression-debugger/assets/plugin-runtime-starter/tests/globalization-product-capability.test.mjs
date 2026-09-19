@@ -44,8 +44,7 @@ test('globalization routes to the focused cross-client owner and keeps machine/t
   const refs = payload.references.map((entry) => entry.path);
   for (const expected of [
     'references/globalization-product-engineering.md',
-    'references/full-stack-product-engineering.md',
-    'references/frontend-product-patterns.md',
+    'references/frontend-implementation-patterns.md',
     'references/temporal-debugging-state-transitions.md'
   ]) assert.ok(refs.includes(expected), `expected route ${expected}`);
 

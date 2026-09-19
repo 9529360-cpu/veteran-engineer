@@ -4,7 +4,7 @@ Use this when users, devices, tabs, or processes can observe or mutate shared st
 
 `actor -> current authorization -> authoritative shared-state transition -> committed version/order -> publication -> local reconciliation -> visible result or recovery`
 
-For local UI ownership use `frontend-product-patterns.md`; for durable concurrency use `data-consistency-migration-patterns.md` and `distributed-systems-consistency.md`; for permission boundaries use `security-multitenancy-patterns.md`. Add async/messaging machinery only when the actual mechanism needs it.
+For client state/effect ownership use `frontend-implementation-patterns.md`; use `frontend-product-patterns.md` when the collaboration experience itself is being designed; for durable concurrency use `data-consistency-migration-patterns.md` and `distributed-systems-consistency.md`; for permission boundaries use `security-multitenancy-patterns.md`. Add async/messaging machinery only when the actual mechanism needs it.
 
 ## Keep one durable authority
 

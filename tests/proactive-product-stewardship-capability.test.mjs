@@ -53,11 +53,11 @@ test('broad repository ownership explicitly includes proactive product and UI st
   assert.match(autonomous, /subjective taste/i);
 
   assert.match(stewardship, /rendered experience is part of the owned system/i);
-  assert.match(stewardship, /Visual hierarchy/);
-  assert.match(stewardship, /Responsive behavior/);
-  assert.match(stewardship, /Accessibility/);
-  assert.match(stewardship, /Content and terminology/);
-  assert.match(stewardship, /Do not replace a coherent visual language for fashion or personal taste alone/);
+  assert.match(stewardship, /visual consistency, density, spacing, typography/i);
+  assert.match(stewardship, /responsive\/adaptive behavior/i);
+  assert.match(stewardship, /accessibility semantics/i);
+  assert.match(stewardship, /content clarity and terminology/i);
+  assert.match(stewardship, /Do not replace coherent visual language for fashion\/personal taste/);
 });
 
 test('product stewardship gate accepts an evidence-backed UI improvement sweep', async (t) => {

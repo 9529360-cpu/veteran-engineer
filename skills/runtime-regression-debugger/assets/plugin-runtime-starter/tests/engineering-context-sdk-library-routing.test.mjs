@@ -48,7 +48,6 @@ test('engineering context router treats SDK and library work as a first-class co
   for (const expected of [
     'references/sdk-library-product-engineering.md',
     'references/cross-repo-contract-mesh.md',
-    'references/api-backend-patterns.md',
     'references/semantic-diff-behavior-change.md',
     'references/dependency-supply-chain-patterns.md',
     'references/release-promotion-patterns.md',
@@ -63,9 +62,9 @@ test('engineering context router treats SDK and library work as a first-class co
   const aliasPayload = JSON.parse(aliases.stdout);
   assert.deepEqual(aliasPayload.unmatched_signals, []);
   assert.deepEqual(aliasPayload.signals, [
-    'sdk', 'sdk', 'sdk', 'library', 'client-library', 'public-library-api', 'semver',
-    'package-exports', 'package-exports', 'generated-sdk', 'generated-sdk',
-    'library-dependencies', 'package-publishing', 'package-publishing', 'library-deprecation'
+    'sdk', 'library', 'client-library', 'public-library-api', 'semver',
+    'package-exports', 'generated-sdk', 'library-dependencies',
+    'package-publishing', 'library-deprecation'
   ]);
 
   const ambiguous = runRouter('package,module,public-api,client');
