@@ -57,7 +57,35 @@ async function assertRemoteProjectAllowed(projectId, state, config) {
 }
 
 async function authorizeStoredRemoteScope(name, args, config, app) {
+  const explicitEmptyEvidenceIds = name === 'evidence_query' && Array.isArray(args?.ids) && args.ids.length === 0;
+  if (explicitEmptyEvidenceIds) return args || {};
+
+  const workspaceConstrained = Array.isArray(config.allowedLocalRoots) && config.allowedLocalRoots.length > 0;
+  if (workspaceConstrained && REMOTE_RUNTIME_WIDE_PROJECT_TOOLS.has(name)) {
+    throw remoteScopeError(
+      'REMOTE_WORKSPACE_NOT_ALLOWED',
+      `Remote Host tool ${name} is runtime-wide and cannot be bounded to the configured workspaces`,
+      { tool: name }
+    );
+  }
+
+  const hasDirectScope = (typeof args?.projectId === 'string' && args.projectId)
+    || (typeof args?.missionId === 'string' && args.missionId)
+    || (typeof args?.candidateId === 'string' && args.candidateId)
+    || (typeof args?.experienceId === 'string' && args.experienceId)
+    || (Array.isArray(args?.evidenceIds) && args.evidenceIds.length > 0)
+    || (name === 'evidence_query' && Array.isArray(args?.ids) && args.ids.length > 0);
+
+  if (workspaceConstrained && REMOTE_OPTIONAL_GLOBAL_PROJECT_TOOLS.has(name) && !hasDirectScope) {
+    throw remoteScopeError(
+      'REMOTE_PROJECT_SCOPE_REQUIRED',
+      `Remote Host tool ${name} requires explicit project-scoped identity when workspaces are configured`,
+      { tool: name }
+    );
+  }
+  if (!hasDirectScope) return args || {};
   if (!app?.store?.read) throw remoteScopeError('REMOTE_PROJECT_SCOPE_UNAVAILABLE', 'Remote Host state scope is unavailable');
+
   const state = await app.store.read();
   const projectIds = new Set();
   const addProjectId = (projectId) => {
@@ -85,13 +113,6 @@ async function authorizeStoredRemoteScope(name, args, config, app) {
   for (const evidenceId of evidenceIds) {
     const evidence = requireStoredRecord(state.evidence?.[evidenceId], 'evidence', evidenceId);
     addProjectId(evidence.projectId);
-  }
-
-  const explicitEmptyEvidenceIds = name === 'evidence_query' && Array.isArray(args?.ids) && args.ids.length === 0;
-  const requiresAllProjects = REMOTE_RUNTIME_WIDE_PROJECT_TOOLS.has(name)
-    || (REMOTE_OPTIONAL_GLOBAL_PROJECT_TOOLS.has(name) && projectIds.size === 0 && !explicitEmptyEvidenceIds);
-  if (requiresAllProjects) {
-    for (const projectId of Object.keys(state.projects || {})) addProjectId(projectId);
   }
 
   for (const projectId of projectIds) await assertRemoteProjectAllowed(projectId, state, config);
