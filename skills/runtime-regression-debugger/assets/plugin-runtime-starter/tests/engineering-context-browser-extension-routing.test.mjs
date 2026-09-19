@@ -47,7 +47,7 @@ test('engineering context router treats browser extensions as a first-class prod
   const paths = payload.references.map((entry) => entry.path);
   for (const expected of [
     'references/browser-extension-product-engineering.md',
-    'references/frontend-product-patterns.md',
+    'references/frontend-implementation-patterns.md',
     'references/async-edge-job-patterns.md',
     'references/security-multitenancy-patterns.md',
     'references/release-promotion-patterns.md'
@@ -66,10 +66,8 @@ test('engineering context router treats browser extensions as a first-class prod
     'firefox-extension',
     'webextension',
     'extension-manifest',
-    'extension-manifest',
     'extension-background',
     'extension-permissions',
-    'extension-store',
     'extension-store'
   ]);
 
