@@ -56,9 +56,10 @@ test('Windows scheduled task registration contains only a Veteran-owned launcher
     assert.equal(spec.createArgs[0], '/Create');
     assert.equal(spec.createArgs.includes('/SC'), true);
     assert.equal(spec.createArgs.includes('ONLOGON'), true);
-    assert.match(spec.taskAction, /remote-host-service\.cmd/);
+    assert.match(spec.taskAction, /powershell\.exe .*remote-host-service\.ps1/);
     assert.equal(spec.taskAction.includes(fx.initialized.pairingToken), false);
-    assert.match(spec.launcherContent, / supervise --config /);
+    assert.equal(spec.launcherContent.charCodeAt(0), 0xfeff);
+    assert.match(spec.launcherContent, / 'supervise' '--config' /);
     assert.equal(spec.launcherContent.includes(fx.initialized.pairingToken), false);
   } finally {
     await cleanup(fx.root);
@@ -84,7 +85,7 @@ test('install, repair, control, status, and uninstall keep service state under V
     assert.equal(installed.desiredState, 'running');
     assert.equal(calls.some(([, args]) => args[0] === '/Create'), true);
     assert.equal(calls.some(([, args]) => args[0] === '/Run'), false);
-    const launcher = await fs.readFile(path.join(fx.serviceRoot, 'remote-host-service.cmd'), 'utf8');
+    const launcher = await fs.readFile(path.join(fx.serviceRoot, 'remote-host-service.ps1'), 'utf8');
     assert.equal(launcher.includes(fx.initialized.pairingToken), false);
 
     const status = await remoteHostServiceStatus({

@@ -55,9 +55,10 @@ async function healthReady(port) {
 
 test('Windows Task Scheduler can register and remove the real Remote Host supervisor action', { skip: process.platform !== 'win32' }, async () => {
   const root = await tempDir('veteran-remote-service-win-');
-  const workspace = path.join(root, 'workspace');
-  const configPath = path.join(root, 'remote-host.json');
-  const serviceRoot = path.join(root, 'service');
+  const unicodeRoot = path.join(root, '远程验收');
+  const workspace = path.join(unicodeRoot, 'workspace');
+  const configPath = path.join(unicodeRoot, 'remote-host.json');
+  const serviceRoot = path.join(unicodeRoot, 'service');
   let installed = false;
   try {
     await fs.mkdir(workspace, { recursive: true });
@@ -78,9 +79,9 @@ test('Windows Task Scheduler can register and remove the real Remote Host superv
     const status = await remoteHostServiceStatus({ serviceRoot });
     assert.equal(status.registration, 'registered');
     assert.equal(status.desiredState, 'running');
-    const launcher = await fs.readFile(path.join(serviceRoot, 'remote-host-service.cmd'), 'utf8');
+    const launcher = await fs.readFile(path.join(serviceRoot, 'remote-host-service.ps1'), 'utf8');
     assert.equal(launcher.includes(initialized.pairingToken), false);
-    assert.match(launcher, / supervise --config /);
+    assert.match(launcher, / 'supervise' '--config' /);
   } finally {
     if (installed) {
       await uninstallRemoteHostService({ serviceRoot, purgeLogs: true }).catch(() => {});
@@ -92,9 +93,10 @@ test('Windows Task Scheduler can register and remove the real Remote Host superv
 
 test('Windows Task Scheduler runs, restarts, and stops the real Remote Host supervisor', { skip: process.platform !== 'win32' }, async () => {
   const root = await tempDir('veteran-remote-service-lifecycle-win-');
-  const workspace = path.join(root, 'workspace');
-  const configPath = path.join(root, 'remote-host.json');
-  const serviceRoot = path.join(root, 'service');
+  const unicodeRoot = path.join(root, '远程验收');
+  const workspace = path.join(unicodeRoot, 'workspace');
+  const configPath = path.join(unicodeRoot, 'remote-host.json');
+  const serviceRoot = path.join(unicodeRoot, 'service');
   const port = await freeLoopbackPort();
   try {
     await fs.mkdir(workspace, { recursive: true });

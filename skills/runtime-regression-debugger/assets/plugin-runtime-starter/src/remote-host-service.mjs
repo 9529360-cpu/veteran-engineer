@@ -64,7 +64,7 @@ function servicePaths(serviceRoot = defaultRemoteHostServiceRoot()) {
     controlPath: path.join(root, 'control.json'),
     pidPath: path.join(root, 'pid.json'),
     lockPath: path.join(root, 'supervisor.lock'),
-    launcherPath: path.join(root, 'remote-host-service.cmd'),
+    launcherPath: path.join(root, 'remote-host-service.ps1'),
     logDir,
     logPath: path.join(logDir, 'remote-host.log')
   };
@@ -86,16 +86,16 @@ function normalizePositiveInteger(value, fallback, label) {
   return number;
 }
 
-function validateBatchPath(value, label) {
+function validateLauncherPath(value, label) {
   const text = path.resolve(String(value || ''));
-  if (!text || /[\r\n\0"]/u.test(text)) {
+  if (!text || /[\r\n\0]/u.test(text)) {
     throw codedError('REMOTE_HOST_SERVICE_PATH_INVALID', `${label} contains characters that cannot be represented safely in the Windows launcher`);
   }
   return text;
 }
 
-function batchQuote(value, label) {
-  return `"${validateBatchPath(value, label).replace(/%/g, '%%')}"`;
+function powershellQuote(value, label) {
+  return `'${validateLauncherPath(value, label).replaceAll("'", "''")}'`;
 }
 
 function taskIdForConfig(configPath) {
@@ -108,21 +108,20 @@ export function buildWindowsScheduledTaskSpec({
   nodePath = process.execPath,
   cliPath = defaultRemoteHostCliPath()
 } = {}) {
-  const resolvedConfigPath = validateBatchPath(configPath, 'configPath');
-  const resolvedServiceRoot = validateBatchPath(serviceRoot, 'serviceRoot');
-  const resolvedNodePath = validateBatchPath(nodePath, 'nodePath');
-  const resolvedCliPath = validateBatchPath(cliPath, 'cliPath');
-  const launcherPath = path.join(resolvedServiceRoot, 'remote-host-service.cmd');
+  const resolvedConfigPath = validateLauncherPath(configPath, 'configPath');
+  const resolvedServiceRoot = validateLauncherPath(serviceRoot, 'serviceRoot');
+  const resolvedNodePath = validateLauncherPath(nodePath, 'nodePath');
+  const resolvedCliPath = validateLauncherPath(cliPath, 'cliPath');
+  const launcherPath = path.join(resolvedServiceRoot, 'remote-host-service.ps1');
   const serviceId = `remote-host-${taskIdForConfig(resolvedConfigPath)}`;
   const taskName = `Veteran Remote Host ${taskIdForConfig(resolvedConfigPath)}`;
   const launcherContent = [
-    '@echo off',
-    'setlocal DisableDelayedExpansion',
-    `${batchQuote(resolvedNodePath, 'nodePath')} ${batchQuote(resolvedCliPath, 'cliPath')} supervise --config ${batchQuote(resolvedConfigPath, 'configPath')} --service-root ${batchQuote(resolvedServiceRoot, 'serviceRoot')}`,
-    'exit /b %errorlevel%',
+    "\uFEFF$ErrorActionPreference = 'Stop'",
+    `& ${powershellQuote(resolvedNodePath, 'nodePath')} ${powershellQuote(resolvedCliPath, 'cliPath')} 'supervise' '--config' ${powershellQuote(resolvedConfigPath, 'configPath')} '--service-root' ${powershellQuote(resolvedServiceRoot, 'serviceRoot')}`,
+    'exit $LASTEXITCODE',
     ''
   ].join('\r\n');
-  const taskAction = `cmd.exe /d /s /c ""${launcherPath}""`;
+  const taskAction = `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${launcherPath}"`;
   return {
     serviceId,
     taskName,
