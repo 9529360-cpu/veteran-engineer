@@ -193,6 +193,8 @@ Use SLO/error-budget signals, recurring user impact, high-severity failure modes
 
 When failure injection is useful, start with a falsifiable steady-state hypothesis. Define blast radius, stop conditions, observation signals, recovery, and responsible operator before injection; start in test/staging or a tiny cohort unless that invalidates the hypothesis. Inject realistic faults such as latency, dependency errors, instance/leader loss, packet loss, resource pressure, stale config, or queue delay. Do not run uncontrolled chaos during an unexplained incident or before recovery is proven. A useful experiment proves the user contract or recovery objective, not merely that an alert fired.
 
+Use `scripts/slo_budget.py` for explicit error-budget/burn-rate arithmetic and `scripts/recovery_budget.py` for rough restore/replay/RTO budgeting when those calculations improve a decision. Both are planning aids; measured exercises and live telemetry remain stronger evidence.
+
 ## Mature references
 
 - Google SRE Monitoring: https://sre.google/sre-book/monitoring-distributed-systems/

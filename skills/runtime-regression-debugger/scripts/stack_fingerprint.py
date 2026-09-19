@@ -493,8 +493,11 @@ def detect_legacy_web(files_by_name: dict[str, list[pathlib.Path]], detected: di
 
 def suggested_references(detected: dict[str, set[str]], monorepo: bool) -> set[str]:
     refs: set[str] = set()
-    major_categories = [c for c in detected if c not in {"testing", "observability", "repository-shape", "auth", "infrastructure"}]
-    if monorepo or len(major_categories) >= 3:
+    # A normal full-stack repository may legitimately contain frontend, backend,
+    # data, and messaging technologies. That does not make staff-level execution
+    # guidance relevant. Load it only when repository shape proves a coordination
+    # boundary such as a monorepo; task/mechanism routing handles cross-layer work.
+    if monorepo:
         refs.add(REFERENCE_RULES["staff"])
 
     frontend = detected.get("frontend", set())

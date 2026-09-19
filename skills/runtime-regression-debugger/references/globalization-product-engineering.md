@@ -58,4 +58,4 @@ Measure missing message ids, unexpected fallback, formatting/parser failures, lo
 
 Rollback must restore a known-good code/catalog/config combination without rewriting durable localized user data.
 
-For Web/UI work also use `frontend-product-patterns.md`; for native clients use `mobile-product-engineering.md`; for time-state bugs use `temporal-debugging-state-transitions.md`; for API/data/cross-repo compatibility add those focused owners rather than duplicating them here.
+For Web/UI implementation also use `frontend-implementation-patterns.md`; use `frontend-product-patterns.md` when globalization materially changes the experience/layout; for native clients use `mobile-product-engineering.md`; for time-state bugs use `temporal-debugging-state-transitions.md`; for API/data/cross-repo compatibility add those focused owners rather than duplicating them here.

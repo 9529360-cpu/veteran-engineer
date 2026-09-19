@@ -24,6 +24,8 @@ Use the database's real transaction and locking primitives. Keep revisions opaqu
 
 Do not claim distributed safety from same-process concurrency tests. Prove at least two independently constructed backend instances or connection pools against the same durable identity.
 
+For Skill-owned owner-state checkpoints, treat `expected generation` as a domain-level compare-and-swap precondition layered above the backend's opaque storage revision. A checkpoint write must fail if either the storage revision is stale or the persisted owner generation no longer equals the caller's expectation. Keep the owner-state payload opaque to storage: persist/hash/audit the exact snapshot, but leave semantic handoff legality to the Skill transition gate.
+
 ## Treat COMMIT acknowledgement loss as an unknown outcome
 
 A client error after sending `COMMIT` does not prove rollback. Blind retry can duplicate an irreversible mutation.
