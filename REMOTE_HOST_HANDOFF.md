@@ -14,7 +14,7 @@ That entire sequence has **not** been proven on the user's spare machine.
 
 Repository: `9529360-cpu/veteran-engineer`.
 
-Last behavior-bearing repository checkpoint relevant to this handoff is `ed3b9a90759f17e348c19a06be15ad85b7d5a4ef` (#469). The former Remote Host stack is merged; #468 refreshed authority docs, #469 replayed the V16 Skill brain without changing Remote Host runtime ownership, and #470 merged documentation-only as `ab992cf9fe9776b7d792a1f7f7a6936659999201`. Refresh live `main` from GitHub before consequential work rather than treating this checkpoint as a branch-head promise. There is no active non-Draft Remote Host PR from that line.
+Last behavior-bearing repository checkpoint relevant to this handoff is `82f2cfd980914362e1a699db8965a4fc801e3744` (#472). The former Remote Host stack is merged; #468 refreshed authority docs, #469 replayed the V16 Skill brain without changing Remote Host runtime ownership, #470/#471 were documentation-only, and #472 made the Windows service launcher Unicode-safe. Refresh live `main` from GitHub before consequential work rather than treating this checkpoint as a branch-head promise. There is no active non-Draft Remote Host PR from that line.
 
 The merged implementation line was:
 
@@ -25,6 +25,7 @@ The merged implementation line was:
 - #461: Windows native Chromium execution and screenshot evidence, live token invalidation, and real supervisor restart repair.
 - #464: bounded verified screenshot image delivery through existing `evidence_query`, exact-id scoped.
 - #465: shared-state workspace authorization with fail-closed handling for future unclassified tools.
+- #472: Unicode-safe Veteran-owned PowerShell service launcher for non-ASCII Windows paths, preserving the same supervisor/Task Scheduler ownership model.
 
 The implementation stack is merged. Refresh live `main`, open PR/issue state, workflow outcomes, and release state before new mutation. Do not create a public release merely because the merged line is green.
 
@@ -81,9 +82,11 @@ The merged #461 line refreshes credential authority on each authenticated reques
 
 ### Supervisor/bootstrap and physical machine proof status
 
-The hosted Windows proof now exercises real Task Scheduler start, Remote Host readiness/health, forced child termination, same-supervisor child restart, and stop/drain. The clean-machine bootstrap implementation is merged, but it is not a new public release until separately authorized, and it has not installed or accepted the user's spare machine.
+The hosted Windows proof now exercises real Task Scheduler start, Remote Host readiness/health, forced child termination, same-supervisor child restart, and stop/drain. #472 additionally closed a physical Windows failure where a UTF-8 `.cmd` launcher corrupted non-ASCII paths through the active code page; the Veteran-owned PowerShell launcher passed the real lifecycle under a non-ASCII path.
 
-A hosted headless Chromium scenario is not arbitrary desktop control, Windows Electron proof, an autonomous visual repair demonstration, or a spare-machine acceptance run.
+On the existing developer machine `豹`, the current development runtime was installed into the normal Veteran runtime location, `doctor` passed, and the installed Task Scheduler -> supervisor -> Remote Host -> MCP -> Chrome path completed a real browser scenario with `Ada` input, `saved:Ada` rendered result, and PNG evidence. This is useful physical-machine proof, but it is not the clean-spare-machine + actual ChatGPT Web pairing/revocation acceptance sequence above.
+
+A hosted or existing-developer-machine Chromium scenario is not arbitrary desktop control, Windows Electron proof, a full autonomous visual repair demonstration, or a clean spare-machine acceptance run.
 
 ## Continuation rules
 
