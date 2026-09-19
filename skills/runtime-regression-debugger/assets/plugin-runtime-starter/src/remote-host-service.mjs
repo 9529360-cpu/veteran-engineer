@@ -633,6 +633,7 @@ export async function superviseRemoteHostService({
     childStartedAt: null
   });
   await logger.write('supervisor', `started pid=${process.pid} service=${state.serviceId}`);
+  let supervisorFailure = null;
   try {
     while (!signal?.aborted) {
       const control = await readControl(paths);
@@ -709,13 +710,23 @@ export async function superviseRemoteHostService({
       await logger.write('supervisor', `restarting after ${backoff}ms consecutiveFailures=${consecutiveFailures}`);
       await sleep(backoff);
     }
+  } catch (error) {
+    supervisorFailure = error;
+    const failure = String(error?.code ? `${error.code}: ${error.message || error}` : error?.message || error)
+      .replace(/[\r\n]+/g, ' ')
+      .slice(0, 2000);
+    await logger.write('supervisor', `failed: ${failure}`).catch(() => {});
+    throw error;
   } finally {
     if (active) {
       await stopManagedChild(active, { platform, kill, runSync, signalTree, sleep, shutdownGraceMs, logger }).catch(async (error) => {
         await logger.write('supervisor', `child shutdown failed: ${error?.code || error?.message || String(error)}`);
       });
     }
-    await logger.write('supervisor', signal?.aborted ? 'stopped by process signal' : 'stopped by desired state');
+    await logger.write(
+      'supervisor',
+      signal?.aborted ? 'stopped by process signal' : supervisorFailure ? 'stopped after failure' : 'stopped by desired state'
+    );
     await logger.flush();
     await Promise.all([
       fs.rm(paths.pidPath, { force: true }),
