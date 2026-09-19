@@ -31,6 +31,102 @@ function toolMeta(name) {
   return { ...toolWorkflowMeta(name), ...toolWorkflowBindingsMeta(name) };
 }
 
+const REMOTE_RUNTIME_WIDE_PROJECT_TOOLS = new Set(['runtime_integrity', 'runtime_cleanup', 'runtime_maintenance']);
+const REMOTE_OPTIONAL_GLOBAL_PROJECT_TOOLS = new Set(['evidence_query', 'experience_audit']);
+const REMOTE_UNSCOPED_SAFE_TOOLS = new Set(['runtime_health']);
+
+function remoteScopeError(code, message, details = null) {
+  const error = new Error(message);
+  error.code = code;
+  if (details) error.details = details;
+  return error;
+}
+
+function requireStoredRecord(record, kind, id) {
+  if (record) return record;
+  throw remoteScopeError('REMOTE_PROJECT_SCOPE_UNRESOLVED', `Remote Host could not resolve ${kind} scope`, { kind, id: String(id || '') });
+}
+
+async function assertRemoteProjectAllowed(projectId, state, config) {
+  const project = requireStoredRecord(state.projects?.[projectId], 'project', projectId);
+  if (project.sourceKind === 'managed-remote' || project.managedCheckout === true) return project;
+  if (typeof project.repoPath !== 'string' || !project.repoPath.trim()) {
+    throw remoteScopeError('REMOTE_PROJECT_SCOPE_UNRESOLVED', 'Remote Host project has no local repository path', { projectId });
+  }
+  await assertLocalPathAllowed(project.repoPath, config.allowedLocalRoots, { label: 'project repository path' });
+  return project;
+}
+
+async function authorizeStoredRemoteScope(name, args, config, app) {
+  const explicitEmptyEvidenceIds = name === 'evidence_query' && Array.isArray(args?.ids) && args.ids.length === 0;
+  if (explicitEmptyEvidenceIds) return args || {};
+
+  const workspaceConstrained = Array.isArray(config.allowedLocalRoots) && config.allowedLocalRoots.length > 0;
+  if (workspaceConstrained && REMOTE_RUNTIME_WIDE_PROJECT_TOOLS.has(name)) {
+    throw remoteScopeError(
+      'REMOTE_WORKSPACE_NOT_ALLOWED',
+      `Remote Host tool ${name} is runtime-wide and cannot be bounded to the configured workspaces`,
+      { tool: name }
+    );
+  }
+
+  const hasDirectScope = (typeof args?.projectId === 'string' && args.projectId)
+    || (typeof args?.missionId === 'string' && args.missionId)
+    || (typeof args?.candidateId === 'string' && args.candidateId)
+    || (typeof args?.experienceId === 'string' && args.experienceId)
+    || (Array.isArray(args?.evidenceIds) && args.evidenceIds.length > 0)
+    || (name === 'evidence_query' && Array.isArray(args?.ids) && args.ids.length > 0);
+
+  if (workspaceConstrained && REMOTE_OPTIONAL_GLOBAL_PROJECT_TOOLS.has(name) && !hasDirectScope) {
+    throw remoteScopeError(
+      'REMOTE_PROJECT_SCOPE_REQUIRED',
+      `Remote Host tool ${name} requires explicit project-scoped identity when workspaces are configured`,
+      { tool: name }
+    );
+  }
+  if (!hasDirectScope) {
+    if (!workspaceConstrained || REMOTE_UNSCOPED_SAFE_TOOLS.has(name)) return args || {};
+    throw remoteScopeError(
+      'REMOTE_PROJECT_SCOPE_REQUIRED',
+      `Remote Host tool ${name} has no resolvable project scope and is not explicitly classified as safe without one`,
+      { tool: name }
+    );
+  }
+  if (!app?.store?.read) throw remoteScopeError('REMOTE_PROJECT_SCOPE_UNAVAILABLE', 'Remote Host state scope is unavailable');
+
+  const state = await app.store.read();
+  const projectIds = new Set();
+  const addProjectId = (projectId) => {
+    if (typeof projectId === 'string' && projectId) projectIds.add(projectId);
+  };
+
+  addProjectId(args?.projectId);
+
+  if (typeof args?.missionId === 'string' && args.missionId) {
+    const mission = requireStoredRecord(state.missions?.[args.missionId], 'mission', args.missionId);
+    addProjectId(mission.projectId);
+  }
+  if (typeof args?.candidateId === 'string' && args.candidateId) {
+    const candidate = requireStoredRecord(state.runtime?.candidates?.[args.candidateId], 'candidate', args.candidateId);
+    addProjectId(candidate.projectId);
+  }
+  if (typeof args?.experienceId === 'string' && args.experienceId) {
+    const experience = requireStoredRecord(state.experiences?.[args.experienceId], 'experience', args.experienceId);
+    addProjectId(experience.projectId);
+  }
+
+  const evidenceIds = [];
+  if (name === 'evidence_query' && Array.isArray(args?.ids)) evidenceIds.push(...args.ids);
+  if (Array.isArray(args?.evidenceIds)) evidenceIds.push(...args.evidenceIds);
+  for (const evidenceId of evidenceIds) {
+    const evidence = requireStoredRecord(state.evidence?.[evidenceId], 'evidence', evidenceId);
+    addProjectId(evidence.projectId);
+  }
+
+  for (const projectId of projectIds) await assertRemoteProjectAllowed(projectId, state, config);
+  return args || {};
+}
+
 function toolErrorResult(name, args, error) {
   const payload = remoteMcpErrorPayload(error);
   return {
@@ -46,8 +142,8 @@ export async function assertRemoteMcpSdkReady() {
   return integrity;
 }
 
-export async function authorizeRemoteToolInput(name, args, config) {
-  if (name !== 'project_open') return args || {};
+export async function authorizeRemoteToolInput(name, args, config, app = null) {
+  if (name !== 'project_open') return authorizeStoredRemoteScope(name, args || {}, config, app);
   const next = { ...(args || {}) };
   if (typeof next.repoPath === 'string' && next.repoPath.trim()) {
     next.repoPath = await assertLocalPathAllowed(next.repoPath, config.allowedLocalRoots, { label: 'project repository path' });
@@ -92,7 +188,7 @@ export async function createRemoteMcpServerFactory({ config, app }) {
         _meta: toolMeta(tool.name)
       }, async (args) => {
         try {
-          const authorizedArgs = await authorizeRemoteToolInput(tool.name, args || {}, config);
+          const authorizedArgs = await authorizeRemoteToolInput(tool.name, args || {}, config, app);
           const result = await app.callTool(tool.name, authorizedArgs);
           const extraContent = await app.toolContent(tool.name, authorizedArgs, result);
           return {

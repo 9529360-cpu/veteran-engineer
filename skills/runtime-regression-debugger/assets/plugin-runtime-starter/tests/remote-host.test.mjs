@@ -264,6 +264,110 @@ test('official MCP client can use the same Veteran tools remotely and local path
     });
     assert.equal(rejected.isError, true);
     assert.match(rejected.content?.[0]?.text || '', /REMOTE_WORKSPACE_NOT_ALLOWED/);
+
+    // A shared durable state root may already contain projects that were opened
+    // locally before Remote Host starts. The remote token must not bypass the
+    // configured workspace roots merely by reusing one of those stable ids.
+    const runtimeHealth = await client.callTool({
+      name: 'runtime_health',
+      arguments: {}
+    });
+    assert.equal(runtimeHealth.isError, undefined, JSON.stringify(runtimeHealth));
+
+    const broadEvidenceQuery = await client.callTool({
+      name: 'evidence_query',
+      arguments: {}
+    });
+    assert.equal(broadEvidenceQuery.isError, true, JSON.stringify(broadEvidenceQuery));
+    assert.match(broadEvidenceQuery.content?.[0]?.text || '', /REMOTE_PROJECT_SCOPE_REQUIRED/);
+
+    const emptyEvidenceQuery = await client.callTool({
+      name: 'evidence_query',
+      arguments: { ids: [] }
+    });
+    assert.equal(emptyEvidenceQuery.isError, undefined, JSON.stringify(emptyEvidenceQuery));
+    assert.equal(structuredArray(emptyEvidenceQuery).length, 0);
+
+    const integrityBlocked = await client.callTool({
+      name: 'runtime_integrity',
+      arguments: {}
+    });
+    assert.equal(integrityBlocked.isError, true, JSON.stringify(integrityBlocked));
+    assert.match(integrityBlocked.content?.[0]?.text || '', /REMOTE_WORKSPACE_NOT_ALLOWED/);
+
+    const cleanupBlocked = await client.callTool({
+      name: 'runtime_cleanup',
+      arguments: { requestId: crypto.randomUUID(), apply: false }
+    });
+    assert.equal(cleanupBlocked.isError, true, JSON.stringify(cleanupBlocked));
+    assert.match(cleanupBlocked.content?.[0]?.text || '', /REMOTE_WORKSPACE_NOT_ALLOWED/);
+
+    const maintenanceBlocked = await client.callTool({
+      name: 'runtime_maintenance',
+      arguments: { requestId: crypto.randomUUID(), projectId: opened.structuredContent.id }
+    });
+    assert.equal(maintenanceBlocked.isError, true, JSON.stringify(maintenanceBlocked));
+    assert.match(maintenanceBlocked.content?.[0]?.text || '', /REMOTE_WORKSPACE_NOT_ALLOWED/);
+
+    const preexistingOutside = await running.app.services.projectService.open({ repoPath: outside.repo });
+
+    const allowedSnapshot = await client.callTool({
+      name: 'project_snapshot',
+      arguments: { requestId: crypto.randomUUID(), projectId: opened.structuredContent.id }
+    });
+    assert.equal(allowedSnapshot.isError, undefined, JSON.stringify(allowedSnapshot));
+
+    const outsideSnapshot = await client.callTool({
+      name: 'project_snapshot',
+      arguments: { requestId: crypto.randomUUID(), projectId: preexistingOutside.id }
+    });
+    assert.equal(outsideSnapshot.isError, true, JSON.stringify(outsideSnapshot));
+    assert.match(outsideSnapshot.content?.[0]?.text || '', /REMOTE_WORKSPACE_NOT_ALLOWED/);
+
+    const outsideMission = await running.app.services.missionService.plan({
+      projectId: preexistingOutside.id,
+      goal: 'Outside workspace mission must remain unreachable through Remote Host.',
+      doneDefinition: 'Remote Host rejects the stable mission id before Mission data is returned.',
+      tasks: [{
+        id: 'T1',
+        contract: 'Preserve workspace authorization boundary.',
+        owner: 'README.md',
+        dependencies: [],
+        writeSet: ['README.md'],
+        risk: 'low'
+      }]
+    });
+    const outsideMissionStatus = await client.callTool({
+      name: 'mission_status',
+      arguments: { missionId: outsideMission.mission.id }
+    });
+    assert.equal(outsideMissionStatus.isError, true, JSON.stringify(outsideMissionStatus));
+    assert.match(outsideMissionStatus.content?.[0]?.text || '', /REMOTE_WORKSPACE_NOT_ALLOWED/);
+
+    const outsideEvidence = await running.app.services.evidenceService.record({
+      projectId: preexistingOutside.id,
+      type: 'outside-proof',
+      summary: 'Must remain unreachable through the Remote Host token.'
+    });
+    const outsideEvidenceQuery = await client.callTool({
+      name: 'evidence_query',
+      arguments: { ids: [outsideEvidence.id] }
+    });
+    assert.equal(outsideEvidenceQuery.isError, true, JSON.stringify(outsideEvidenceQuery));
+    assert.match(outsideEvidenceQuery.content?.[0]?.text || '', /REMOTE_WORKSPACE_NOT_ALLOWED/);
+
+    const outsideExperience = await running.app.services.experienceService.commit({
+      projectId: preexistingOutside.id,
+      mechanism: 'remote-workspace-boundary',
+      statement: 'Outside workspace experience must remain unreachable through Remote Host.',
+      kind: 'security-regression'
+    });
+    const outsideExperienceReview = await client.callTool({
+      name: 'experience_review',
+      arguments: { requestId: crypto.randomUUID(), experienceId: outsideExperience.id, action: 'activate' }
+    });
+    assert.equal(outsideExperienceReview.isError, true, JSON.stringify(outsideExperienceReview));
+    assert.match(outsideExperienceReview.content?.[0]?.text || '', /REMOTE_WORKSPACE_NOT_ALLOWED/);
   } finally {
     await client?.close().catch(() => {});
     await running?.close().catch(() => {});
