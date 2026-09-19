@@ -12,6 +12,7 @@ const root = path.resolve(path.dirname(self), '..');
 const skillRoot = path.join(root, 'skills', 'runtime-regression-debugger');
 const exporter = path.join(skillRoot, 'scripts', 'export_plugin_bundle.py');
 const bootstrapSource = path.join(root, 'scripts', 'release-bootstrap.mjs');
+const remoteHostBootstrapSource = path.join(root, 'scripts', 'remote-host-release-bootstrap.mjs');
 const PROFILES = ['desktop', 'codex', 'web'];
 
 function run(command, args) {
@@ -53,19 +54,35 @@ function parseArgs(argv) {
   return { output, tag, commit };
 }
 
+async function addStandaloneAsset({ assets, output, source, profile, filename }) {
+  const target = path.join(output, filename);
+  const bytes = await fs.readFile(source);
+  await fs.writeFile(target, bytes);
+  const digest = crypto.createHash('sha256').update(bytes).digest('hex');
+  const checksumFile = filename.replace(/\.mjs$/, '.sha256');
+  await fs.writeFile(path.join(output, checksumFile), `${digest}  ${filename}\n`, 'utf8');
+  assets.push({ profile, filename, checksumFile, sha256: digest, bytes: bytes.length });
+}
+
 export async function buildReleaseCandidate({ output, tag = null, commit = null }) {
   const contract = await inspectReleaseContract({ root, tag });
   await fs.mkdir(output, { recursive: true });
   const assets = [];
 
-  const bootstrapFilename = 'veteran-engineer-bootstrap.mjs';
-  const bootstrapTarget = path.join(output, bootstrapFilename);
-  const bootstrapBytes = await fs.readFile(bootstrapSource);
-  await fs.writeFile(bootstrapTarget, bootstrapBytes);
-  const bootstrapDigest = crypto.createHash('sha256').update(bootstrapBytes).digest('hex');
-  const bootstrapChecksum = 'veteran-engineer-bootstrap.sha256';
-  await fs.writeFile(path.join(output, bootstrapChecksum), `${bootstrapDigest}  ${bootstrapFilename}\n`, 'utf8');
-  assets.push({ profile: 'bootstrap', filename: bootstrapFilename, checksumFile: bootstrapChecksum, sha256: bootstrapDigest, bytes: bootstrapBytes.length });
+  await addStandaloneAsset({
+    assets,
+    output,
+    source: bootstrapSource,
+    profile: 'bootstrap',
+    filename: 'veteran-engineer-bootstrap.mjs'
+  });
+  await addStandaloneAsset({
+    assets,
+    output,
+    source: remoteHostBootstrapSource,
+    profile: 'remote-host-bootstrap',
+    filename: 'veteran-engineer-remote-host-bootstrap.mjs'
+  });
 
   const runtimeFilename = 'veteran-engineer-runtime.json';
   const runtimeTarget = path.join(output, runtimeFilename);
