@@ -222,6 +222,20 @@ test('official MCP client can use the same Veteran tools remotely and local path
     assert.equal(metadataOnly.isError, undefined);
     assert.equal(metadataOnly.content.some((item) => item.type === 'image'), false);
 
+    const broadImageRequest = await client.callTool({
+      name: 'evidence_query',
+      arguments: { projectId: opened.structuredContent.id, includeImages: true }
+    });
+    assert.equal(broadImageRequest.isError, true);
+    assert.match(broadImageRequest.content?.[0]?.text || '', /EVIDENCE_IMAGE_IDS_REQUIRED/);
+
+    const duplicateImageRequest = await client.callTool({
+      name: 'evidence_query',
+      arguments: { projectId: opened.structuredContent.id, ids: [evidence.id, evidence.id], includeImages: true }
+    });
+    assert.equal(duplicateImageRequest.isError, true);
+    assert.match(duplicateImageRequest.content?.[0]?.text || '', /EVIDENCE_IMAGE_IDS_DUPLICATE/);
+
     const withImage = await client.callTool({
       name: 'evidence_query',
       arguments: { projectId: opened.structuredContent.id, ids: [evidence.id], includeImages: true, maxImages: 1 }
