@@ -1,6 +1,14 @@
 #!/usr/bin/env node
 import { readRemoteHostConfig, initRemoteHostConfig, rotateRemoteHostToken, defaultRemoteHostConfigPath } from '../src/remote-host-config.mjs';
 import { startRemoteHost } from '../src/remote-host-server.mjs';
+import {
+  controlRemoteHostService,
+  defaultRemoteHostServiceRoot,
+  installRemoteHostService,
+  remoteHostServiceStatus,
+  superviseRemoteHostService,
+  uninstallRemoteHostService
+} from '../src/remote-host-service.mjs';
 import { RUNTIME_VERSION } from '../src/constants.mjs';
 
 function valueAfter(argv, index, option) {
@@ -17,6 +25,7 @@ function parse(argv) {
   const out = {
     command: argv[0] || 'help',
     configPath: defaultRemoteHostConfigPath(),
+    serviceRoot: defaultRemoteHostServiceRoot(),
     stateRoot: null,
     workspaces: [],
     allowedOrigins: [],
@@ -24,11 +33,14 @@ function parse(argv) {
     bind: null,
     port: null,
     force: false,
-    json: false
+    json: false,
+    noStart: false,
+    purgeLogs: false
   };
   for (let i = 1; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--config') out.configPath = valueAfter(argv, i++, arg);
+    else if (arg === '--service-root') out.serviceRoot = valueAfter(argv, i++, arg);
     else if (arg === '--state-root') out.stateRoot = valueAfter(argv, i++, arg);
     else if (arg === '--workspace') out.workspaces.push(valueAfter(argv, i++, arg));
     else if (arg === '--origin') out.allowedOrigins.push(valueAfter(argv, i++, arg));
@@ -37,13 +49,15 @@ function parse(argv) {
     else if (arg === '--port') out.port = Number(valueAfter(argv, i++, arg));
     else if (arg === '--force') out.force = true;
     else if (arg === '--json') out.json = true;
+    else if (arg === '--no-start') out.noStart = true;
+    else if (arg === '--purge-logs') out.purgeLogs = true;
     else throw new Error(`Unknown argument: ${arg}`);
   }
   return out;
 }
 
 function usage() {
-  return `Veteran Remote Host ${RUNTIME_VERSION}\n\nUsage:\n  veteran-remote-host init --workspace <path> [--workspace <path> ...] [options]\n  veteran-remote-host start [options]\n  veteran-remote-host status [--json] [--config <path>]\n  veteran-remote-host rotate-token [--json] [--config <path>]\n\nOptions:\n  --config <path>         Remote Host config path\n  --state-root <path>     Veteran durable state directory\n  --workspace <path>      Allowed local workspace root; repeatable\n  --bind <address>        Listen address (default 127.0.0.1)\n  --port <port>           Listen port (default 8765, 0 for ephemeral test/dev)\n  --origin <origin>       Allowed browser Origin; repeatable\n  --allowed-host <host>   Allowed HTTP Host header hostname; repeatable\n  --force                 Replace an existing config during init\n  --json                  Emit machine-readable output where applicable\n\nSecurity default: loopback-only. Put TLS / an approved tunnel in front of this process instead of binding it directly to the public internet.\n`;
+  return `Veteran Remote Host ${RUNTIME_VERSION}\n\nUsage:\n  veteran-remote-host init --workspace <path> [--workspace <path> ...] [options]\n  veteran-remote-host start [options]\n  veteran-remote-host status [--json] [--config <path>]\n  veteran-remote-host rotate-token [--json] [--config <path>]\n  veteran-remote-host install-service [--no-start] [--force] [service options]\n  veteran-remote-host repair-service [service options]\n  veteran-remote-host service-status [--json] [service options]\n  veteran-remote-host service-start [service options]\n  veteran-remote-host service-stop [service options]\n  veteran-remote-host service-pause [service options]\n  veteran-remote-host service-resume [service options]\n  veteran-remote-host uninstall-service [--purge-logs] [service options]\n  veteran-remote-host supervise [service options]\n\nOptions:\n  --config <path>         Remote Host config path\n  --service-root <path>   Service-owned state/log directory\n  --state-root <path>     Veteran durable state directory\n  --workspace <path>      Allowed local workspace root; repeatable\n  --bind <address>        Listen address (default 127.0.0.1)\n  --port <port>           Listen port (default 8765, 0 for ephemeral test/dev)\n  --origin <origin>       Allowed browser Origin; repeatable\n  --allowed-host <host>   Allowed HTTP Host header hostname; repeatable\n  --force                 Replace config during init or repair service registration\n  --no-start              Install/register the Windows service without starting it now\n  --purge-logs            Remove service logs during uninstall\n  --json                  Emit machine-readable output where applicable\n\nWindows service mode uses an explicit current-user Task Scheduler registration whose launcher, control state, PID state, and bounded logs live under Veteran-owned directories. The supervisor restarts the Remote Host child with bounded backoff and supports start/stop/pause/resume without moving Mission state ownership.\n\nSecurity default: loopback-only. Put TLS / an approved tunnel in front of this process instead of binding it directly to the public internet.\n`;
 }
 
 function publicConfig(config) {
@@ -60,6 +74,11 @@ function publicConfig(config) {
     allowedOrigins: config.allowedOrigins,
     allowedHosts: config.allowedHosts
   };
+}
+
+function emit(result, json, human) {
+  if (json || !human) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+  else process.stdout.write(`${human(result)}\n`);
 }
 
 async function main() {
@@ -110,6 +129,56 @@ async function main() {
       pairingHint: result.pairingHint,
       warning: 'The prior token is invalid immediately. Save the new token now.'
     }, null, 2)}\n`);
+    return;
+  }
+  if (args.command === 'install-service' || args.command === 'repair-service') {
+    const result = await installRemoteHostService({
+      configPath: args.configPath,
+      serviceRoot: args.serviceRoot,
+      force: args.command === 'repair-service' || args.force,
+      startNow: !args.noStart
+    });
+    emit({ ok: true, ...result }, args.json, (value) => `Veteran Remote Host service ${value.repaired ? 'repaired' : 'installed'}: ${value.service.taskName}\nDesired state: ${value.desiredState}\nStarted now: ${value.started ? 'yes' : 'no'}\nLogs: ${value.service.logPath}`);
+    return;
+  }
+  if (args.command === 'service-status') {
+    const result = await remoteHostServiceStatus({ serviceRoot: args.serviceRoot });
+    emit({ ok: true, ...result }, args.json, (value) => value.installed
+      ? `Veteran Remote Host service\nRegistration: ${value.registration}\nDesired: ${value.desiredState}\nRuntime: ${value.runtimeState}\nSupervisor PID: ${value.supervisor?.pid || '-'}\nChild PID: ${value.child?.pid || '-'}\nLogs: ${value.logPath}`
+      : `Veteran Remote Host service is not installed.\nService root: ${value.serviceRoot}`);
+    return;
+  }
+  if (['service-start', 'service-stop', 'service-pause', 'service-resume'].includes(args.command)) {
+    const action = args.command.slice('service-'.length);
+    const result = await controlRemoteHostService(action, { serviceRoot: args.serviceRoot });
+    emit({ ok: true, ...result }, args.json, (value) => `Veteran Remote Host service action=${value.action} desiredState=${value.desiredState}`);
+    return;
+  }
+  if (args.command === 'uninstall-service') {
+    const result = await uninstallRemoteHostService({
+      serviceRoot: args.serviceRoot,
+      purgeLogs: args.purgeLogs
+    });
+    emit({ ok: true, ...result }, args.json, (value) => value.removed
+      ? `Veteran Remote Host service uninstalled. Logs ${value.logsPreserved ? `preserved at ${value.logPath}` : 'removed'}.`
+      : `Veteran Remote Host service was not installed. Service root: ${value.serviceRoot}`);
+    return;
+  }
+  if (args.command === 'supervise') {
+    const controller = new AbortController();
+    let stopping = false;
+    const stop = (signal) => {
+      if (stopping) return;
+      stopping = true;
+      process.stderr.write(`[veteran-remote-host] ${signal}: stopping supervisor\n`);
+      controller.abort();
+    };
+    process.once('SIGINT', () => stop('SIGINT'));
+    process.once('SIGTERM', () => stop('SIGTERM'));
+    await superviseRemoteHostService({
+      serviceRoot: args.serviceRoot,
+      signal: controller.signal
+    });
     return;
   }
   if (args.command === 'start') {
