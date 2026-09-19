@@ -311,6 +311,26 @@ test('official MCP client can use the same Veteran tools remotely and local path
     assert.equal(outsideSnapshot.isError, true, JSON.stringify(outsideSnapshot));
     assert.match(outsideSnapshot.content?.[0]?.text || '', /REMOTE_WORKSPACE_NOT_ALLOWED/);
 
+    const outsideMission = await running.app.services.missionService.plan({
+      projectId: preexistingOutside.id,
+      goal: 'Outside workspace mission must remain unreachable through Remote Host.',
+      doneDefinition: 'Remote Host rejects the stable mission id before Mission data is returned.',
+      tasks: [{
+        id: 'T1',
+        contract: 'Preserve workspace authorization boundary.',
+        owner: 'README.md',
+        dependencies: [],
+        writeSet: ['README.md'],
+        risk: 'low'
+      }]
+    });
+    const outsideMissionStatus = await client.callTool({
+      name: 'mission_status',
+      arguments: { missionId: outsideMission.mission.id }
+    });
+    assert.equal(outsideMissionStatus.isError, true, JSON.stringify(outsideMissionStatus));
+    assert.match(outsideMissionStatus.content?.[0]?.text || '', /REMOTE_WORKSPACE_NOT_ALLOWED/);
+
     const outsideEvidence = await running.app.services.evidenceService.record({
       projectId: preexistingOutside.id,
       type: 'outside-proof',
