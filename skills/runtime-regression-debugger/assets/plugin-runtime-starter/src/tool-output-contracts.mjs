@@ -49,6 +49,12 @@ const FINDING = openObject('Review finding. Unknown provider-specific fields are
   message: stringField('Human-readable finding summary.', { minLength: null })
 });
 
+const REQUIREMENT_RESULT = openObject('Semantic acceptance result for one required outcome clause.', {
+  id: stringField('Acceptance criterion id.'),
+  status: stringField('Acceptance proof status.', { enumValues: ['passed', 'failed', 'unproven'] }),
+  evidence: stringArray('Concrete evidence supporting the result.')
+}, ['id', 'status', 'evidence']);
+
 const OUTPUT_PROJECT = openObject('Opened project record. Its id is the projectId for subsequent project and Mission tools.', {
   id: stringField('Stable project id to pass as projectId.'),
   name: stringField('Project display name.', { minLength: null }),
@@ -253,15 +259,21 @@ const TOOL_OUTPUT_CONTRACTS = Object.freeze({
   semantic_review_run: openObject('Independent semantic review result.', {
     passed: booleanField('Whether semantic review passed.'),
     findings: { type: 'array', items: FINDING, description: 'Semantic findings.' },
+    requirementResults: { type: 'array', items: REQUIREMENT_RESULT, description: 'One evidence-bearing result per Mission acceptance obligation when semantic review is configured.' },
     evidenceId: stringField('Review evidence id.', { minLength: null })
   }, ['passed']),
-  remediation_plan: openObject('Bounded remediation plan derived from review findings.', {
+  remediation_plan: openObject('Bounded remediation proposal or source-bound same-Mission re-entry derived from review findings.', {
+    id: stringField('Remediation plan id.', { minLength: null }),
     missionId: stringField('Mission id.', { minLength: null }),
-    tasks: { type: 'array', items: OUTPUT_TASK, description: 'Remediation tasks.' },
+    applied: booleanField('Whether executable remediation tasks were appended and the Mission re-entered execution.'),
+    sourceHead: stringField('Reviewed Mission head used as the remediation wave base when applied.', { minLength: null }),
+    reviewKind: stringField('Review authority that triggered applied remediation.', { minLength: null }),
+    taskIds: stringArray('Applied remediation task ids.'),
+    tasks: { type: 'array', items: OUTPUT_TASK, description: 'Proposed or applied remediation tasks.' },
     findings: { type: 'array', items: FINDING, description: 'Findings addressed by the plan.' }
-  }),
+  }, ['missionId', 'applied', 'tasks', 'findings']),
   candidate_preflight: openObject('Read-only candidate/source preflight result.', {
-    missionId: stringField('Mission id.', { minLength: null }),
+    missionId: stringField('Mission id.'),
     candidateId: nullable(stringField('Candidate id when present.', { minLength: null })),
     ready: booleanField('Whether candidate creation/finalization is safe.'),
     sourceDrift: booleanField('Whether source authority drifted.')

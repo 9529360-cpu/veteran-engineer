@@ -96,7 +96,7 @@ test('semantic reviewer provider receives active experience only', async () => {
   });
   try {
     const reviewer = path.join(root, 'reviewer.cjs');
-    await fs.writeFile(reviewer, `let input='';process.stdin.setEncoding('utf8');process.stdin.on('data',c=>input+=c);process.stdin.on('end',()=>{const p=JSON.parse(input);if(process.env.VETERAN_PROVIDER_REVIEWER_SECRET)process.exit(5);if(process.env.VETERAN_PROVIDER_REVIEWER_ALLOWED!=='reviewer-allowed')process.exit(6);if(p.protocol!=='veteran-reviewer-v1')process.exit(3);if(p.projectExperience.length!==1||p.projectExperience[0].statement!=='Active reviewed project fact')process.exit(4);process.stdout.write(JSON.stringify({passed:true,findings:[]}));});\n`);
+    await fs.writeFile(reviewer, `let input='';process.stdin.setEncoding('utf8');process.stdin.on('data',c=>input+=c);process.stdin.on('end',()=>{const p=JSON.parse(input);if(process.env.VETERAN_PROVIDER_REVIEWER_SECRET)process.exit(5);if(process.env.VETERAN_PROVIDER_REVIEWER_ALLOWED!=='reviewer-allowed')process.exit(6);if(p.protocol!=='veteran-reviewer-v1')process.exit(3);if(p.projectExperience.length!==1||p.projectExperience[0].statement!=='Active reviewed project fact')process.exit(4);process.stdout.write(JSON.stringify({passed:true,findings:[],requirementResults:p.acceptanceCriteria.map(r=>({id:r.id,status:'passed',evidence:['provider evidence '+r.id]}))}));});\n`);
     await fs.mkdir(stateRoot, { recursive: true });
     await fs.writeFile(path.join(stateRoot, 'operator.json'), `${JSON.stringify({ defaults: { reviewerProvider: { command: process.execPath, args: [reviewer], envAllowlist: ['VETERAN_PROVIDER_REVIEWER_ALLOWED'] }, requireSemanticReview: true } }, null, 2)}\n`);
     const app = await createVeteranApp({ stateRoot });

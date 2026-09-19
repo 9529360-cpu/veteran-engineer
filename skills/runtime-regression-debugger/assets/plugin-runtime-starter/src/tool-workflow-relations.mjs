@@ -154,7 +154,8 @@ export const TOOL_WORKFLOW_RELATIONS = Object.freeze({
   remediation_plan: workflow('review', ['missionId'], [
     relation('mission_status', 'inspect', 'Inspect Mission review state alongside the proposed remediation tasks.'),
     relation('mission_timeline', 'inspect', 'Inspect the finding and remediation-plan history.'),
-    relation('handoff_export', 'next', 'Export the Mission when proposed remediation needs external implementation or operator transfer.')
+    relation('mission_execute', 'next', 'Continue implementation immediately after source-bound remediation tasks were applied to the same Mission.', condition('/applied', 'equals', true)),
+    relation('handoff_export', 'alternate', 'Export only proposal-only remediation when implementation must transfer to another operator or session.', condition('/applied', 'equals', false))
   ]),
   candidate_preflight: workflow('candidate', ['missionId', 'candidateId'], [
     relation('candidate_status', 'inspect', 'Inspect immutable candidate identity and proof freshness.'),
