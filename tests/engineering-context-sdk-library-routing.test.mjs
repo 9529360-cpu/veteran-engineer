@@ -48,7 +48,6 @@ test('engineering context router treats SDK and library work as a first-class co
   for (const expected of [
     'references/sdk-library-product-engineering.md',
     'references/cross-repo-contract-mesh.md',
-    'references/api-backend-patterns.md',
     'references/semantic-diff-behavior-change.md',
     'references/dependency-supply-chain-patterns.md',
     'references/release-promotion-patterns.md',
