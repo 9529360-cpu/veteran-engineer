@@ -296,6 +296,13 @@ test('official MCP client can use the same Veteran tools remotely and local path
     assert.equal(cleanupBlocked.isError, true, JSON.stringify(cleanupBlocked));
     assert.match(cleanupBlocked.content?.[0]?.text || '', /REMOTE_WORKSPACE_NOT_ALLOWED/);
 
+    const maintenanceBlocked = await client.callTool({
+      name: 'runtime_maintenance',
+      arguments: { projectId: opened.structuredContent.id }
+    });
+    assert.equal(maintenanceBlocked.isError, true, JSON.stringify(maintenanceBlocked));
+    assert.match(maintenanceBlocked.content?.[0]?.text || '', /REMOTE_WORKSPACE_NOT_ALLOWED/);
+
     const preexistingOutside = await running.app.services.projectService.open({ repoPath: outside.repo });
 
     const allowedSnapshot = await client.callTool({
@@ -342,6 +349,19 @@ test('official MCP client can use the same Veteran tools remotely and local path
     });
     assert.equal(outsideEvidenceQuery.isError, true, JSON.stringify(outsideEvidenceQuery));
     assert.match(outsideEvidenceQuery.content?.[0]?.text || '', /REMOTE_WORKSPACE_NOT_ALLOWED/);
+
+    const outsideExperience = await running.app.services.experienceService.commit({
+      projectId: preexistingOutside.id,
+      mechanism: 'remote-workspace-boundary',
+      statement: 'Outside workspace experience must remain unreachable through Remote Host.',
+      kind: 'security-regression'
+    });
+    const outsideExperienceReview = await client.callTool({
+      name: 'experience_review',
+      arguments: { experienceId: outsideExperience.id, action: 'activate' }
+    });
+    assert.equal(outsideExperienceReview.isError, true, JSON.stringify(outsideExperienceReview));
+    assert.match(outsideExperienceReview.content?.[0]?.text || '', /REMOTE_WORKSPACE_NOT_ALLOWED/);
   } finally {
     await client?.close().catch(() => {});
     await running?.close().catch(() => {});
