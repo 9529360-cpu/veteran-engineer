@@ -16,7 +16,7 @@ Do not fork Mission, MCP, worker, state, evidence, or experience logic per host.
 
 ## Current line
 
-- Runtime/package/plugin development version: `0.4.0` (latest public release: `v0.3.0`)
+- Runtime/package/plugin development version: `0.5.0` (latest public release: `v0.4.0`)
 - State schema: `3`
 - Public MCP tool surface: exactly **34 tools**
 - Official modern protocol: `2026-07-28`
@@ -35,46 +35,44 @@ Pinned MCP SDK graph remains:
 
 ## Current executable evidence
 
-The validation gate at the #333 checkpoint proves:
+Current authoritative source identity is:
 
-- **225 syntax files**
-- exact **34-tool** MCP surface
-- official SDK graph + lockfile integrity
-- protocol constants and fallback boundaries
-- runtime/starter mirror parity across **231 mirrored files**
-- **421 total / 421 PASS / 0 SKIP / 0 FAIL** Node tests
+`main = ccd2f296d45604a50828c296d7b8fea5063cd9fe`
 
-Mainline CI also proves the current code through:
+That commit is merge #453 (`fix(workflow): gate execution progress on readiness`). At this exact source identity:
 
-1. Node 20 `npm ci --include=optional && npm run check`
-2. real Docker confined WorkerAdapter smoke
-3. real PostgreSQL state-backend contract/durability integration plus modern MCP selection path
-4. profile-aware Desktop/Codex/Web plugin artifact export with reproducibility and packaging-boundary checks
+- GitHub Actions CI run `35120654994` completed successfully.
+- `Node 20 / npm run check` passed **651 / 651** Node tests with **0 fail / 0 skipped**.
+- the same CI run passed Electron desktop smoke, PostgreSQL state-backend smoke, Docker worker smoke, and Chromium full-stack smoke.
+- Package Plugin Artifacts run `35120655016` completed successfully.
+- the latest public GitHub Release is `v0.4.0`; the repository development package is `0.5.0`.
 
-The #333 head passed all four boundaries before merge.
+The open #454 -> #461 stack is not main authority. Each exact current stack head has successful CI, Cross-platform host smoke, Package Plugin Artifacts, and Release dry-run workflows, but those proofs are bound to the stacked base/head identities and must be refreshed if ancestry changes.
 
 ## Recent convergence line
 
-The recent mainline sequence materially changed the current runtime and supersedes older handoff assumptions:
+Current `main` has advanced materially beyond the historical #333 checkpoint. Do not use the old #333 test counts or SHA as a current completion boundary.
 
-- **#322** — adaptive Mission controller v1: project-aware continuity, inferred task risk, execution strategy, and same-project write-conflict coordination without growing the 34-tool surface.
-- **#323** — live validation lifecycle hardening: release drains sessions still starting and fences new starts during cleanup.
-- **#324** — worker lifecycle hardening: normal success reaps background descendants instead of leaving runtime-owned processes behind.
-- **#325** — adaptive Mission controller v2: effective-risk strategy, risk-shaped Mission concurrency, shared execution-capacity authority, and execution-time project snapshot refresh.
-- **#326** — explicit Mission risk-envelope authority: explicitly supplied `riskEnvelope: "medium"` is no longer collapsed into the ordinary default baseline.
-- **#327** — checkpoint refresh only; no runtime authority change.
-- **#328** — planner authority propagation: `veteran-planner-v1` now carries whether the Mission risk envelope was defaulted or explicit, so external planning sees the same intent as the runtime strategy compiler.
-- **#329** — provider evidence secrecy: explicitly allowlisted planner/reviewer environment values are redacted before structured provider output, findings/tasks, errors, or evidence artifacts become durable; malformed semantic-review stdout is not persisted raw.
-- **#330** — interruption reconciliation authority: repeated resume and partial retry can no longer erase unresolved interrupted-task blockers; readiness fails closed on actual interrupted task state and final successful reconciliation clears the blocker.
-- **#331** — provider operator-config validation: executable planner/reviewer provider fields fail fast at the operator-policy boundary while inert provider objects and unknown future fields remain backward compatible.
-- **#332** — checkpoint refresh only; no runtime authority change.
-- **#333** — execution blocker authority: Mission status/readiness can no longer report a stronger next-transition posture than authoritative task state; failed/cancelled/interrupted tasks project blocked status, while admitted/dispatched/executing/cancelling tasks make readiness false without misclassifying dispatch-only lifecycle state.
+The latest settled mainline authority includes the proof/readiness convergence that culminated in:
 
-At the time this handoff was refreshed, `main` includes #333 at squash commit:
+- **#451** — restore the proof freshness barrier.
+- **#453** — gate Mission execution progress on current readiness.
+- current `main` HEAD: `ccd2f296d45604a50828c296d7b8fea5063cd9fe`.
 
-`501299ab02dfb2735cbecea1dd787b02463847be`
+An open, structurally coherent development stack currently starts from that exact main:
 
-Always refresh `main` before relying on this SHA or the counts above.
+- **#454** — fail closed on incomplete user outcome delivery.
+- **#455** — make semantic review prove every Mission obligation.
+- **#456** — re-enter Mission execution after failed review/remediation.
+- **#457** — add the Veteran Remote Host control plane.
+- **#458** — supervise Veteran Remote Host on Windows.
+- **#459** — bootstrap Veteran Remote Host on a clean Windows machine.
+- **#460** — add Secure MCP Tunnel stdio transport.
+- **#461** — validate native Chromium screenshots on Windows.
+
+#454 bases directly on current main; every child base SHA equals its parent head. This means the stack is not stale by ancestry at this checkpoint, but no layer is merged merely because the stack is green.
+
+The older `native-*` PR family (#381, #385, #388, #390, #391, #393, #395, #397-#400, #402-#404, #406) is materially stale against current main: the branches are roughly 112-179 commits behind. Treat their old CI as historical evidence only. Reuse requires a current-owner/capability-overlap review and replay onto current main rather than blind merge.
 
 ## Adaptive Mission authority
 
@@ -215,7 +213,7 @@ Host/tunnel/app provisioning remains external platform configuration unless a st
 - durable state: `~/.veteran-engineer/state`
 - installer metadata: `~/.veteran-engineer/installer.json`
 
-Install/repair/upgrade synchronizes one shared distribution. Host adapters stay thin. Purge is refused while another host still references the runtime. Local refresh preserves installed runtime dependencies/capabilities. The 0.4 development line adds verified `upgrade --release latest|vX.Y.Z`: stable exact-commit GitHub Release metadata + asset/manifest/runtime-file SHA-256 verification, staged atomic swap, target-version host rebinding, downgrade refusal, and fail-closed dependency-graph drift detection.
+Install/repair/upgrade synchronizes one shared distribution. Host adapters stay thin. Purge is refused while another host still references the runtime. Local refresh preserves installed runtime dependencies/capabilities. The `v0.4.0` release line added verified `upgrade --release latest|vX.Y.Z`; the `0.5.0` development line retains that contract: stable exact-commit GitHub Release metadata + asset/manifest/runtime-file SHA-256 verification, staged atomic swap, target-version host rebinding, downgrade refusal, and fail-closed dependency-graph drift detection.
 
 ## Convergence rules for the next pass
 
