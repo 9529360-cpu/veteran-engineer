@@ -178,6 +178,7 @@ export class EvidenceService {
     const requested = Number(maxImages ?? 1);
     const imageLimit = Number.isInteger(requested) ? Math.max(1, Math.min(requested, MAX_QUERY_IMAGES)) : 1;
     const artifactsRoot = path.resolve(this.store.artifactsDir);
+    const realArtifactsRoot = await fs.realpath(artifactsRoot);
     const content = [];
     let imageCount = 0;
     let totalBytes = 0;
@@ -211,14 +212,33 @@ export class EvidenceService {
           });
         }
         const full = path.resolve(artifactsRoot, pointer.slice('artifacts/'.length));
-        const relative = path.relative(artifactsRoot, full);
+        let realFull;
+        try {
+          realFull = await fs.realpath(full);
+        } catch (error) {
+          throw evidenceImageError('EVIDENCE_IMAGE_READ_FAILED', 'Evidence screenshot artifact is unavailable', {
+            evidenceId: record.id,
+            name: attachment.name,
+            cause: error?.code || 'READ_FAILED'
+          });
+        }
+        const relative = path.relative(realArtifactsRoot, realFull);
         if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
           throw evidenceImageError('EVIDENCE_IMAGE_POINTER_INVALID', 'Evidence screenshot pointer escapes the runtime artifact root', {
             evidenceId: record.id,
             name: attachment.name
           });
         }
-        const data = await fs.readFile(full);
+        const stat = await fs.stat(realFull);
+        if (!stat.isFile() || stat.size !== bytes || stat.size > MAX_QUERY_IMAGE_BYTES) {
+          throw evidenceImageError('EVIDENCE_IMAGE_INTEGRITY_MISMATCH', 'Evidence screenshot size no longer matches durable evidence metadata', {
+            evidenceId: record.id,
+            name: attachment.name,
+            expectedBytes: bytes,
+            actualBytes: stat.size
+          });
+        }
+        const data = await fs.readFile(realFull);
         const actualHash = sha256(data);
         if (data.length !== bytes || actualHash !== attachment.artifactHash) {
           throw evidenceImageError('EVIDENCE_IMAGE_INTEGRITY_MISMATCH', 'Evidence screenshot bytes no longer match durable evidence metadata', {
@@ -234,7 +254,7 @@ export class EvidenceService {
         imageCount += 1;
         content.push({
           type: 'text',
-          text: `Evidence image id=${record.id} attachment=${String(attachment.name)} sha256=${actualHash} bytes=${data.length}`
+          text: `Evidence image metadata: ${JSON.stringify({ evidenceId: record.id, attachment: String(attachment.name).slice(0, 240), sha256: actualHash, bytes: data.length })}`
         });
         content.push({ type: 'image', data: data.toString('base64'), mimeType });
       }
