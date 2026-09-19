@@ -364,7 +364,7 @@ test('official MCP client can use the same Veteran tools remotely and local path
     });
     const outsideExperienceReview = await client.callTool({
       name: 'experience_review',
-      arguments: { experienceId: outsideExperience.id, action: 'activate' }
+      arguments: { requestId: crypto.randomUUID(), experienceId: outsideExperience.id, action: 'activate' }
     });
     assert.equal(outsideExperienceReview.isError, true, JSON.stringify(outsideExperienceReview));
     assert.match(outsideExperienceReview.content?.[0]?.text || '', /REMOTE_WORKSPACE_NOT_ALLOWED/);
