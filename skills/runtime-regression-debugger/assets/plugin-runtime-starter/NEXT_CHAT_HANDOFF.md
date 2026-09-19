@@ -47,7 +47,7 @@ That commit is merge #453 (`fix(workflow): gate execution progress on readiness`
 - Package Plugin Artifacts run `35120655016` completed successfully.
 - the latest public GitHub Release is `v0.4.0`; the repository development package is `0.5.0`.
 
-The active non-Draft development line is now #456 -> #461. #456 was retargeted directly to current `main`, and fresh post-retarget CI, Cross-platform host smoke, Package Plugin Artifacts, Release dry-run, and Skill Engineering Tools runs all succeeded for head `6599e452122fb38017c95ca75eb80c16e649f120`. #457 -> #461 remain stacked above #456; their existing proofs stay bound to their exact base/head identities and must be refreshed if ancestry changes.
+The active non-Draft product/runtime line is now #456 -> #461 -> #464. #456 was retargeted directly to current `main`, and fresh post-retarget CI, Cross-platform host smoke, Package Plugin Artifacts, Release dry-run, and Skill Engineering Tools runs all succeeded for head `6599e452122fb38017c95ca75eb80c16e649f120`. #457 -> #461 remain stacked above #456. Current #461 head `4bf8406958b8100f6d7a3c2a9cebfa0d52ca4d68` has all four workflows green and now includes live token-rotation freshness plus a real hosted-Windows Task Scheduler start/readiness/forced-child-failure/restart/stop proof. #464 is stacked directly on that exact #461 head; current #464 head `0af343814a453efaa1c830eb7d0ac704408ff9b5` is fully green across CI, Cross-platform host smoke, Package Plugin Artifacts, and Release dry-run, and proves bounded opt-in `evidence_query` PNG image delivery through authenticated MCP using the real Chromium screenshot path. All proofs remain bound to their exact source/base identities and must be refreshed if ancestry changes.
 
 ## Recent convergence line
 
@@ -66,9 +66,10 @@ The current non-Draft development line is:
 - **#458** — supervise Veteran Remote Host on Windows.
 - **#459** — bootstrap Veteran Remote Host on a clean Windows machine.
 - **#460** — add Secure MCP Tunnel stdio transport.
-- **#461** — validate native Chromium screenshots on Windows.
+- **#461** — validate native Chromium screenshots on Windows; current head also closes live pairing-token invalidation and the real Windows supervisor restart lifecycle defect without adding another state/process authority.
+- **#464** — deliver bounded, verified browser screenshot PNGs through the existing `evidence_query` MCP result as opt-in image content; keep the public surface at 34 tools and preserve EvidenceService as the one artifact-byte authority.
 
-#454 and #455 were staging predecessors for the same outcome-closure chain. They are closed as superseded by #456; their implementation remains reachable in #456's history. #457 -> #461 keep their original parent/head chain above #456 because they represent separate product/runtime boundaries.
+#454 and #455 were staging predecessors for the same outcome-closure chain. They are closed as superseded by #456; their implementation remains reachable in #456's history. #457 -> #461 keep their original parent/head chain above #456 because they represent separate product/runtime boundaries. #464 bases directly on the current fully validated #461 head and is a separate transport/presentation slice rather than an expansion of #461's browser/service owner.
 
 The older `native-*` PR family (#381, #385, #388, #390, #391, #393, #395, #397-#400, #402-#404, #406) remains materially stale against current main at roughly 112-179 commits behind. All 15 are now parked as Draft with explicit replay conditions. Their code/history is retained, but old CI is historical evidence only; reuse requires a current-owner/capability-overlap review and replay onto current main rather than blind merge.
 
@@ -226,7 +227,7 @@ Install/repair/upgrade synchronizes one shared distribution. Host adapters stay 
 
 ## Next product work
 
-There is no evidence-backed reason to add another subsystem merely to continue development. Continue convergence from concrete defects, drift, or product requirements.
+There is no evidence-backed reason to add another subsystem merely to continue development. Continue convergence from concrete defects, drift, or product requirements. Repository governance issue #338 remains a real RC blocker: the ruleset collection is empty and the current GitHub App cannot read/configure `main` branch protection (`403 Resource not accessible by integration`), so that policy must be configured and verified outside the current connector boundary before an RC release.
 
 High-value next audits are:
 
