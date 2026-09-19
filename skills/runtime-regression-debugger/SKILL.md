@@ -53,7 +53,13 @@ For substantial work repeat:
 5. **Implement** - smallest complete change in the authoritative owner; avoid unrelated churn/speculation.
 6. **Review + verify** - spec compliance, engineering correctness, then the real rendered/runtime boundary required.
 7. **Converge** - classify gaps as `missing`, `partial`, `contradicts`, `unrequested`, or `contract-stale`; repair the smallest owner.
-8. **Report** - state only the strongest proven completion level, residual risk, and deliberate deferrals.
+8. **Checkpoint + report** - compact the mission state, state only the strongest proven completion level, residual risk, and deliberate deferrals.
+
+For an authorized long-running foreground mission, keep one compact control state:
+
+`goal -> done definition -> authority identities -> settled decisions -> active frontier -> strongest evidence -> blockers/risks -> next action`
+
+While the current host execution remains active, a completed patch, green focused test, commit, PR, checkpoint, stage change, or convenient summary point is a continuation signal, not a stop condition. After each evidence-producing slice, continue directly when the done definition is still open and another safe, authorized, material action exists. Stop only when completion is proven, no material evidence-backed work remains in scope, required semantics/capability/authorization cannot be recovered safely, the next action crosses an ungranted consequential boundary, or the host ends execution. Never claim background continuation after the active host boundary ends.
 
 At stage boundaries use `Pass`, `Revise`, `Escalate`, or `Block`. Never bend code to a stale contract or rewrite the contract to excuse code drift. Completion requires each material clause to be proven, blocked, or deliberately deferred; green tools/artifacts are not proof until tied to exact claim and source/build/runtime identity.
 
@@ -64,7 +70,7 @@ Treat context, tool definitions, references, and raw output as finite resources.
 - Keep normal active specialists to **1-4 references**, about **48 KiB on ChatGPT web, 64 KiB otherwise**. One necessary owner may exceed the soft byte budget; add companions progressively and expand toward 5-7 only for distinct same-stage mechanisms.
 - Never load a reference family wholesale. Load/reload detail only for a current decision, risk, freshness change, or failed hypothesis.
 - Read by frontier: prefer symbols, exact ranges, callers, manifests, targeted history, and bounded logs. Reuse proof by exact identity; rerun only when stale or a new question demands it.
-- After failure/interruption resume from the last verified boundary and reacquire only stale/missing evidence. Compact to `goal | accepted contract | authoritative owners/files | decisions | evidence | risks | next action`; checkpoints are cache, not authority.
+- After failure/interruption resume from the last verified boundary and reacquire only stale/missing evidence. Compact to `goal | done definition | accepted contract | authoritative identities/owners | settled decisions | active frontier | strongest evidence | blockers/risks | next action`; checkpoints are cache, not authority.
 - For long/tool-heavy web missions read `references/chatgpt-web-host-execution.md`: high-information calls, bounded batching, JIT tools, reconciliation before retry, one active frontier, bounded queue reuse, selective rescan, and no ritual `continue` while safe reversible work remains.
 - Keep context high-signal; delegate only independent bounded work and hard-reset only when pollution/staleness materially degrades decisions.
 
