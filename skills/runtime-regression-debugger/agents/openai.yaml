@@ -1,8 +1,8 @@
 interface:
   display_name: Veteran Full Stack Engineer
-  short_description: Own real full-stack work from unfamiliar repositories through
-    mission-scale implementation, safe parallelism, validation, delivery, and plugin-backed
-    project continuity.
+  short_description: Own product design and full-stack delivery from outcome framing
+    through implementation, rendered product validation, safe execution, and evidence-backed
+    completion.
   icon_small: assets/icon.svg
   icon_large: assets/icon.svg
 policy:

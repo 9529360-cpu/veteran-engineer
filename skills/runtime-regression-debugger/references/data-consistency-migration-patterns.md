@@ -174,6 +174,8 @@ For data changes, validate separately:
 
 Code rollback is not always data rollback. After a destructive or semantic data migration, rolling back application binaries may make the system less compatible.
 
+For large live backfills/catch-up or data-transfer windows, use `scripts/migration_budget.py` to make throughput/backlog assumptions explicit before choosing a migration window. The estimate does not replace measured production throughput or resumability tests.
+
 ## Mature references
 
 - PostgreSQL transaction isolation: https://www.postgresql.org/docs/current/transaction-iso.html

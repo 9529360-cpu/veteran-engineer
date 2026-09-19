@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 PLATFORMS = {"web", "desktop", "mobile"}
+CHANGE_DIMENSIONS = {"layout", "visual_style", "interaction", "functionality", "workflow", "responsive", "accessibility", "content"}
 CASE_RESULTS = {"pass", "fail", "deferred"}
 CLAIMS = {
     "implemented": 1,
@@ -135,6 +136,34 @@ def validate(doc):
         missing = sorted(set(declared) - seen[key])
         if missing:
             add(blockers, "COVERAGE_NOT_EVIDENCED", f"coverage.{key}", f"declared values missing from matrix: {', '.join(missing)}")
+
+    change_scope = doc.get("change_scope")
+    if change_scope is not None:
+        if not isinstance(change_scope, dict):
+            add(blockers, "CHANGE_SCOPE_OBJECT_REQUIRED", "change_scope", "change_scope must be an object when provided")
+        else:
+            requested = change_scope.get("requested")
+            delivered = change_scope.get("delivered")
+            evidence_by_dimension = change_scope.get("evidence_by_dimension")
+            if not isinstance(requested, list) or not requested or not all(isinstance(item, str) and item in CHANGE_DIMENSIONS for item in requested):
+                add(blockers, "REQUESTED_CHANGE_DIMENSIONS_INVALID", "change_scope.requested", f"requested must be a non-empty list from: {', '.join(sorted(CHANGE_DIMENSIONS))}")
+                requested = []
+            if not isinstance(delivered, list) or not delivered or not all(isinstance(item, str) and item in CHANGE_DIMENSIONS for item in delivered):
+                add(blockers, "DELIVERED_CHANGE_DIMENSIONS_INVALID", "change_scope.delivered", f"delivered must be a non-empty list from: {', '.join(sorted(CHANGE_DIMENSIONS))}")
+                delivered = []
+            if len(set(requested)) != len(requested):
+                add(blockers, "REQUESTED_CHANGE_DIMENSIONS_DUPLICATE", "change_scope.requested", "requested dimensions must be unique")
+            if len(set(delivered)) != len(delivered):
+                add(blockers, "DELIVERED_CHANGE_DIMENSIONS_DUPLICATE", "change_scope.delivered", "delivered dimensions must be unique")
+            missing_dimensions = sorted(set(requested) - set(delivered))
+            if missing_dimensions:
+                add(blockers, "REQUESTED_CHANGE_DIMENSION_UNDELIVERED", "change_scope.delivered", f"requested dimensions missing from delivered: {', '.join(missing_dimensions)}")
+            if not isinstance(evidence_by_dimension, dict):
+                add(blockers, "CHANGE_DIMENSION_EVIDENCE_REQUIRED", "change_scope.evidence_by_dimension", "evidence_by_dimension must be an object")
+                evidence_by_dimension = {}
+            for dimension in requested:
+                if not nonempty(evidence_by_dimension.get(dimension)):
+                    add(blockers, "CHANGE_DIMENSION_EVIDENCE_MISSING", f"change_scope.evidence_by_dimension.{dimension}", f"requested dimension {dimension} requires evidence")
 
     acceptance = object_section(doc, "acceptance", blockers)
     for field in ACCEPTANCE_FIELDS:

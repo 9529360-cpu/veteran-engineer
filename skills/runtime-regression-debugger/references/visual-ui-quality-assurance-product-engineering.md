@@ -1,5 +1,32 @@
 # Visual UI quality assurance product engineering
 
+
+## Contents
+
+- Quality contract
+- Match review altitude to the design stage
+- Preserve requested visual dimensions
+- Inspect the real product surface
+- Task walkthrough before final acceptance
+- Visual hierarchy and attention budget
+- Spacing, alignment, density, and rhythm
+- Typography and color roles
+- Content pressure is part of visual correctness
+- Viewport and responsive matrix
+- State matrix
+- Interaction quality
+- Accessibility presentation
+- Design-system consistency
+- Bounded repair loop
+- Convert inferred findings into runtime facts
+- Before/after evidence
+- Visual regression automation
+- Triage visual diffs
+- Separate measurement from design judgment
+- Evidence matrix
+- Completion claims
+- Boundaries
+
 Use this when a user-visible web, desktop, or mobile surface needs more than code-level correctness: visual hierarchy, density, responsive behavior, interaction states, accessibility presentation, and design-system consistency must be inspected in a rendered product state.
 
 This is not a pixel-police playbook and not a license for subjective redesign. It turns visual/product quality into an evidence matrix that can catch interfaces which technically work but are confusing, brittle, inconsistent, or visibly unfinished.
@@ -17,6 +44,47 @@ Visual QA should answer two different questions:
 
 A screenshot can support both questions, but it is not sufficient by itself.
 
+### Keep audit evidence separate from redesign authority
+
+When the user asks to audit, review, critique, assess, or verify an existing surface without authorizing a redesign, keep the pass diagnostic. Use the current product/design authority, rendered evidence, accessibility/platform requirements, and active project patterns to judge what exists; do not load or invent a fresh aesthetic direction merely to make findings easier to fix. A review that silently chooses a new palette, typography system, layout grammar, or component family has crossed into redesign and must be re-routed explicitly.
+
+A structural finding may correctly conclude that the current design contract is inadequate. In that case, report the violated user/product consequence and name the design clause that must be reopened; do not smuggle the replacement design into the audit. If the user asked to `audit and fix`, apply bounded corrections whose authority is already established, but route genuinely new art direction, information architecture, workflow semantics, or shared-system changes back through the appropriate design/product owner before implementation.
+
+## Match review altitude to the design stage
+
+Critique the highest unresolved layer first. Do not spend polish effort on a surface whose product structure is still wrong, and do not use a late craft review as permission to reopen settled product semantics.
+
+Use three practical review altitudes:
+
+- **exploration / direction** - judge task fit, product mode, information architecture, region ownership, primary workflow, major hierarchy, and whether the concept is worth pursuing; ignore incidental pixel polish unless it prevents evaluating the concept;
+- **refinement / implementation mapping** - judge component family, responsive/window behavior, state coverage, density, typography hierarchy, token/system fit, and interaction details while preserving the accepted product semantics;
+- **final craft / ship review** - judge alignment, rhythm, optical balance, state styling, animation restraint, content pressure, consistency, accessibility presentation, and remaining visual defects on the real implementation.
+
+If a final-polish pass discovers a structural/product defect, classify it as such and reopen the relevant upstream clause instead of hiding it behind cosmetic cleanup. If an exploration concept is structurally invalid, reject it before investing in token tuning or detailed component styling.
+
+## Preserve requested visual dimensions
+
+Before editing, classify the user's material visual/product clauses by dimension. Common dimensions include:
+
+- **structure/layout** - shell composition, navigation hierarchy, panel placement, split views, sizing/resizing, density, window-responsive behavior;
+- **visual system/theme** - surface materials, tokens, color roles, borders, elevation, transparency/blur where the platform supports it, typography roles, overlays, and state styling;
+- **interaction** - hover/focus/pressed/loading/drag/resize/selection transitions and feedback;
+- **functional wiring** - actions, data, state, terminal/tool integration, persistence, navigation, and real runtime effects;
+- **responsive/window behavior** - narrow/medium/wide transformations and minimum usable window behavior;
+- **accessibility presentation** - focus, contrast, scaling, non-color cues, target sizing, reduced motion.
+
+Keep each requested dimension open until it has evidence. Do not use a cheaper neighboring dimension as a substitute.
+
+Examples of invalid substitution:
+
+- user requests a new workspace layout; engineer changes only theme colors;
+- user requests a liquid-glass system; engineer makes only the main background translucent while menus, sidebars, overlays, states, contrast, and hierarchy remain unchanged;
+- user requests a desktop workflow redesign; engineer moves buttons without changing the actual flow or state ownership.
+
+Named references such as another product's layout or an OS material language are specification clues, not palette names. Recover the relevant structural/interaction/material principles from available current evidence and the host platform, then adapt them to the product rather than copying superficial decoration.
+
+For substantial redesigns, write `change_scope.requested` and `change_scope.delivered` in the visual-QA manifest and require every requested dimension to be delivered with evidence before completion.
+
 ## Inspect the real product surface
 
 Prefer the actual route, shell, data wiring, permissions, and component tree over a detached mock. A component sandbox is useful for isolated states, but it cannot prove navigation, layout composition, authorization, real content, or end-to-end state behavior.
@@ -33,6 +101,20 @@ For each reviewed surface record:
 - product state such as loading, empty, error, populated, disabled, offline, partial, or success.
 
 Do not claim the product surface is visually verified when only source code or a detached component was inspected.
+
+## Task walkthrough before final acceptance
+
+For a meaningful redesign or workflow change, verify at least the representative end-to-end user jobs whose experience the change is supposed to improve. Do not substitute a feature tour or a gallery of clean screenshots for task completion.
+
+Use the smallest realistic walkthrough set that can expose the contract, for example:
+
+`start from a believable entry state -> find/orient -> perform primary action -> observe progress/feedback -> recover from one material error or alternate state -> reach completion/review`
+
+Record the actual task, starting context, key steps/interruptions, and completion/recovery result. For a desktop agent workspace this might include switching to the correct project/thread, starting work, steering or queuing while busy, handling a blocked/error state, and reviewing the resulting change without losing foreground context.
+
+Treat friction found during the walkthrough as evidence to classify, not an automatic feature request. Separate: (a) general contract/UX defects likely to affect the target user population, (b) accessibility or safety defects, (c) valid but low-priority edge friction, and (d) persona/preferences that would add complexity without improving the intended product. Fix or reopen design for the first two; preserve the others as evidence rather than turning every complaint into scope.
+
+Prioritize the core user job before settings and peripheral surfaces. A visually polished screen that makes the primary task slower, harder to find, or harder to recover is not a successful redesign.
 
 ## Visual hierarchy and attention budget
 
@@ -178,7 +260,7 @@ Check:
 - dialogs opening with sensible focus and closing/restoring focus correctly;
 - touch/pointer/keyboard paths preserving the same product semantics.
 
-Animations and transitions should clarify change. Excess motion, delayed feedback, or decorative animation that hides state is a quality defect.
+Animations and transitions should clarify change. Excess motion, delayed feedback, decorative animation that hides state, or a transition that blocks/rejects a newer user command until it finishes is a quality defect. Exercise at least one relevant mid-transition interruption for material drawers, panes, navigation, or task-state motion when the interaction can overlap input.
 
 ## Accessibility presentation
 
@@ -215,6 +297,28 @@ Check whether comparable elements use the same:
 - loading skeleton/spinner convention.
 
 If the existing pattern is itself harmful or inaccessible, fix the shared owner rather than copying the defect into another screen.
+
+## Bounded repair loop
+
+Do not turn visual QA into an uncontrolled second redesign. Classify each finding before fixing it:
+
+- **local visual correction** - spacing, alignment, token misuse, typography role, state styling, overflow, or another reversible presentation defect that preserves the accepted structure; fix in a tight render -> inspect -> patch -> re-render loop.
+- **structural/product correction** - navigation hierarchy, information architecture, workflow, component family, major layout composition, data/state semantics, or a change that invalidates the accepted target; reopen the relevant design/implementation-mapping clause before changing code.
+- **platform constraint** - host/window/input/rendering behavior makes the design target impossible or misleading; capture the constraint, update the target deliberately, then continue.
+
+Batch only findings that share one clear owner. Avoid shotgun styling passes that make it impossible to know which change improved or regressed the surface. Re-render after each coherent batch and stop when remaining findings are intentionally deferred or require a product decision outside the authorized scope.
+
+## Convert inferred findings into runtime facts
+
+Keep diagnosis and reproduction separate. A source/design review may infer that a control is too small, focus is missing, overflow will occur, an error path is unreachable, or a theme token is overridden; treat that as a finding to verify, not as runtime truth.
+
+Use this evidence loop when the environment can exercise the surface:
+
+`inferred finding -> smallest scoped runtime probe -> confirmed or dismissed -> owning fix -> clearing re-run`
+
+Choose the probe that can falsify the exact claim: computed geometry/styles for sizing and overflow, a keyboard focus walk for navigation/focus, injected dependency failure for recovery UI, theme/locale/viewport pressure for adaptive layout, console/network observation for runtime errors, or the actual desktop renderer when host-shell behavior matters. Do not run a generic browser battery when one narrow probe can decide the finding.
+
+A dismissed finding is useful evidence. Do not patch source merely to make it look more compliant when the actual product already satisfies the user-visible contract. Conversely, a source diff that appears correct does not clear a previously reproduced defect; re-run the same decisive probe after the fix.
 
 ## Before/after evidence
 
@@ -265,6 +369,20 @@ Classify each meaningful diff:
 
 Do not approve hundreds of changed pixels as a batch without understanding the shared cause.
 
+## Separate measurement from design judgment
+
+Use deterministic measurement where the claim is actually measurable. Examples include contrast, overflow/clipping, viewport fit, hit-target size, token/value drift, deterministic screenshot differences, element geometry, focus reachability, and state presence. A measurement should have an explicit threshold or expected relation that comes from the product/design contract, accessibility requirement, platform rule, or reviewed baseline.
+
+Do not manufacture numeric certainty for perceptual or product-relative qualities such as hierarchy, visual focus, density appropriateness, product-mode fit, brand character, domain vernacular, calmness, or overall coherence. Review those qualities against the accepted design authority, representative rendered states, the product's real work, and concrete observed consequences. Describe the mismatch and the design principle it violates instead of inventing a `92/100` quality score.
+
+Keep the evidence types distinct:
+
+- **machine-checkable constraint** - a deterministic probe can pass/fail the claimed property;
+- **rendered comparative judgment** - inspect the real surface against an accepted target, product mode, or established pattern and explain the observable mismatch;
+- **reserved human/product decision** - a brand/identity/art-direction choice remains explicitly owned by the user/designer/product authority and should be surfaced as a review gate rather than auto-resolved by a synthetic metric.
+
+A high screenshot-similarity percentage cannot override a wrong information hierarchy, workflow, responsive behavior, accessibility state, or product mode. Conversely, a legitimate responsive or platform adaptation can be correct while producing a large pixel diff. Use numbers only for the dimension the number actually measures.
+
 ## Evidence matrix
 
 For meaningful visual work, keep a compact matrix that makes omissions obvious:
@@ -273,7 +391,7 @@ For meaningful visual work, keep a compact matrix that makes omissions obvious:
 
 The matrix does not need the Cartesian product of every possible dimension. Choose the combinations most likely to break the design contract, then make those choices explicit.
 
-Use `scripts/visual_quality_gate.py` when a structured visual-QA manifest helps enforce this evidence discipline.
+Use `scripts/visual_quality_gate.py` when a structured visual-QA manifest helps enforce this evidence discipline. For user-directed redesign/layout/theme work, populate `change_scope` so the gate can reject missing requested dimensions instead of accepting a visually related but semantically incomplete patch.
 
 ## Completion claims
 
@@ -295,4 +413,6 @@ If rendering/browser execution is unavailable, do not claim rendered or visual-r
 - Do not hide overflow or content-pressure failures by masking them in visual tests.
 - Do not approve visual baseline churn without understanding the diff.
 - Do not fabricate rendered evidence when no browser/device execution was available.
+- Do not call a redesign complete when the delivered change dimensions omit a requested layout, theme, interaction, workflow, responsive, accessibility, content, or functionality dimension.
+- Treat cosmetic-only delivery for a structural/functional request as an unresolved failure, not a partial success to rename as completion.
 - Do not change brand identity or product policy merely to make a screen look different.

@@ -15,6 +15,9 @@ UI_CHECKS = (
     "copy_content",
     "design_consistency",
 )
+
+# Candidate categories are intentionally product/risk oriented. They are not a
+# requirement to inspect every category on every sweep.
 CATEGORIES = {
     "correctness",
     "experience",
@@ -24,12 +27,38 @@ CATEGORIES = {
     "reliability",
     "maintainability",
     "design-system",
+    "security",
+    "data-integrity",
+    "observability",
+    "operability",
+    "cost-efficiency",
+    "developer-experience",
+    "onboarding",
+    "delivery",
 }
-ACTIONS = {"fix", "defer", "no-change"}
+BASE_ACTIONS = {"fix", "defer", "no-change"}
+HEALTH_ACTIONS = BASE_ACTIONS | {"probe", "refactor", "remove"}
+ACTIVE_ACTIONS = {"fix", "probe", "refactor", "remove"}
+CONFIDENCE = {"confirmed", "supported", "hypothesis"}
+URGENCY = {"now", "soon", "later"}
+HEALTH_DIMENSIONS = {
+    "correctness-data-security",
+    "product-completeness-onboarding",
+    "ux-accessibility-content",
+    "visual-responsive-design-system",
+    "performance-cost-efficiency",
+    "reliability-recovery-observability",
+    "delivery-operability",
+    "developer-experience-test-confidence",
+}
 
 
 def nonempty(value):
     return isinstance(value, str) and bool(value.strip())
+
+
+def string_list(value):
+    return isinstance(value, list) and all(nonempty(item) for item in value)
 
 
 def add(blockers, code, path, message):
@@ -48,10 +77,28 @@ def load_manifest(path):
 
 def validate(doc):
     blockers = []
+    mode = doc.get("mode", "quality-sweep")
+    if mode not in {"quality-sweep", "health-scan"}:
+        add(blockers, "MODE_INVALID", "mode", "mode must be 'quality-sweep' or 'health-scan'")
+        mode = "quality-sweep"
+    health_mode = mode == "health-scan"
 
     for field in ("product_goal", "authorization_scope", "scope_boundary"):
         if not nonempty(doc.get(field)):
             add(blockers, "SWEEP_CONTEXT_INCOMPLETE", field, f"{field} must be a non-empty string")
+
+    dimensions = doc.get("dimensions_inspected", [])
+    if health_mode:
+        if not string_list(dimensions) or not dimensions:
+            add(blockers, "HEALTH_DIMENSIONS_REQUIRED", "dimensions_inspected", "health-scan mode must record one or more evidence-relevant dimensions actually inspected")
+            dimensions = []
+        else:
+            for index, value in enumerate(dimensions):
+                if value not in HEALTH_DIMENSIONS:
+                    add(blockers, "HEALTH_DIMENSION_INVALID", f"dimensions_inspected[{index}]", f"unknown health dimension: {value}")
+    elif dimensions and not string_list(dimensions):
+        add(blockers, "HEALTH_DIMENSIONS_INVALID", "dimensions_inspected", "dimensions_inspected must be an array of non-empty strings when present")
+        dimensions = []
 
     surfaces = doc.get("surfaces")
     if not isinstance(surfaces, list) or not surfaces:
@@ -88,11 +135,12 @@ def validate(doc):
 
     candidates = doc.get("candidates")
     if not isinstance(candidates, list) or not candidates:
-        add(blockers, "CANDIDATES_REQUIRED", "candidates", "quality sweep must record at least one fix, defer, or evidence-backed no-change candidate")
+        add(blockers, "CANDIDATES_REQUIRED", "candidates", "quality sweep must record at least one active, deferred, or evidence-backed no-change candidate")
         candidates = []
 
     candidate_by_id = {}
-    fix_ids = []
+    active_ids = []
+    allowed_actions = HEALTH_ACTIONS if health_mode else BASE_ACTIONS
     for index, candidate in enumerate(candidates):
         path = f"candidates[{index}]"
         if not isinstance(candidate, dict):
@@ -109,30 +157,43 @@ def validate(doc):
         if category not in CATEGORIES:
             add(blockers, "CANDIDATE_CATEGORY_INVALID", f"{path}.category", f"category must be one of: {', '.join(sorted(CATEGORIES))}")
         action = candidate.get("action")
-        if action not in ACTIONS:
-            add(blockers, "CANDIDATE_ACTION_INVALID", f"{path}.action", f"action must be one of: {', '.join(sorted(ACTIONS))}")
-        elif action == "fix" and nonempty(cid):
-            fix_ids.append(cid)
+        if action not in allowed_actions:
+            add(blockers, "CANDIDATE_ACTION_INVALID", f"{path}.action", f"action must be one of: {', '.join(sorted(allowed_actions))}")
+        elif action in ACTIVE_ACTIONS and nonempty(cid):
+            active_ids.append(cid)
         for field in ("evidence", "user_impact", "reason"):
             if not nonempty(candidate.get(field)):
                 add(blockers, "CANDIDATE_EVIDENCE_INCOMPLETE", f"{path}.{field}", f"{field} must be non-empty")
 
+        if health_mode:
+            if candidate.get("confidence") not in CONFIDENCE:
+                add(blockers, "CANDIDATE_CONFIDENCE_INVALID", f"{path}.confidence", f"confidence must be one of: {', '.join(sorted(CONFIDENCE))}")
+            if candidate.get("urgency") not in URGENCY:
+                add(blockers, "CANDIDATE_URGENCY_INVALID", f"{path}.urgency", f"urgency must be one of: {', '.join(sorted(URGENCY))}")
+            if not nonempty(candidate.get("owner")):
+                add(blockers, "CANDIDATE_OWNER_REQUIRED", f"{path}.owner", "health-scan candidates require the live owner/path or the next owner to prove")
+            if not nonempty(candidate.get("falsifier")):
+                add(blockers, "CANDIDATE_FALSIFIER_REQUIRED", f"{path}.falsifier", "health-scan candidates require the cheapest evidence that could disprove or characterize them")
+            dependencies = candidate.get("dependencies", [])
+            if not string_list(dependencies):
+                add(blockers, "CANDIDATE_DEPENDENCIES_INVALID", f"{path}.dependencies", "dependencies must be an array of non-empty candidate/owner ids")
+
     if not nonempty(doc.get("prioritization_basis")):
-        add(blockers, "PRIORITIZATION_BASIS_REQUIRED", "prioritization_basis", "state how user impact, evidence, reversibility, and effort were weighed")
+        add(blockers, "PRIORITIZATION_BASIS_REQUIRED", "prioritization_basis", "state how consequence, evidence, dependency order, reversibility, and effort were weighed")
 
     selection = doc.get("selection")
     if not isinstance(selection, dict):
         add(blockers, "SELECTION_REQUIRED", "selection", "selection must explain the next product improvement decision")
         selection = {}
     next_id = selection.get("next_candidate_id")
-    if fix_ids:
+    if active_ids:
         if not nonempty(next_id) or next_id not in candidate_by_id:
-            add(blockers, "NEXT_CANDIDATE_INVALID", "selection.next_candidate_id", "next_candidate_id must name one recorded candidate when fix candidates exist")
-        elif candidate_by_id[next_id].get("action") != "fix":
-            add(blockers, "NEXT_CANDIDATE_NOT_FIX", "selection.next_candidate_id", "selected next candidate must have action=fix")
+            add(blockers, "NEXT_CANDIDATE_INVALID", "selection.next_candidate_id", "next_candidate_id must name one recorded active candidate")
+        elif candidate_by_id[next_id].get("action") not in ACTIVE_ACTIONS:
+            add(blockers, "NEXT_CANDIDATE_NOT_ACTIVE", "selection.next_candidate_id", "selected next candidate must have an active action")
     else:
         if next_id != "none":
-            add(blockers, "NO_CHANGE_SELECTION_REQUIRED", "selection.next_candidate_id", "when no fix candidate exists, next_candidate_id must be 'none'")
+            add(blockers, "NO_CHANGE_SELECTION_REQUIRED", "selection.next_candidate_id", "when no active candidate exists, next_candidate_id must be 'none'")
         if not nonempty(selection.get("no_change_reason")):
             add(blockers, "NO_CHANGE_REASON_REQUIRED", "selection.no_change_reason", "evidence-backed no-change requires a reason")
     if not nonempty(selection.get("why_now")):
@@ -146,31 +207,45 @@ def validate(doc):
         if not nonempty(validation.get(field)):
             add(blockers, "VALIDATION_ORACLE_REQUIRED", f"validation.{field}", f"{field} must be non-empty")
 
-    if fix_ids and nonempty(next_id) and next_id in candidate_by_id:
+    if active_ids and nonempty(next_id) and next_id in candidate_by_id:
         selected = candidate_by_id[next_id]
-        if selected.get("category") in {"experience", "accessibility", "content", "design-system"} and ui_surface_count == 0:
+        if selected.get("category") in {"experience", "accessibility", "content", "design-system", "onboarding"} and ui_surface_count == 0:
             add(blockers, "VISIBLE_SURFACE_EVIDENCE_REQUIRED", "surfaces", "selected user-experience work requires at least one inspected UI surface")
 
     return {
         "gate_passed": not blockers,
+        "mode": mode,
         "counts": {
             "surfaces": len(surfaces),
             "ui_surfaces": ui_surface_count,
             "candidates": len(candidates),
-            "fix_candidates": len(fix_ids),
+            "active_candidates": len(active_ids),
+            # Keep this compatibility field for existing consumers.
+            "fix_candidates": sum(1 for candidate in candidates if isinstance(candidate, dict) and candidate.get("action") == "fix"),
+            "dimensions_inspected": len(dimensions),
         },
         "blockers": blockers,
+        "note": (
+            "This gate validates the structure of an evidence-backed product sweep. It does not score project health, "
+            "prove candidate truth, or require every health dimension on every run."
+        ),
     }
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Validate an evidence-backed proactive product-quality sweep")
+    parser = argparse.ArgumentParser(description="Validate an evidence-backed proactive product-quality sweep or health scan")
     parser.add_argument("manifest")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
     doc, blockers = load_manifest(args.manifest)
-    result = {"gate_passed": False, "counts": {"surfaces": 0, "ui_surfaces": 0, "candidates": 0, "fix_candidates": 0}, "blockers": blockers}
+    result = {
+        "gate_passed": False,
+        "mode": "unknown",
+        "counts": {"surfaces": 0, "ui_surfaces": 0, "candidates": 0, "active_candidates": 0, "fix_candidates": 0, "dimensions_inspected": 0},
+        "blockers": blockers,
+        "note": "manifest could not be validated",
+    }
     if doc is not None:
         result = validate(doc)
 
@@ -179,11 +254,12 @@ def main():
     else:
         print("PASS" if result["gate_passed"] else "FAIL")
         print(
-            f"surfaces={result['counts']['surfaces']} ui_surfaces={result['counts']['ui_surfaces']} "
-            f"candidates={result['counts']['candidates']} fixes={result['counts']['fix_candidates']}"
+            f"mode={result['mode']} surfaces={result['counts']['surfaces']} ui_surfaces={result['counts']['ui_surfaces']} "
+            f"candidates={result['counts']['candidates']} active={result['counts']['active_candidates']}"
         )
         for item in result["blockers"]:
             print(f"- {item['code']} {item['path']}: {item['message']}")
+        print("note:", result["note"])
     return 0 if result["gate_passed"] else 1
 
 

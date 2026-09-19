@@ -1,344 +1,160 @@
 # Project Takeover Engineering
 
-Use this when entering an unfamiliar, large, polyglot, generated-code-heavy, or troubled repository, or when asked to own a system without a guided tour.
-
-When a plugin/runtime backend is available and the operator provides an authorized Git URL instead of a local checkout, use its bounded remote project acquisition path rather than asking for a manual clone. Treat the acquired checkout as current source authority, not durable architectural memory, and refresh repository truth before consequential work.
+Use this when entering an unfamiliar, large, polyglot, generated-code-heavy, or troubled repository, or when asked to own a system without a guided tour. If an authorized Git URL and bounded project-acquisition runtime are available, acquire it there instead of asking for a manual clone; the checkout is source authority, not durable architectural memory.
 
 ## Contents
 
 - Start from the operating contract
 - Prove repository identity before mutation
 - Build the minimum project model
+- Maintain a compact Project Intelligence Snapshot
+- Recover project language without inventing a glossary
 - Navigate by questions and high-value anchors
-- Recover the active path before the architecture story
-- Prove liveness and distinguish source from generated code
-- Locate authoritative state and mutation rights
-- Search sideways for hidden consumers
-- Find hidden coupling and historical hotspots
-- Separate code topology from runtime topology
-- Map workspace and build-graph boundaries
+- Recover the active path and source authority
+- Locate authoritative state and hidden consumers
+- Use history for hidden coupling
+- Separate code, build, and runtime topology
 - Recover validation and release topology
 - Rank unknowns by decision impact
-- Build an evidence-backed project attention queue
-- Choose the first evidence-producing change
+- Hand broad stewardship to the product-quality owner
 - Gate the first consequential mutation
-- Avoid takeover anti-patterns
-- Know when the project model is good enough
+- Rescue before redesign
+- Know when the model is good enough
 
 ## Start from the operating contract
 
-Do not begin by reading the repository from top to bottom. Establish the smallest contract that explains why the relevant system exists and what current work must preserve.
+Do not read the repository top to bottom. Recover the smallest contract needed now:
 
-Capture:
+`actor -> intent -> authoritative transition -> durable/external postcondition -> failure/recovery -> compatibility`
 
-- primary actor or operator;
-- user-visible or operator-visible intent;
-- authoritative state transition;
-- durable and externally visible postconditions;
-- important failure/recovery behavior;
-- compatibility obligations already deployed.
-
-If the request is a bug, narrow this to the failing transition. If it is a feature, narrow it to the shortest complete vertical slice. If it is a rescue, identify contracts whose failure creates the most user, data, money, or operational harm.
+For a bug, narrow to the failing transition; for a feature, the shortest complete slice; for a rescue, the contracts whose failure creates the most user, data, money, or operational harm.
 
 ## Prove repository identity before mutation
 
-Before the first write in a task, prove that the repository being inspected is the repository the user currently authorized. Use the strongest available identity signals: explicit owner/name or repository URL from the current request, checkout root, Git remote origin or repository ID, and live default branch/remote HEAD when available.
+Before the first write, prove the inspected repository is the one currently authorized using the strongest available combination of explicit owner/name or URL, checkout root, remote/repository ID, and live default branch/HEAD.
 
-Treat conversational carry-over as a navigation hint, not repository identity. If a prior task, another open checkout, or a similarly named project points at a different repository, discard its branch names, PR numbers, SHAs, CI runs, file ownership assumptions, and release state until they are independently re-established for the current target.
-
-If the explicit current target and the active checkout/connector disagree, switch or reopen the correct repository before mutation. Do not patch the wrong repository merely because its file names, architecture, or recent task history look familiar.
+Conversation carry-over is only a navigation hint. Branch names, PRs, SHAs, CI runs, ownership assumptions, and release state from another checkout remain untrusted until re-established. If the explicit target and active checkout/connector disagree, switch to the correct repository before mutation.
 
 ## Build the minimum project model
 
-Recover only the model needed for the next safe engineering decision. Prefer six compact maps over a giant architecture document:
+Prefer six compact maps over a giant architecture document:
 
-1. **Entry map** - routes, commands, handlers, jobs, consumers, or processes that can start the relevant behavior.
-2. **Authority map** - which component may authoritatively change each important fact.
-3. **Data map** - stores, schemas, caches, indexes, projections, queues, and external systems involved.
-4. **Runtime map** - deployables, processes, workers, regions, containers, browser/mobile shells, and version coexistence.
-5. **Validation map** - unit, contract, integration, E2E, smoke, canary, and production evidence that can falsify a change.
-6. **Delivery map** - build artifacts, migrations, flags, promotion order, rollback/forward repair, and production verification.
+1. **Entry** - routes, commands, handlers, jobs, consumers, processes.
+2. **Authority** - who may authoritatively mutate each important fact.
+3. **Data** - stores, schemas, projections, caches, queues, external systems.
+4. **Runtime** - deployables, processes, workers, shells, regions, version overlap.
+5. **Validation** - cheapest focused oracle through real integration/E2E/production proof.
+6. **Delivery** - artifacts, migrations, flags, promotion, rollback/forward repair.
 
-Do not create documentation merely to feel oriented. Each map must answer a decision that affects implementation, validation, rollout, or risk.
+Each map must change an implementation, validation, rollout, or risk decision; otherwise do not build it.
+
+## Maintain a compact Project Intelligence Snapshot
+
+For broad takeover/autopilot work, keep one refreshable snapshot as a cache over current evidence, never authority over source/runtime truth. Keep only decision-relevant fields:
+
+- repository identity and freshness boundary;
+- product brief: product type, actors/jobs, major surfaces, core journeys;
+- the six maps above summarized by live owners rather than directory trees;
+- stack/design/dependency/deployment posture only when current;
+- current execution envelope across source, shell, browser/render, repo/CI, design, DB/runtime, observability, cloud, persistence, credentials;
+- open risks/unknowns and the small current attention queue;
+- evidence identities/paths likely to need refresh, not copied dumps.
+
+Use `scripts/repo_surface_map.py <repo> --json` and stack/style fingerprints only as structural seeds. Replace file-presence hints with active-path/runtime evidence before treating them as facts.
+
+Refresh only the slices invalidated by new evidence. Repository/default-branch changes, schema/manifest or design-contract changes, runtime/deployment changes, and material capability changes invalidate affected fields, not the whole project model. Persist the snapshot only when the repository already owns such an artifact or the user requests one.
+
+## Recover project language without inventing a glossary
+
+Resolve ambiguous domain terms from active schemas/enums, public/API names, tests, maintained docs, CLI/UI labels, and current owners. A code name is an observed term, not automatically a definition, and the same word may differ across bounded contexts.
+
+If a term such as `workspace`, `session`, `project`, `run`, `mission`, `account`, or `owner` changes the contract, establish its actor, identity/state, allowed operations, and observable result before using it in architecture/UI decisions. Prefer repository evidence over generic meaning or stale conversation memory.
+
+Passive vocabulary recovery is takeover; inventing a new glossary/domain model is not. Change a durable language artifact only when the project already owns it, the user asks, or the task changes the domain itself.
 
 ## Navigate by questions and high-value anchors
 
-Every repository search should answer a live engineering question. Maintain a small search frontier instead of collecting context broadly.
-
-Prefer this ladder:
+Every search should answer a live decision. Follow:
 
 `user-visible entry -> registration/binding -> active caller -> authoritative owner -> durable/external effect -> projection -> validation -> delivery`
 
-High-information anchors include:
+Useful anchors include route/command/event/RPC/UI names, public fields or error codes, table/event/job names, flags/config keys, failing stack/log/trace/test identities, and symbols from relevant recent commits. Search outward one ownership hop at a time.
 
-- route, command, event, RPC, CLI, or UI action name;
-- public request/response field or machine-readable error code;
-- table/entity/event/job name;
-- feature flag or configuration key;
-- failing stack frame, log correlation, trace span, or test name;
-- symbol named in a recent relevant commit.
+Classify paths as **active**, **conditional**, or **background/dead**. Promote a candidate only when evidence can change the current owner, hypothesis, or validation plan.
 
-From an anchor, search outward one ownership hop at a time.
+## Recover the active path and source authority
 
-Keep candidate paths in three buckets:
-
-- **active** - can change the next decision now;
-- **conditional** - inspect only if the current owner/hypothesis survives;
-- **background/dead** - generated copies, vendored code, obsolete paths, stale docs, or unrelated modules not linked to the active contract.
-
-Promote a candidate only when evidence crosses a boundary.
-
-## Recover the active path before the architecture story
-
-Architecture documents describe intent. Active callers and runtime behavior describe truth.
-
-Prove the path by following:
+Architecture docs describe intent; active callers and runtime behavior describe current truth. Prove:
 
 `entry -> caller -> owner -> state transition -> persistence/side effect -> projection -> visible result`
 
-For each hop, look for liveness evidence in this rough order:
+Use registration/import/wiring, callers, runtime config, tests, exact-build traces/logs, then history when ownership changed. Treat orphaned files, old service names, disabled paths, and similarly named implementations as hypotheses until liveness is proven.
 
-1. registration/import/wiring;
-2. active callers;
-3. runtime config/manifest;
-4. tests that exercise the path;
-5. traces/logs/profiles tied to the exact build;
-6. recent history when path ownership changed.
+Before editing a matching file, classify it as authoritative handwritten source, generated output, vendored dependency, artifact, schema/client copy, migration snapshot, or fixture. Patch the generator/schema/source when output is derivative, regenerate with project tooling, and review both source and derived diff.
 
-Treat orphaned files, old service names, disabled flags, unused workers, abandoned migrations, and similarly named implementations as hypotheses until liveness is proven.
+## Locate authoritative state and hidden consumers
 
-## Prove liveness and distinguish source from generated code
+For each important fact ask who creates, mutates, deletes/expires, derives/caches, fences stale generations, resolves concurrency, and reconciles partial failure. Multiple uncoordinated writers or a projection silently acting as truth are takeover hotspots.
 
-Before editing a matching file, determine whether it is:
+After finding a writer/public contract, search sideways for workers/jobs, other clients, subscribers/webhooks, caches/indexes/analytics/CDC, generated SDKs/schema bindings, migrations/backfills, compatibility readers, tests/fixtures, and deployment/config/flag definitions. Search by stable contract names/IDs/events/error codes, not only class names.
 
-- authoritative handwritten source;
-- generated output;
-- vendored dependency;
-- build artifact;
-- copied schema/client binding;
-- migration snapshot;
-- fixture or test-only representation.
+## Use history for hidden coupling
 
-Patch the generator or source-of-truth contract when generated output is derivative. Regenerate and review derived changes rather than hand-editing them unless the repository explicitly treats generated output as authored source.
+Use Git history as triage evidence when age, repeated fixes, deletion risk, compatibility, or ownership drift matters. Look for files that change together, recurring fixes around one transition, unexplained compatibility code, never-retired flags/migrations, manual runbooks, ordering/global-state test setup, and temporary adapters that became permanent.
 
-File-name similarity is weak evidence. Do not assume `ExportService`, `UserClient`, or an old migration path is active because it looks semantically right.
+History should recover pressure and contract, not provide a patch to copy or a person to blame. Escalate to `scripts/repo_archaeology.py` or `scripts/change_hotspot.py` only when it can change the next decision.
 
-## Locate authoritative state and mutation rights
+## Separate code, build, and runtime topology
 
-Most expensive regressions are ownership mistakes disguised as local bugs.
+Folder shape is not a failure-domain map. Recover what builds together, deploys independently, overlaps at different versions, shares DB/cache/queue/filesystem/identity/quota/network boundaries, and can fail or roll back independently.
 
-For every important fact, ask:
+For workspaces/monorepos, map only affected package roots, build/task graph and cache boundaries, source versus generated targets, public/internal contracts, deployables, affected-test/build selection, codegen edges, and wide-fan-out shared packages. Repository-native graph tooling is evidence, not architecture authority.
 
-- who may create it;
-- who may mutate it;
-- who may delete or expire it;
-- who only derives or caches it;
-- how concurrent writers are resolved;
-- how stale generations are fenced;
-- how failed partial updates are reconciled.
-
-Mark any fact with more than one uncoordinated authoritative writer as a risk hotspot. Mark any cache/projection that can silently become an alternate source of truth as a likely incident boundary.
-
-## Search sideways for hidden consumers
-
-After finding the writer or public contract, search for consumers filename-local reasoning can miss:
-
-- workers and delayed jobs;
-- mobile/desktop/CLI clients;
-- event subscribers and webhooks;
-- caches, search indexes, projections, analytics, or CDC;
-- generated SDKs and schema bindings;
-- migrations/backfills and compatibility readers;
-- tests/fixtures encoding old behavior;
-- deployment/config/flag definitions.
-
-Search by contract names, event types, durable fields, stable IDs, and machine-readable error codes, not only implementation class names.
-
-## Find hidden coupling and historical hotspots
-
-Use Git history as triage evidence when the system is old, surprising, or repeatedly patched.
-
-Look for:
-
-- files that change together unusually often;
-- bug-fix commits repeatedly touching the same transition;
-- compatibility code with no obvious current owner;
-- migrations or flags that never reached contraction/removal;
-- manual runbooks compensating for missing automation;
-- tests whose setup reveals hidden ordering or global state;
-- temporary adapters that became permanent boundaries.
-
-Escalate to archaeology when weird code protects an unexplained edge case, multiple implementations look active, regression timing matters, or deletion/refactor would remove old behavior. Use history to recover the pressure and contract, never to copy a prior patch mechanically or infer blame.
-
-## Separate code topology from runtime topology
-
-A monorepo can contain many independent deployables. A microservice-looking repository can still ship as one process. Never derive failure domains from folder names.
-
-Recover:
-
-- what is built together;
-- what is deployed independently;
-- what may run at different versions simultaneously;
-- what shares a DB, cache, queue, filesystem, identity, quota, or network boundary;
-- what can fail or roll back independently;
-- what production routing actually sends traffic to.
-
-Version coexistence is part of the contract whenever deployments are rolling, clients are long-lived, jobs are delayed, or data outlives code.
-
-## Map workspace and build-graph boundaries
-
-For monorepos and multi-package workspaces, recover the graph that actually controls change impact before running broad builds or editing shared packages.
-
-Map only what the task needs:
-
-- workspace/package roots and package-manager ownership;
-- build/task graph and cache boundaries;
-- source packages versus generated packages/artifacts;
-- public/internal package contracts and versioning rules;
-- deployables produced from each package or target;
-- affected-test/build selection and any remote cache assumptions;
-- code generation edges such as schema -> SDK -> consumers;
-- cycles or shared utility packages that create wide fan-out.
-
-Treat pnpm/yarn/npm workspaces, Nx/Turborepo, Bazel, Gradle composite/multi-project builds, Cargo workspaces, Go workspaces, and similar systems as graph managers, not architectural truth. Confirm the active graph from current manifests/config and repository-native tooling.
-
-When a shared package changes, distinguish compile-time fan-out from runtime/deployment fan-out. Prefer affected targets and representative boundary tests before an expensive whole-repository build when they can falsify the change. Run the full required repository gates before completion when policy requires them.
-
-Do not hand-edit generated packages or cached outputs. Find the authoritative generator/schema, regenerate with the repository-native command, and review both source and derived diffs.
+Separate compile-time fan-out from runtime/deployment fan-out. Prefer affected targets and representative boundary tests before expensive whole-repository work when they can falsify the change; still run project-required final gates.
 
 ## Recover validation and release topology
 
-Before the first edit, know how a hypothesis can be falsified and how a candidate could safely move toward production.
+Before implementation is deep, know the fastest owner-level test, real integration boundary, representative E2E/black-box check, exact build/artifact identity, release/version authority, automation that may create/publish follow-up artifacts, migration/flag ordering, required versus optional gates, rollback limits after durable state changes, and production signal that proves the user contract.
 
-Identify:
-
-- fastest focused test for the owner;
-- real integration boundary;
-- representative E2E or black-box check;
-- exact build/artifact identity;
-- release trigger and version authority: merge, tag, manual dispatch, bot, or external publisher;
-- automation that can create follow-up commits/tags/releases or publish/deploy after the trigger;
-- migration and flag ordering;
-- required versus optional checks;
-- rollback limitations after durable state changes;
-- production signals that prove the user contract rather than only infrastructure health.
-
-Do not wait until implementation is finished to discover that meaningful validation requires an unavailable environment. For release work, treat every merge/push/tag/dispatch/promotion as invalidating the earlier release snapshot and re-read the authoritative remote state before deciding the next mutation.
+Do not discover late that the needed oracle is unavailable. For release work, each consequential remote mutation invalidates the affected release snapshot; refresh authoritative state before the next mutation.
 
 ## Rank unknowns by decision impact
 
-Classify unknowns as:
+Classify unknowns as **blocking**, **high-value**, **deferrable**, or **irrelevant**. Resolve only blocking/high-value unknowns with the cheapest evidence that can change owner, behavior, security/data/money, compatibility, or validation. Do not ask the user to answer repository-discoverable mechanics.
 
-- **blocking** - different answers materially change behavior, security, data, money, or irreversible decisions;
-- **high-value** - affects owner selection, failure model, compatibility, or validation strategy;
-- **deferrable** - affects polish or implementation detail but not the safe decision;
-- **irrelevant** - does not affect the current contract.
+## Hand broad stewardship to the product-quality owner
 
-Resolve blocking and high-value unknowns with the cheapest evidence source. Do not ask the user to answer repository-discoverable questions merely to reduce model uncertainty.
+For broad authorization, takeover owns **truth recovery and the refreshable project model**; `proactive-product-stewardship.md` owns **candidate ranking and Product Health Scan policy**.
 
-## Build an evidence-backed project attention queue
+Hand off only evidence-backed seeds:
 
-When the operator grants broad stewardship with instructions such as "take over", "keep improving", "find what needs fixing", or "make the project stronger", do not wait for a file-level task and do not wander through the repository looking for cosmetic debt. Build a small project attention queue from current evidence, then choose the next safe action yourself.
+`signal/evidence -> consequence -> confidence -> cheapest falsifier -> likely write/validation boundary`
 
-For each candidate problem, capture only the facts needed to choose among actions:
-
-- the observed signal and its evidence source;
-- the affected user/operator contract and live owner/path;
-- the concrete consequence if the problem is real and left unresolved;
-- confidence as **confirmed**, **supported**, or **hypothesis**;
-- urgency as **now**, **soon**, or **later**;
-- the next action class: **probe**, **fix**, **refactor**, **remove**, or **no-change**;
-- the cheapest falsifier or characterization evidence;
-- the smallest expected write set, validation boundary, and material dependencies.
-
-Prefer candidates in this order unless repository evidence proves a different dependency order:
-
-1. active correctness, authorization, data-integrity, money, availability, or user-visible recovery failures;
-2. duplicate/stale authority, unsafe lifecycle/concurrency/retry semantics, or broken validation/release/recovery boundaries with a concrete failure path;
-3. repeated regressions or high-churn hotspots only when they are tied to a live contract and causal pressure;
-4. capability gaps that directly block the requested product or operator outcome;
-5. maintainability cleanup only when it measurably reduces change risk, incident recurrence, validation cost, or operational toil.
-
-An unknown is not a defect. A TODO, large file, old dependency, duplicate-looking helper, low test count, or unfashionable architecture is only a lead until it is tied to a live contract and decision-relevant evidence. If the leading candidate is still a hypothesis, make the next task an evidence-producing probe or characterization instead of a speculative repair.
-
-Do not manufacture a pseudo-precise numeric health score. Use consequence first, then evidence strength, dependency order, reversibility, and available validation to break ties. Keep only a few live candidates; a giant backlog is not project understanding.
-
-For broad stewardship, select the smallest coherent set of candidates whose ordering is stable under the remaining unknowns and convert that set into a dependency-aware mission. Keep weaker candidates as hypotheses, not backlog truth. After each integrated wave or meaningful external change, refresh source/runtime authority and rebuild the attention queue before choosing the next wave. Retire candidates that current evidence disproves or makes irrelevant.
-
-A healthy project may produce no justified mutation. An evidence-backed no-change decision is better than inventing work so the engineer appears busy.
-
-## Choose the first evidence-producing change
-
-The first change in an inherited system should reduce uncertainty as well as move the product forward.
-
-Prefer:
-
-- a characterization/regression test around the failing contract;
-- instrumentation at the true transition boundary;
-- a narrow owner correction;
-- an additive compatibility seam;
-- a small migration cohort;
-- a reversible feature flag only when it reduces real rollout risk.
-
-Avoid starting with broad rewrites, framework upgrades, service splits, database replacements, or stylistic cleanup unless evidence already proves they are necessary.
+Keep a few live candidates, not a cleanup backlog. TODO count, file size, dependency age, coverage, or awkward architecture are leads until tied to a live consequence. A hypothesis should produce a probe, not a speculative rewrite. Evidence-backed no-change is valid.
 
 ## Gate the first consequential mutation
 
-When takeover uncertainty is material, encode the pre-mutation model in a small JSON manifest and run the deterministic readiness check before the first consequential write:
+When takeover uncertainty is material, run `python3 scripts/takeover_readiness_gate.py <takeover.json> --json` with repository identity, live path/authority, material consumers, decision-changing unknowns, bounded write set, falsifier/integration oracle, recovery, and collision handling bound to current evidence.
 
-`python3 scripts/takeover_readiness_gate.py <takeover.json> --json`
+A pass checks structure, not truth; repository/runtime evidence still owns correctness.
 
-Treat this as a fail-closed planning aid, not as proof that the supplied evidence is true. Bind manifest claims to live repository evidence and exact identities.
+## Rescue before redesign
 
-Capture at least:
+When ownership is unclear, incidents recur, or changes break unrelated paths, stabilize first: preserve the few contracts that must survive, freeze unrelated churn, map state/write paths/queues/manual jobs/external effects/deployables, characterize dangerous seams, then remove the highest-amplification failure mechanism.
 
-- the authorized and observed repository identities, default branch/revision, and strong identity evidence;
-- the actor/intent/transition/postconditions/failure-recovery/compatibility contract;
-- entry, authority, and validation maps, plus data/runtime/delivery maps when applicable (otherwise record why they are not applicable);
-- one live active path from entry through authoritative effect to visible result, with liveness evidence;
-- the intended mutation path, its authoritative-source classification, and its source-of-truth relationship;
-- material companion consumers that may need compatible changes;
-- blocking, high-value, and deferrable unknowns;
-- a narrow first-change kind, bounded expected write set, falsifier, and rollback/recovery path;
-- the focused oracle, real integration boundary, exact validation identity, and repository-native required gates;
-- a fresh parallel-work collision check and an explicit strategy for any overlaps.
+Prefer `characterize -> contain -> establish authority -> create seam -> migrate one cohort -> compare -> move ownership -> delete old path -> simplify operations`. Measure success by fewer incidents/change failures/manual steps, faster recovery, and fewer unnecessary state/ownership edges—not rewrite percentage.
 
-The readiness gate should block mutation when repository identity disagrees, the live path is unproven, the target is generated/derived rather than authoritative, a decision-changing unknown remains unresolved, the first step is an unbounded rewrite, a falsifying validation path is missing, or parallel work has not been checked.
+Avoid takeover anti-patterns: broad file reading without a question, README over callers, reorganization before compatibility is known, TODO-as-defect, deleting weird code without history/consumer checks, parallel architecture maps, preferred-framework vocabulary, user-driven navigation, or context collection mistaken for progress.
 
-A passing manifest means the takeover model is structurally ready for the next bounded action. It does not certify architecture truth, test adequacy, or implementation correctness; those remain evidence obligations during execution.
+## Know when the model is good enough
 
-## Avoid takeover anti-patterns
+Start acting when you can answer with risk-appropriate evidence:
 
-Do not:
+- exact contract changing/failing;
+- live path and authoritative mutation owner;
+- material consumers/companion responsibilities;
+- independent failure/deployment boundaries and compatibility window;
+- cheapest falsifier and strongest practical validation boundary;
+- what is reversible versus hard to reverse after state change.
 
-- read thousands of files without a question;
-- trust README architecture over active registration/callers;
-- rename or reorganize before understanding compatibility;
-- treat every TODO as current debt;
-- delete weird code before checking history and deployed consumers;
-- create a second architecture map that immediately drifts from repository truth;
-- force the project into preferred framework vocabulary;
-- ask the user to drive ordinary repository navigation;
-- confuse broad context collection with progress.
-
-## Rescue a troubled system before redesigning it
-
-When ownership is unclear, incidents recur, dependencies sprawl, or changes break unrelated paths, stabilize before redesigning: identify the few contracts that must survive, freeze unrelated churn, map authoritative state/write paths/queues/manual jobs/external effects/deployables, and add characterization evidence around dangerous seams. Remove or isolate the highest-amplification failure mechanism first.
-
-Rebuild boundaries from mutation ownership, not diagram aesthetics. Prefer reducing cross-owner edges before adding abstractions. A useful rescue sequence is `characterize -> contain -> establish authority -> create seam -> migrate one cohort -> compare -> move ownership -> delete old path -> simplify operations`. Measure success by reduced incident recurrence, change failure, manual toil, recovery time, and unnecessary state/edge count—not by rewrite percentage.
-
-## Know when the project model is good enough
-
-Stop mapping and start acting when you can answer, with evidence strong enough for the risk:
-
-- What exact contract is changing or failing?
-- Which live path carries it?
-- Where is authoritative state changed?
-- Which material consumers or companion responsibilities exist?
-- Which boundaries can fail independently?
-- What compatibility window exists?
-- What is the cheapest falsifier for the leading hypothesis/design?
-- What test/runtime evidence can prove the candidate?
-- What is reversible, and what becomes hard to reverse after state changes?
-
-Repository search is complete enough when remaining unknowns cannot change the next safe action. A takeover model is not complete when every subsystem is understood; it is complete enough when unbounded exploration is no longer required for the next decision.
+Search is complete enough when remaining unknowns cannot change the next safe action. Takeover is not complete when every subsystem is understood; it is complete when unbounded exploration is no longer needed.

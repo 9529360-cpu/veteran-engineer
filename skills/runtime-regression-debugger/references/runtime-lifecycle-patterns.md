@@ -9,6 +9,7 @@
 - Hydration overwrites
 - Session partitions, cache, and service workers
 - Dev/package and ASAR divergence
+- Execution identity across interactive, source, and service modes
 - Known-good / known-bad bisection
 - Diagnostic workarounds that mask root causes
 
@@ -108,6 +109,18 @@ For package-only failures, compare:
 
 Do not infer packaged behavior from a dev server alone.
 
+## Execution identity across interactive, source, and service modes
+
+Moving the same code between an interactive desktop app, source-development launcher, login/autostart task, headless process, scheduled task, or OS service can silently change the runtime identity even when the executable is identical. Model the boundary explicitly:
+
+`OS principal/service account + application/install identity + profile/data root + session/runtime home + credential/key-protection scope + OS registration/autostart owner + generation`
+
+Bind that identity **before** single-instance, session/storage, credential, migration, or background-worker initialization. Create required profile/data directories before platform APIs that require them, and fail closed if the intended root or credential scope cannot be established; silently falling back to a default home/profile can split browser/session state from the product's authoritative account/config state.
+
+Source/dev/test modes should not attach to an installed production profile or steal protocol-handler/login-item/autostart ownership unless that is explicit. Likewise, a service or scheduled task running under a different principal must not silently create a second empty state root when user-scoped key protection or credentials (for example Windows DPAPI CurrentUser or OS keychains) are bound to another identity; use the same intended principal or an explicit migration/rekey contract.
+
+For isolated browser/runtime launches, override the complete profile environment the child actually consults rather than one convenient variable while inheriting the caller's real browser home or credentials. Treat profile/principal binding failures as lifecycle failures, not reasons to relax isolation.
+
 ## Known-good / known-bad bisection
 
 When the same environment can reproduce a deterministic regression and there is a known-good and known-bad commit, `git bisect` is often cheaper and more reliable than inspecting a large diff by intuition.
@@ -130,6 +143,8 @@ These are useful experiments but suspicious final fixes unless the product contr
 - delete durable state and let defaults regenerate.
 
 Use the symptom change to refine the hypothesis, then repair the actual owner/lifecycle mechanism.
+
+When a visible UI control's event/lifecycle ownership is unclear, `scripts/trace_control.py <repo> <dom-id>` can surface direct references and nearby event, replacement, IPC, async-generation, storage, and package/session risk markers. Use it as a navigation aid, then prove the active runtime path.
 
 ## Mature references to consult live
 

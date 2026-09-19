@@ -8,6 +8,8 @@
 - Review by risk domain
 - Trace new ownership and dataflow
 - Review tests as evidence
+- Bind review to exact candidate content
+- Reset the review loop when findings do not converge
 - Review deletion and simplification opportunities
 - Review migrations and rollout separately
 - Run a mechanism-specific counterfactual
@@ -41,6 +43,49 @@ Inspect:
 - docs/operational runbooks when required.
 
 Run `scripts/change_impact_map.py <repo>` as a fast path-based risk inventory when useful. It is a hint, not a substitute for reading the diff.
+
+### Keep a review scope budget
+
+Start from the exact candidate range and changed files. Read adjacent code only to evaluate a concrete risk you can name, such as a changed public contract, lock ordering, shared mutable state, generated-source authority, schema consumer, authorization boundary, or another caller whose behavior can actually be affected. Do not turn `review this change` into a whole-repository modernization pass because nearby debt is visible.
+
+After a fix round, re-review the fix delta plus the original open findings first. New candidate-introduced breakage belongs in the loop; unrelated pre-existing observations should be recorded separately and must not extend the fix cycle unless they become required for the requested contract. A reviewer may widen scope when evidence shows a real cross-cutting mechanism, but must state the mechanism that justified widening.
+
+### Scale reviewer independence to risk
+
+A reviewer who shares the implementer's full exploratory history can inherit the same assumptions. When the change is substantial, high-risk, security/authorization-sensitive, migration-heavy, cross-boundary, or the implementer context is heavily saturated, prefer an independent/fresh reviewer when the environment can provide one.
+
+Give that reviewer the smallest evidence-complete packet: exact base/head or candidate diff, explicit acceptance/spec clauses, repository standards that apply, relevant tests/runtime evidence, and any open risks. Do not prime it with the implementer's chain of reasoning or preferred conclusion. Fresh context is useful because it must reconstruct the case from inspectable evidence.
+
+Keep the cost proportional. A tiny deterministic local fix with a strong focused oracle does not need an implementer plus multiple cold reviewers merely to satisfy ceremony. Self-review plus the correct evidence boundary is enough when a separate reviewer is unlikely to change the decision.
+
+Independent review is still evidence, not authority by itself. The controller/integration owner must adjudicate findings against the live repository, active contract, and exact candidate identity; a confident reviewer can be wrong or stale.
+
+### Bind review to exact candidate content
+
+A clean review applies only to the content the reviewer actually inspected. For consequential or independently reviewed work, record an exact candidate identity that covers the complete task-owned change surface, including committed, staged, unstaged, generated, and task-owned untracked deliverables when those can affect the result. A branch name or `HEAD` alone is insufficient when the working tree can still change.
+
+After fixes, formatting, regeneration, rebases, or integration, compare the final task-owned content with the reviewed identity:
+
+- a byte-identical candidate keeps the review evidence;
+- a demonstrably comment/formatting-only delta may retain prior semantic review after a focused self-check;
+- any changed behavior, expectation, public contract, dependency, generated semantic output, migration, authorization, or lifecycle mechanism invalidates the affected review and requires re-review of that delta plus still-open findings;
+- a changed merge base requires inspection of the upstream delta and integration effect even when task-owned source is unchanged.
+
+Do not declare an independently reviewed change complete while final verification is running against content that the review never saw. Review freshness and test freshness are separate claims; both must apply to the delivered candidate.
+
+### Reset the review loop when findings do not converge
+
+A review/fix loop needs a stop condition. If repeated valid findings keep exposing the same underlying ownership, contract, lifecycle, state, or complexity defect, stop adding local conditions or one-off patches and reopen the implementation shape that keeps recreating the problem. Batch the root-cause repair when evidence supports it, then review the resulting coherent candidate again.
+
+Distinguish review non-convergence from infrastructure noise. A reviewer crash, unavailable model, timeout, or identical-content retry does not prove the implementation is hard to converge. Count only completed, evidence-backed review cycles that materially changed or challenged the candidate.
+
+Use the existing gate semantics:
+
+- **Revise** when the root defect is clear and can be repaired inside the accepted contract;
+- **Escalate** when convergence now depends on a new product/scope/architecture decision that current authority cannot resolve;
+- **Block** when the required reviewer/evidence environment is unavailable for a change whose risk requires it.
+
+Do not invent a universal numeric round cap across repositories. Use repository policy when one exists; otherwise treat repeated same-root findings or strategy churn as the signal to stop the local patch loop.
 
 ## Prioritize correctness over style
 

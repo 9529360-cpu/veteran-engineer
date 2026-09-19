@@ -3,6 +3,8 @@
 ## Contents
 
 - Why the host shell is a separate compatibility layer
+- Frameless/titlebar interaction geometry
+- DOM/native surface composition
 - Notification and unread pipeline
 - Activation, focus, deep links, and single-instance routing
 - Popups and external navigation
@@ -24,6 +26,31 @@ Model the full user-visible path as separate owners:
 Examples of host-shell surfaces include tray/menu-bar icons, taskbar/dock badges, native notifications, protocol/deep-link activation, external browser routing, file dialogs, downloads, login items, global shortcuts, media pickers, and OS permission prompts.
 
 Do not infer that these surfaces work because the page itself renders or because an in-app unread counter is correct.
+
+## Frameless/titlebar interaction geometry
+
+Treat custom title bars and frameless-window chrome as a host interaction contract, not ordinary decorative CSS. The OS still owns window movement, system controls, maximized/full-screen transitions, hit testing, accessibility expectations, and platform-specific placement.
+
+When renderer content occupies the titlebar band:
+
+- make the intended drag surface explicit and keep every interactive child out of that drag region; draggable regions can consume pointer events, so a visually present button may be mechanically unclickable;
+- reserve the actual native window-control safe area instead of hardcoding where macOS traffic lights or Windows/Linux controls "usually" sit; account for platform, RTL, user settings, overlay geometry, and window state;
+- validate maximize/restore/full-screen, text selection, context menus, keyboard access, pointer hit targets, and high-DPI/device-scale behavior in the real shell;
+- keep workspace layout authority separate from titlebar hit-test authority. A spacing change in a tab strip must not silently redefine the window's draggable area.
+
+Do not patch a titlebar click bug as a generic z-index or padding problem until the host hit-test/drag geometry has been inspected.
+
+## DOM/native surface composition
+
+A desktop shell may embed surfaces that are not painted in the same DOM stacking context: native views, child WebContents, media/capture surfaces, OS popovers, or other host-owned layers. When that boundary is active, CSS position and `z-index` are not sufficient authorities.
+
+Model the bridge explicitly:
+
+`renderer placeholder/geometry -> host bounds -> native surface visibility/z-order -> focus/input routing -> lifecycle cleanup`
+
+If a DOM menu, modal, or overlay must cover a native surface, verify how the host hides, clips, reorders, snapshots, or otherwise coordinates that native layer. Moving the DOM box without updating host bounds is not a complete layout change. Likewise, focus and keyboard routing across the boundary require explicit ownership rather than assuming browser focus semantics.
+
+Use this mechanism only when evidence shows a mixed DOM/native composition. Ordinary renderer-only UI should stay under the frontend/workspace owner.
 
 ## Notification and unread pipeline
 

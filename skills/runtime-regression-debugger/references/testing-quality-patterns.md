@@ -12,6 +12,7 @@
 - Test frontend behavior like a user
 - Test third-party boundaries deliberately
 - Treat flaky tests as defects
+- Distinguish oracle execution from CI projection
 - Build risk-based quality gates
 - Mature references
 
@@ -100,6 +101,8 @@ Use real infrastructure or a faithful local equivalent when validating:
 
 Do not mock the exact mechanism whose behavior caused the bug.
 
+When the main uncertainty is owned by a real platform/runtime boundary (for example Windows service recovery, Electron lifecycle, browser process behavior, or a real client integration), run the cheapest available **real-boundary discriminator early** once that boundary is known. Do this before broad implementation or a large green suite when a small platform smoke can falsify the design. Early does not mean maximal E2E: prove the risky mechanism first, then expand validation after it survives.
+
 ## Test time, retries, concurrency, and duplicates
 
 Concurrency bugs often pass normal happy-path suites.
@@ -185,6 +188,18 @@ Classify flakiness:
 - nondeterministic data/order.
 
 Use traces/logs/artifacts to identify the mechanism. Quarantine only with an owner, reason, and removal condition when blocking the whole pipeline would be worse.
+
+When CI goes red during a focused frontier, classify the failure before letting it redirect the mission: **candidate-causal**, **pre-existing baseline**, **harness/flaky**, or **infrastructure/tooling**. Candidate-causal failures and failures that block the current completion claim belong to the active frontier; independent baseline debt stays queued unless it exposes materially higher consequence. Do not patch unrelated product code merely to make a broad pipeline green.
+
+## Distinguish oracle execution from CI projection
+
+Treat aggregate checks, required status contexts, and status-publisher jobs as **projections of validation truth**, not the validation oracle itself. Diagnose two layers separately:
+
+`required oracle applicability/execution/conclusion -> CI aggregate/status/ruleset projection`
+
+Before accepting a green or red gate, verify the required oracle actually ran for the current head/base/change surface and inspect its terminal conclusion. A skipped job counts as evidence only when the current contract makes that lane genuinely not applicable; a required oracle silently skipped by a stale branch allowlist, path filter, or job condition is **missing evidence**, not a pass. Cancelled, pending, missing, or never-published required contexts are not success.
+
+The reverse can also occur: authoritative product jobs may pass while a terminal status publisher, aggregate job, or ruleset-context mapping fails. Preserve the product evidence that is still correctly bound, repair the CI/control-plane projection, and reacquire the final merge-gate proof; do not mutate product code merely to turn a broken status projection green. Keep exact required-context names and applicability conditions under repository governance rather than assuming a same-looking workflow job proves the ruleset contract.
 
 ## Build risk-based quality gates
 

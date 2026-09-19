@@ -7,6 +7,9 @@ import json
 import sys
 from pathlib import Path
 
+HOT_REFERENCE_ROUTE_COUNT = 8
+HOT_REFERENCE_MAX_BYTES = 20 * 1024
+
 
 def blocker(items, code, path, message):
     items.append({"code": code, "path": path, "message": message})
@@ -138,9 +141,17 @@ def validate_reference(skill_root, ref, path, blockers):
 def validate(skill_root, router_path):
     core, routes, aliases, blockers = parse_router(router_path)
     redundant_aliases = []
+    route_usage = {}
 
-    if not core:
-        blocker(blockers, "CORE_EMPTY", "core", "CORE must contain at least one reference")
+    # Cross-project process invariants live in SKILL.md. Deep references must be
+    # routed by an explicit mechanism rather than reserved in every route budget.
+    if core:
+        blocker(
+            blockers,
+            "CORE_DEEP_REFERENCE_FORBIDDEN",
+            "core",
+            "CORE must remain empty; route deep control references only for explicit mechanisms",
+        )
     seen_core = set()
     for index, ref in enumerate(core):
         if ref in seen_core:
@@ -158,6 +169,24 @@ def validate(skill_root, router_path):
                 blocker(blockers, "ROUTE_REFERENCE_DUPLICATE", f"routes.{route}[{index}]", f"duplicate route reference: {ref}")
             seen_refs.add(ref)
             validate_reference(skill_root, ref, f"routes.{route}[{index}]", blockers)
+            if isinstance(ref, str):
+                route_usage[ref] = route_usage.get(ref, 0) + 1
+
+    hot_references = []
+    for ref, route_count in sorted(route_usage.items()):
+        target = skill_root / ref
+        if not target.is_file():
+            continue
+        size = target.stat().st_size
+        if route_count >= HOT_REFERENCE_ROUTE_COUNT:
+            hot_references.append({"path": ref, "routes": route_count, "bytes": size})
+            if size > HOT_REFERENCE_MAX_BYTES:
+                blocker(
+                    blockers,
+                    "HOT_REFERENCE_OVERSIZE",
+                    ref,
+                    f"reference is used by {route_count} direct routes and is {size} bytes; split hot references above {HOT_REFERENCE_MAX_BYTES} bytes by decision owner",
+                )
 
     for alias, target in aliases.items():
         if not isinstance(target, str) or not target.strip():
@@ -180,13 +209,16 @@ def validate(skill_root, router_path):
         "route_count": len(routes),
         "alias_count": len(aliases),
         "redundant_aliases": sorted(redundant_aliases),
+        "hot_reference_route_count": HOT_REFERENCE_ROUTE_COUNT,
+        "hot_reference_max_bytes": HOT_REFERENCE_MAX_BYTES,
+        "hot_references": sorted(hot_references, key=lambda item: (-item["routes"], -item["bytes"], item["path"])),
         "gate_passed": not blockers,
         "blockers": blockers,
     }
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Validate engineering context router reference and alias integrity")
+    parser = argparse.ArgumentParser(description="Validate engineering context router integrity and hot-reference context budgets")
     default_skill_root = Path(__file__).resolve().parents[1]
     parser.add_argument("--skill-root", default=str(default_skill_root))
     parser.add_argument("--router")

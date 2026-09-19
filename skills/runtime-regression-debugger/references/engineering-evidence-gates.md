@@ -6,6 +6,8 @@ Use this to decide what evidence is needed before making a completion or release
 
 - Principle and baseline
 - Plan the cheapest sufficient evidence ladder
+- Validate the evidence interface
+- Classify contract-to-implementation gaps before repair
 - Additional gates by risk surface
 - Confidence and release decisions
 
@@ -31,6 +33,31 @@ Start from the material invariant/semantic delta and ask what observation could 
 Typical mapping: pure decision logic -> unit/property; public contract -> schema/consumer compatibility; auth/tenant -> positive plus negative isolation; data migration -> mixed-version/resume/data checks; async/external effect -> duplicate/reorder/timeout-after-success; runtime/release -> exact artifact plus lifecycle/canary evidence. Prefer deterministic scheduling, fake clocks, controlled dependency outcomes, and explicit old/new fixtures over arbitrary sleeps. A surprising result is a reason to revisit ownership/assumptions before broadening the suite blindly. Use `scripts/validation_planner.py` only as a deterministic baseline.
 
 When `validation_planner.py` receives a risk outside its built-in baseline routes, `unmatched_risks` is a **coverage gap**, not a successful fallback. The planner returns `status: needs-repository-specific-proof` and a non-zero exit until that risk is mapped through repository-specific evidence/adversarial cases outside the baseline planner. Do not rename an unfamiliar risk to the nearest built-in label merely to obtain exit 0; prove the actual mechanism instead.
+
+## Validate the evidence interface
+
+Treat the validation harness as part of the system under test. Before trusting a green or red result, ask:
+
+- does the oracle exercise the authoritative path rather than a bypass or mock-only path;
+- can the observed failure distinguish the current hypothesis from plausible alternatives;
+- is the output concise enough to preserve signal while keeping full logs/artifacts traceable;
+- are fixtures isolated from previous trials and is source/build/runtime identity explicit;
+- does the grader test the requested outcome instead of one accidental implementation shape;
+- would a correct alternative implementation still pass.
+
+If the task text omits a hidden assumption that the grader requires, or the test over-constrains an implementation detail not present in the contract, classify the evaluator as defective or ambiguous before teaching product code or Skill policy to satisfy it.
+
+## Classify contract-to-implementation gaps before repair
+
+When checking an implemented feature against the active contract, classify each material mismatch before deciding where to act:
+
+- **missing** - required behavior is absent;
+- **partial** - present but incomplete relative to the acceptance row;
+- **contradicts** - implementation conflicts with accepted intent or a governing invariant;
+- **unrequested** - material behavior/scope exists without contract authority;
+- **contract-stale** - fresh evidence shows the accepted requirement/decision must itself be reopened.
+
+Repair the smallest owning layer. Missing/partial usually return to implementation; contradicts may return to the responsible decision or implementation owner; unrequested requires scope review; contract-stale returns to product/architecture authority before more implementation. Do not silently rewrite the contract to make existing code look converged.
 
 ## Additional gates by risk surface
 
