@@ -6,10 +6,26 @@ import { nowIso, randomId, sha256, stableStringify } from './util.mjs';
 const MAX_ATTACHMENTS = 128;
 const MAX_ATTACHMENT_BYTES = 16 * 1024 * 1024;
 const MAX_ATTACHMENT_TOTAL_BYTES = 64 * 1024 * 1024;
+const MAX_QUERY_IMAGES = 4;
+const MAX_QUERY_IMAGE_BYTES = 4 * 1024 * 1024;
+const MAX_QUERY_IMAGE_TOTAL_BYTES = 8 * 1024 * 1024;
+const IMAGE_MIME_TYPES = new Map([
+  ['.png', 'image/png'],
+  ['.jpg', 'image/jpeg'],
+  ['.jpeg', 'image/jpeg'],
+  ['.webp', 'image/webp']
+]);
 
 function attachmentExtension(name) {
   const ext = path.extname(String(name || '')).toLowerCase();
   return /^\.[a-z0-9]{1,12}$/.test(ext) ? ext : '.bin';
+}
+
+function evidenceImageError(code, message, details = null) {
+  const error = new Error(message);
+  error.code = code;
+  if (details) error.details = details;
+  return error;
 }
 
 function buildEvidenceRecord({
@@ -155,6 +171,75 @@ export class EvidenceService {
       if (!isStateCommitAuditOutcomeUnknown(error)) await cleanupUncommittedFiles(createdFiles);
       throw error;
     }
+  }
+
+  async queryImageContent(records, { maxImages = 1 } = {}) {
+    if (!Array.isArray(records)) throw new TypeError('evidence image content requires queried evidence records');
+    const requested = Number(maxImages ?? 1);
+    const imageLimit = Number.isInteger(requested) ? Math.max(1, Math.min(requested, MAX_QUERY_IMAGES)) : 1;
+    const artifactsRoot = path.resolve(this.store.artifactsDir);
+    const content = [];
+    let imageCount = 0;
+    let totalBytes = 0;
+
+    for (const record of records) {
+      for (const attachment of Array.isArray(record?.attachments) ? record.attachments : []) {
+        if (imageCount >= imageLimit) return content;
+        if (attachment?.kind !== 'browser-screenshot') continue;
+        const extension = path.extname(String(attachment.name || attachment.artifactPointer || '')).toLowerCase();
+        const mimeType = IMAGE_MIME_TYPES.get(extension);
+        if (!mimeType) continue;
+        const bytes = Number(attachment.bytes);
+        if (!Number.isInteger(bytes) || bytes <= 0 || bytes > MAX_QUERY_IMAGE_BYTES) {
+          throw evidenceImageError('EVIDENCE_IMAGE_SIZE_INVALID', 'Evidence screenshot is outside the remote image size bound', {
+            evidenceId: record.id,
+            name: attachment.name,
+            bytes: attachment.bytes,
+            maxBytes: MAX_QUERY_IMAGE_BYTES
+          });
+        }
+        if (totalBytes + bytes > MAX_QUERY_IMAGE_TOTAL_BYTES) {
+          throw evidenceImageError('EVIDENCE_IMAGE_TOTAL_LIMIT', 'Evidence screenshots exceed the remote image total-byte bound', {
+            maxBytes: MAX_QUERY_IMAGE_TOTAL_BYTES
+          });
+        }
+        const pointer = String(attachment.artifactPointer || '');
+        if (!pointer.startsWith('artifacts/')) {
+          throw evidenceImageError('EVIDENCE_IMAGE_POINTER_INVALID', 'Evidence screenshot pointer is not runtime-owned', {
+            evidenceId: record.id,
+            name: attachment.name
+          });
+        }
+        const full = path.resolve(artifactsRoot, pointer.slice('artifacts/'.length));
+        const relative = path.relative(artifactsRoot, full);
+        if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+          throw evidenceImageError('EVIDENCE_IMAGE_POINTER_INVALID', 'Evidence screenshot pointer escapes the runtime artifact root', {
+            evidenceId: record.id,
+            name: attachment.name
+          });
+        }
+        const data = await fs.readFile(full);
+        const actualHash = sha256(data);
+        if (data.length !== bytes || actualHash !== attachment.artifactHash) {
+          throw evidenceImageError('EVIDENCE_IMAGE_INTEGRITY_MISMATCH', 'Evidence screenshot bytes no longer match durable evidence metadata', {
+            evidenceId: record.id,
+            name: attachment.name,
+            expectedBytes: bytes,
+            actualBytes: data.length,
+            expectedHash: attachment.artifactHash,
+            actualHash
+          });
+        }
+        totalBytes += data.length;
+        imageCount += 1;
+        content.push({
+          type: 'text',
+          text: `Evidence image id=${record.id} attachment=${String(attachment.name)} sha256=${actualHash} bytes=${data.length}`
+        });
+        content.push({ type: 'image', data: data.toString('base64'), mimeType });
+      }
+    }
+    return content;
   }
 
   async query({ projectId, missionId, taskId, type, ids, limit = 50 }) {

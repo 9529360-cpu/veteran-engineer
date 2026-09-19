@@ -167,7 +167,9 @@ const TOOL_INPUT_CONTRACTS = Object.freeze({
       taskId: stringField('Optional task filter.'),
       type: stringField('Optional evidence type filter.'),
       ids: stringArray('Optional exact evidence ids.'),
-      limit: integerField('Maximum records to return; runtime clamps to 1..200.', 1, 200)
+      limit: integerField('Maximum records to return; runtime clamps to 1..200.', 1, 200),
+      includeImages: booleanField('Also return bounded browser-screenshot attachments as MCP image content; structured evidence metadata is unchanged.'),
+      maxImages: integerField('Maximum screenshot images to return when includeImages=true; runtime clamps to 1..4.', 1, 4)
     },
     required: []
   },

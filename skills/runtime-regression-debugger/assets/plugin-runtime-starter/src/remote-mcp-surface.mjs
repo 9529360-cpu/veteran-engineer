@@ -94,8 +94,9 @@ export async function createRemoteMcpServerFactory({ config, app }) {
         try {
           const authorizedArgs = await authorizeRemoteToolInput(tool.name, args || {}, config);
           const result = await app.callTool(tool.name, authorizedArgs);
+          const extraContent = await app.toolContent(tool.name, authorizedArgs, result);
           return {
-            content: [{ type: 'text', text: jsonSafe(result) }],
+            content: [{ type: 'text', text: jsonSafe(result) }, ...extraContent],
             structuredContent: toolOutputStructuredContent(tool.name, result),
             _meta: toolWorkflowSuggestionsMeta(tool.name, authorizedArgs, result)
           };

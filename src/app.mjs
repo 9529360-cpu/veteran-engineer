@@ -307,11 +307,17 @@ export async function createVeteranApp({
     }
   }
 
+  async function toolContent(name, args = {}, result = null) {
+    if (name !== 'evidence_query' || args?.includeImages !== true) return [];
+    return evidenceService.queryImageContent(result, { maxImages: args.maxImages });
+  }
+
   return {
     store,
     services: { projectService, missionService, missionExecutionLeaseManager, evidenceService, experienceService, worktreeManager, workerAdapter, liveSessionManager, coreWorkerOrchestrator, feedbackWorkerOrchestrator, workerOrchestrator, validationService, runtimeFeedbackService, reviewService, candidateService, runtimeService, handoffService, missionAdvanceService },
     handlers,
     callTool,
+    toolContent,
     operatorConfigPath,
     setProtocolMode: (mode) => runtimeService.setProtocolMode(mode)
   };

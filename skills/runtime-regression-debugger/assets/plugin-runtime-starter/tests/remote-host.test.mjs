@@ -196,6 +196,46 @@ test('official MCP client can use the same Veteran tools remotely and local path
     assert.equal(opened.isError, undefined);
     assert.ok(opened.structuredContent);
 
+    const screenshotBytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZK1sAAAAASUVORK5CYII=', 'base64');
+    const evidence = await running.app.services.evidenceService.record({
+      projectId: opened.structuredContent.id,
+      type: 'remote-image-proof',
+      summary: 'Synthetic one-pixel screenshot for MCP image-content transport proof.',
+      attachments: [{
+        name: 'synthetic.png',
+        kind: 'browser-screenshot',
+        content: screenshotBytes
+      }]
+    });
+
+    const metadataOnly = await client.callTool({
+      name: 'evidence_query',
+      arguments: { projectId: opened.structuredContent.id, ids: [evidence.id] }
+    });
+    assert.equal(metadataOnly.isError, undefined);
+    assert.equal(metadataOnly.content.some((item) => item.type === 'image'), false);
+
+    const withImage = await client.callTool({
+      name: 'evidence_query',
+      arguments: { projectId: opened.structuredContent.id, ids: [evidence.id], includeImages: true, maxImages: 1 }
+    });
+    assert.equal(withImage.isError, undefined, JSON.stringify(withImage));
+    const imageBlocks = withImage.content.filter((item) => item.type === 'image');
+    assert.equal(imageBlocks.length, 1);
+    assert.equal(imageBlocks[0].mimeType, 'image/png');
+    assert.deepEqual(Buffer.from(imageBlocks[0].data, 'base64'), screenshotBytes);
+    assert.equal(withImage.structuredContent[0].id, evidence.id);
+    assert.equal(withImage.structuredContent[0].attachments[0].artifactHash, evidence.attachments[0].artifactHash);
+    assert.equal(Object.hasOwn(withImage.structuredContent[0].attachments[0], 'data'), false);
+
+    await fs.writeFile(path.join(allowed.stateRoot, evidence.attachments[0].artifactPointer), Buffer.from('tampered'));
+    const tampered = await client.callTool({
+      name: 'evidence_query',
+      arguments: { projectId: opened.structuredContent.id, ids: [evidence.id], includeImages: true }
+    });
+    assert.equal(tampered.isError, true);
+    assert.match(tampered.content?.[0]?.text || '', /EVIDENCE_IMAGE_INTEGRITY_MISMATCH/);
+
     const rejected = await client.callTool({
       name: 'project_open',
       arguments: { requestId: crypto.randomUUID(), repoPath: outside.repo }
