@@ -35,44 +35,57 @@ Pinned MCP SDK graph remains:
 
 ## Current executable evidence
 
-Current authoritative source identity is:
+The product/runtime stack through #465 is now merged into `main`.
 
-`main = ccd2f296d45604a50828c296d7b8fea5063cd9fe`
+Current merged product/runtime base:
 
-That commit is merge #453 (`fix(workflow): gate execution progress on readiness`). At this exact source identity:
+`main = 9f1859e792fd81ba185ac84befe3acbaeb5e02b7`
 
-- GitHub Actions CI run `35120654994` completed successfully.
-- `Node 20 / npm run check` passed **651 / 651** Node tests with **0 fail / 0 skipped**.
-- the same CI run passed Electron desktop smoke, PostgreSQL state-backend smoke, Docker worker smoke, and Chromium full-stack smoke.
-- Package Plugin Artifacts run `35120655016` completed successfully.
-- the latest public GitHub Release is `v0.4.0`; the repository development package is `0.5.0`.
+That main commit is the merge of #465. The merge sequence was:
 
-The active non-Draft product/runtime line is now #456 -> #461 -> #464 -> #465. #456 was retargeted directly to current `main`, and fresh post-retarget CI, Cross-platform host smoke, Package Plugin Artifacts, Release dry-run, and Skill Engineering Tools runs all succeeded for head `6599e452122fb38017c95ca75eb80c16e649f120`. #457 -> #461 remain stacked above #456. Current #461 head `4bf8406958b8100f6d7a3c2a9cebfa0d52ca4d68` has all four workflows green and includes live token-rotation freshness plus a real hosted-Windows Task Scheduler start/readiness/forced-child-failure/restart/stop proof. #464 is stacked directly on that exact #461 head; current #464 head `02cd4c5ea4cfc60b8cdf8786bc2ccc7b4f9712d9` is fully green and proves bounded opt-in `evidence_query` PNG image delivery through authenticated MCP, requires unique exact evidence ids for image bytes, publishes durable attachment metadata in the output contract, and keeps the public surface at 34 tools. #465 is stacked directly on that exact #464 head; current #465 head `fa9385070274ccaa592e81f499c930d9c7ff1863` is fully green (CI `35456185156`, Cross-platform host smoke `35456185179`, Package Plugin Artifacts `35456185169`, Release dry-run `35456185160`) and closes the shared-state workspace authorization gap by resolving stable project/Mission/candidate/evidence/experience identities before Remote Host calls enter the shared app; runtime-wide operations are blocked under workspace constraints and future unclassified unscoped tools fail closed by default. All proofs remain bound to their exact source/base identities and must be refreshed if ancestry changes.
+- #456 -> `4295cfcea94ce2ae41847b0523f73f52e1728c8c`
+- #457 -> `ab7db508a693a3830f51cf84288f5517fea4b30d`
+- #458 -> `0f8f759bdb035fcb15a6bc277670d8cbc7ad1d50`
+- #459 -> `2c07d0c0806c94450b141e8d0aa21620718e3eeb`
+- #460 -> `0615f020d99df8a557087efae942158514184a82`
+- #461 -> `24ec3436c3fe4fcdd8491bfdddec1910f496941a`
+- #464 -> `14f989d31bd71e8debe7377b4fcbd4670722713a`
+- #465 -> `9f1859e792fd81ba185ac84befe3acbaeb5e02b7`
+
+#456 and #457 were freshly revalidated after retargeting to the evolving `main`; #458 also completed fresh post-retarget validation. For #459 onward, merge proof was selectively reused only after proving that each newly merged `main` tree was byte-identical to the parent PR head tree, the child remained mergeable with the intended current-main diff, and the child's exact head already had green CI, Cross-platform host smoke, Package Plugin Artifacts, and Release dry-run evidence. No release was published.
+
+The resulting mainline includes:
+
+- outcome-clause preservation, evidence-bearing semantic review, and bounded remediation re-entry;
+- Veteran Remote Host control plane, Windows supervised service, clean-machine bootstrap, and Secure MCP Tunnel stdio transport;
+- live pairing-token invalidation, real Windows service restart lifecycle proof, and native Windows Chromium screenshot validation;
+- bounded verified screenshot image delivery through the existing `evidence_query` tool without increasing the 34-tool public surface;
+- Remote Host workspace authorization for pre-existing shared-state project/Mission/candidate/evidence/experience identities, plus fail-closed handling of future unclassified unscoped tools.
+
+The latest public GitHub Release remains `v0.4.0`; the repository development package remains `0.5.0`. No release/publish action has been authorized or performed.
+
+This documentation cap (#466) is based on the exact merged #465 product/runtime base above. Its eventual merge commit cannot be self-referenced from inside this file; on resume, refresh the literal `main` HEAD from GitHub before any consequential action.
 
 ## Recent convergence line
 
-Current `main` has advanced materially beyond the historical #333 checkpoint. Do not use the old #333 test counts or SHA as a current completion boundary.
+The historical #333/#453 checkpoints are no longer the current completion boundary. The product/runtime convergence that was previously represented by the stacked PR line has now landed in `main`.
 
-The latest settled mainline authority includes the proof/readiness convergence that culminated in:
+Merged convergence:
 
-- **#451** — restore the proof freshness barrier.
-- **#453** — gate Mission execution progress on current readiness.
-- current `main` HEAD: `ccd2f296d45604a50828c296d7b8fea5063cd9fe`.
+- **#456** — consolidated outcome closure and bounded remediation re-entry.
+- **#457** — Veteran Remote Host control plane.
+- **#458** — supervised Windows Remote Host service.
+- **#459** — clean-machine Remote Host bootstrap.
+- **#460** — Secure MCP Tunnel stdio transport.
+- **#461** — native Windows Chromium screenshot validation, live token invalidation, and the real Windows supervisor restart repair.
+- **#464** — bounded verified MCP image delivery through existing `evidence_query`, exact-id scoped and metadata-contract aware.
+- **#465** — shared-state Remote Host workspace authorization, including fail-closed future unclassified tool scope.
 
-The current non-Draft development line is:
+#454 and #455 remain closed staging predecessors superseded by #456. #463 remains closed as the duplicate image-delivery exploration whose stronger exact-id/output-schema ideas were reused in #464. #462 remains closed because its parallel documentation branch was superseded by this final stack-cap documentation line.
 
-- **#456** — consolidated outcome closure: preserve multi-clause intent, require evidence-bearing semantic review for every Mission obligation, and safely re-enter the same Mission for bounded remediation. It now bases directly on current `main`.
-- **#457** — add the Veteran Remote Host control plane.
-- **#458** — supervise Veteran Remote Host on Windows.
-- **#459** — bootstrap Veteran Remote Host on a clean Windows machine.
-- **#460** — add Secure MCP Tunnel stdio transport.
-- **#461** — validate native Chromium screenshots on Windows; current head also closes live pairing-token invalidation and the real Windows supervisor restart lifecycle defect without adding another state/process authority.
-- **#464** — deliver bounded, verified browser screenshot PNGs through the existing `evidence_query` MCP result as opt-in image content; require unique exact evidence ids for byte delivery, publish durable attachment metadata in the canonical output contract, keep the public surface at 34 tools, and preserve EvidenceService as the one artifact-byte authority.
-- **#465** — enforce Remote Host workspace scope for stable ids already present in the shared durable state; resolve project ownership before shared-app calls, reject runtime-wide operations under configured workspace roots, explicitly allow only classified unscoped-safe tools, fail closed on future unclassified tool scope, and reuse the existing realpath-aware workspace policy instead of adding a parallel ACL subsystem.
+After this documentation cap lands, there is no remaining non-Draft product/runtime PR from the former stack. The older `native-*` family (#381, #385, #388, #390, #391, #393, #395, #397-#400, #402-#404, #406) remains parked as Draft. Treat their historical CI as non-current and recompute current-main drift before any replay.
 
-#454 and #455 were staging predecessors for the same outcome-closure chain. They are closed as superseded by #456; their implementation remains reachable in #456's history. #457 -> #461 keep their original parent/head chain above #456 because they represent separate product/runtime boundaries. #464 bases directly on the fully validated #461 head and is a separate evidence transport/presentation slice. #463 was a duplicate image-delivery exploration; its stronger exact-id/output-schema ideas were reused in #464, then #463 was closed as superseded. #465 bases directly on the fully validated #464 head and is a distinct security-boundary repair in the existing Remote Host authorizer.
-
-The older `native-*` PR family (#381, #385, #388, #390, #391, #393, #395, #397-#400, #402-#404, #406) remains materially stale against current main at roughly 112-179 commits behind. All 15 are now parked as Draft with explicit replay conditions. Their code/history is retained, but old CI is historical evidence only; reuse requires a current-owner/capability-overlap review and replay onto current main rather than blind merge.
+Issue **#338** remains the repository-governance frontier: repository rulesets are still empty and the current GitHub App receives `403 Resource not accessible by integration` for `main` branch-protection inspection. Do not confuse green engineering evidence with enforced merge governance.
 
 ## Adaptive Mission authority
 
