@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Cross-host Veteran Engineer plugin runtime",
   "bin": {
-    "veteran-engineer": "./bin/veteran-engineer.mjs"
+    "veteran-engineer": "./bin/veteran-engineer.mjs",
+    "veteran-remote-host": "./bin/veteran-remote-host.mjs"
   },
   "scripts": {
     "test": "node --test tests/*.test.mjs",
@@ -13,6 +14,7 @@
     "test:mcp": "node --test tests/mcp-handshake.test.mjs",
     "test:installer": "node --test tests/installer.test.mjs",
     "test:cli": "node --test tests/cli.test.mjs",
+    "test:remote-host": "node --test tests/remote-host.test.mjs",
     "test:container-smoke": "node scripts/container-smoke.mjs",
     "test:postgres": "node --test tests/postgres-state-backend.integration.mjs tests/postgres-mission-crash-recovery.integration.mjs",
     "test:electron": "node --test --test-concurrency=1 tests/electron-validation.integration.mjs tests/electron-window-state.integration.mjs tests/electron-menu-assertion.integration.mjs tests/electron-file-dialog.integration.mjs tests/electron-visual-regression.integration.mjs",

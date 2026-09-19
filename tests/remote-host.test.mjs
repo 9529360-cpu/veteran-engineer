@@ -1,0 +1,155 @@
+import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
+import fs from 'node:fs/promises';
+import http from 'node:http';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+import test from 'node:test';
+import { initRemoteHostConfig } from '../src/remote-host-config.mjs';
+import { startRemoteHost } from '../src/remote-host-server.mjs';
+import { TOOL_NAMES } from '../src/tool-catalog.mjs';
+import { createGitRepo, cleanup } from './helpers.mjs';
+
+const officialSdkAvailable = (() => {
+  const require = createRequire(import.meta.url);
+  try {
+    require.resolve('@modelcontextprotocol/client');
+    require.resolve('@modelcontextprotocol/server');
+    require.resolve('@modelcontextprotocol/core');
+    require.resolve('zod');
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
+function requestWithHost(url, headers = {}) {
+  const target = new URL(url);
+  return new Promise((resolve, reject) => {
+    const req = http.request({
+      host: target.hostname,
+      port: target.port,
+      path: target.pathname,
+      method: 'GET',
+      headers
+    }, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => { body += chunk; });
+      res.on('end', () => resolve({ status: res.statusCode, body }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+test('remote host config stores only a digest of the pairing token', async () => {
+  const fixture = await createGitRepo();
+  try {
+    const configPath = path.join(fixture.root, 'remote-host.json');
+    const initialized = await initRemoteHostConfig({
+      configPath,
+      stateRoot: fixture.stateRoot,
+      workspaces: [fixture.root],
+      port: 0
+    });
+    const raw = await fs.readFile(configPath, 'utf8');
+    assert.equal(raw.includes(initialized.pairingToken), false);
+    const parsed = JSON.parse(raw);
+    assert.match(parsed.tokenSha256, /^[0-9a-f]{64}$/);
+    assert.equal(parsed.allowedLocalRoots.length, 1);
+  } finally {
+    await cleanup(fixture.root);
+  }
+});
+
+test('remote host exposes authenticated MCP while rejecting untrusted origins and hosts', { skip: !officialSdkAvailable }, async () => {
+  const fixture = await createGitRepo({ files: { 'README.md': 'allowed\n' } });
+  let running = null;
+  try {
+    const configPath = path.join(fixture.root, 'remote-host.json');
+    const initialized = await initRemoteHostConfig({
+      configPath,
+      stateRoot: fixture.stateRoot,
+      workspaces: [fixture.root],
+      port: 0
+    });
+    running = await startRemoteHost({ configPath, port: 0 });
+    const base = new URL(running.endpoint);
+    const health = await fetch(running.healthEndpoint);
+    assert.equal(health.status, 200);
+    assert.equal((await health.json()).ok, true);
+
+    const noAuth = await fetch(running.endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+    assert.equal(noAuth.status, 401);
+
+    const originRejected = await fetch(new URL('/status', base), {
+      headers: { Authorization: `Bearer ${initialized.pairingToken}`, Origin: 'https://evil.example' }
+    });
+    assert.equal(originRejected.status, 403);
+
+    const hostRejected = await requestWithHost(new URL('/status', base), {
+      Authorization: `Bearer ${initialized.pairingToken}`,
+      Host: 'evil.example'
+    });
+    assert.equal(hostRejected.status, 421);
+
+    const status = await fetch(new URL('/status', base), {
+      headers: { Authorization: `Bearer ${initialized.pairingToken}` }
+    });
+    assert.equal(status.status, 200);
+    const statusBody = await status.json();
+    assert.equal(statusBody.deviceId, initialized.config.deviceId);
+    assert.equal(statusBody.surfaceProfile, 'secure-tunnel');
+  } finally {
+    await running?.close().catch(() => {});
+    await cleanup(fixture.root);
+  }
+});
+
+test('official MCP client can use the same Veteran tools remotely and local paths are workspace-scoped', { skip: !officialSdkAvailable }, async () => {
+  const allowed = await createGitRepo({ files: { 'README.md': 'allowed\n' } });
+  const outside = await createGitRepo({ files: { 'README.md': 'outside\n' } });
+  let running = null;
+  let client = null;
+  try {
+    const configPath = path.join(allowed.root, 'remote-host.json');
+    const initialized = await initRemoteHostConfig({
+      configPath,
+      stateRoot: allowed.stateRoot,
+      workspaces: [allowed.root],
+      port: 0
+    });
+    running = await startRemoteHost({ configPath, port: 0 });
+    const [{ Client, StreamableHTTPClientTransport }] = await Promise.all([
+      import('@modelcontextprotocol/client')
+    ]);
+    client = new Client({ name: 'veteran-remote-host-test', version: '1.0.0' });
+    const transport = new StreamableHTTPClientTransport(new URL(running.endpoint), {
+      requestInit: { headers: { Authorization: `Bearer ${initialized.pairingToken}` } }
+    });
+    await client.connect(transport);
+
+    const listed = await client.listTools();
+    assert.deepEqual(listed.tools.map((tool) => tool.name).sort(), [...TOOL_NAMES].sort());
+
+    const opened = await client.callTool({
+      name: 'project_open',
+      arguments: { requestId: crypto.randomUUID(), repoPath: allowed.repo }
+    });
+    assert.equal(opened.isError, undefined);
+    assert.ok(opened.structuredContent);
+
+    const rejected = await client.callTool({
+      name: 'project_open',
+      arguments: { requestId: crypto.randomUUID(), repoPath: outside.repo }
+    });
+    assert.equal(rejected.isError, true);
+    assert.match(rejected.content?.[0]?.text || '', /REMOTE_WORKSPACE_NOT_ALLOWED/);
+  } finally {
+    await client?.close().catch(() => {});
+    await running?.close().catch(() => {});
+    await cleanup(allowed.root);
+    await cleanup(outside.root);
+  }
+});
