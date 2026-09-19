@@ -9,15 +9,12 @@ import { toolWorkflowMeta } from './tool-workflow-relations.mjs';
 import { toolWorkflowBindingsMeta } from './tool-workflow-bindings.mjs';
 import { assertCurrentWorkflowBindingTypeSafety } from './tool-workflow-binding-type-safety.mjs';
 import { toolWorkflowSuggestionsMeta, toolWorkflowErrorSuggestionsMeta } from './tool-workflow-suggestions.mjs';
+import { jsonSafe, toolResultContent } from './tool-result-content.mjs';
 import { assertMcpSdkIntegrity, inspectMcpSdkIntegrity } from './mcp-sdk-integrity.mjs';
 import { assertLocalPathAllowed } from './workspace-policy.mjs';
 
 const runtimeRoot = fileURLToPath(new URL('..', import.meta.url));
 assertCurrentWorkflowBindingTypeSafety();
-
-function jsonSafe(value) {
-  return JSON.stringify(value, (_key, item) => typeof item === 'bigint' ? String(item) : item);
-}
 
 export function remoteMcpErrorPayload(error) {
   return {
@@ -95,7 +92,7 @@ export async function createRemoteMcpServerFactory({ config, app }) {
           const authorizedArgs = await authorizeRemoteToolInput(tool.name, args || {}, config);
           const result = await app.callTool(tool.name, authorizedArgs);
           return {
-            content: [{ type: 'text', text: jsonSafe(result) }],
+            content: await toolResultContent({ name: tool.name, args: authorizedArgs, result, app }),
             structuredContent: toolOutputStructuredContent(tool.name, result),
             _meta: toolWorkflowSuggestionsMeta(tool.name, authorizedArgs, result)
           };

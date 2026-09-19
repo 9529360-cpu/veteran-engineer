@@ -160,14 +160,15 @@ const TOOL_INPUT_CONTRACTS = Object.freeze({
   worker_resume: { properties: { missionId: stringField('Mission id.'), taskId: stringField('Interrupted task id.') }, required: ['missionId', 'taskId'] },
   worker_retry: { properties: { missionId: stringField('Mission id.'), taskId: stringField('Failed or cancelled task id.') }, required: ['missionId', 'taskId'] },
   evidence_query: {
-    description: 'Query bounded evidence metadata by scope or stable ids.',
+    description: 'Query bounded evidence metadata by scope or stable ids. Image bytes are opt-in and are projected as MCP image content without changing durable evidence authority.',
     properties: {
       projectId: stringField('Optional project filter.'),
       missionId: stringField('Optional Mission filter.'),
       taskId: stringField('Optional task filter.'),
       type: stringField('Optional evidence type filter.'),
-      ids: stringArray('Optional exact evidence ids.'),
-      limit: integerField('Maximum records to return; runtime clamps to 1..200.', 1, 200)
+      ids: stringArray('Optional exact evidence ids. Required when includeImageAttachments=true.'),
+      limit: integerField('Maximum records to return; runtime clamps to 1..200.', 1, 200),
+      includeImageAttachments: booleanField('When true, return bounded raster image attachments as MCP image content blocks. Requires exact ids and never accepts arbitrary artifact paths.')
     },
     required: []
   },

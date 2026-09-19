@@ -157,6 +157,120 @@ export class EvidenceService {
     }
   }
 
+  async readImageAttachments(records, {
+    maxImages,
+    maxImageBytes,
+    maxTotalBytes
+  } = {}) {
+    if (!Array.isArray(records)) throw new TypeError('evidence image records must be an array');
+    if (!Number.isInteger(maxImages) || maxImages < 1) throw new TypeError('maxImages must be a positive integer');
+    if (!Number.isInteger(maxImageBytes) || maxImageBytes < 1) throw new TypeError('maxImageBytes must be a positive integer');
+    if (!Number.isInteger(maxTotalBytes) || maxTotalBytes < 1) throw new TypeError('maxTotalBytes must be a positive integer');
+
+    const mimeByExtension = new Map([
+      ['.png', 'image/png'],
+      ['.jpg', 'image/jpeg'],
+      ['.jpeg', 'image/jpeg'],
+      ['.webp', 'image/webp']
+    ]);
+    const candidates = [];
+    for (const record of records) {
+      for (const attachment of Array.isArray(record?.attachments) ? record.attachments : []) {
+        const pointer = typeof attachment?.artifactPointer === 'string' ? attachment.artifactPointer : '';
+        const mimeType = mimeByExtension.get(path.extname(pointer).toLowerCase());
+        if (!mimeType) continue;
+        candidates.push({ record, attachment, pointer, mimeType });
+      }
+    }
+    if (candidates.length > maxImages) {
+      const error = new Error(`Evidence query selected ${candidates.length} image attachments; maximum inline image count is ${maxImages}`);
+      error.code = 'EVIDENCE_IMAGE_DELIVERY_LIMIT';
+      throw error;
+    }
+
+    let totalBytes = 0;
+    for (const candidate of candidates) {
+      const bytes = candidate.attachment?.bytes;
+      if (!Number.isInteger(bytes) || bytes < 0 || typeof candidate.attachment?.artifactHash !== 'string' || !/^[0-9a-f]{64}$/i.test(candidate.attachment.artifactHash)) {
+        const error = new Error(`Evidence image metadata is invalid for ${candidate.record?.id || 'unknown evidence'}`);
+        error.code = 'EVIDENCE_IMAGE_INTEGRITY_INVALID';
+        throw error;
+      }
+      if (bytes > maxImageBytes || totalBytes + bytes > maxTotalBytes) {
+        const error = new Error('Evidence image selection exceeds the bounded inline delivery budget');
+        error.code = 'EVIDENCE_IMAGE_DELIVERY_LIMIT';
+        error.details = { maxImages, maxImageBytes, maxTotalBytes };
+        throw error;
+      }
+      totalBytes += bytes;
+    }
+
+    let artifactsRoot;
+    try {
+      artifactsRoot = await fs.realpath(this.store.artifactsDir);
+    } catch (cause) {
+      const error = new Error('Evidence artifact store is unavailable');
+      error.code = 'EVIDENCE_IMAGE_ATTACHMENT_UNAVAILABLE';
+      error.details = { reason: cause?.code || 'ARTIFACT_STORE_UNAVAILABLE' };
+      throw error;
+    }
+
+    const blocks = [];
+    for (const candidate of candidates) {
+      const prefix = 'artifacts/';
+      const relative = candidate.pointer.startsWith(prefix) ? candidate.pointer.slice(prefix.length) : '';
+      if (!relative || path.basename(relative) !== relative || relative.includes('\\') || relative.includes('/')) {
+        const error = new Error(`Evidence image pointer is invalid for ${candidate.record?.id || 'unknown evidence'}`);
+        error.code = 'EVIDENCE_IMAGE_POINTER_INVALID';
+        throw error;
+      }
+      const declaredPath = path.resolve(artifactsRoot, relative);
+      let realPath;
+      let stat;
+      try {
+        realPath = await fs.realpath(declaredPath);
+        const escape = path.relative(artifactsRoot, realPath);
+        if (!escape || escape.startsWith('..') || path.isAbsolute(escape) || path.dirname(realPath) !== artifactsRoot) {
+          const error = new Error('Evidence image escaped the artifact store');
+          error.code = 'EVIDENCE_IMAGE_POINTER_INVALID';
+          throw error;
+        }
+        stat = await fs.stat(realPath);
+      } catch (cause) {
+        if (cause?.code === 'EVIDENCE_IMAGE_POINTER_INVALID') throw cause;
+        const error = new Error(`Evidence image attachment is unavailable for ${candidate.record?.id || 'unknown evidence'}`);
+        error.code = 'EVIDENCE_IMAGE_ATTACHMENT_UNAVAILABLE';
+        error.details = { reason: cause?.code || 'ATTACHMENT_UNAVAILABLE' };
+        throw error;
+      }
+      if (!stat.isFile() || stat.size !== candidate.attachment.bytes || stat.size > maxImageBytes) {
+        const error = new Error(`Evidence image metadata no longer matches stored bytes for ${candidate.record?.id || 'unknown evidence'}`);
+        error.code = 'EVIDENCE_IMAGE_INTEGRITY_MISMATCH';
+        throw error;
+      }
+      let content;
+      try {
+        content = await fs.readFile(realPath);
+      } catch (cause) {
+        const error = new Error(`Evidence image attachment is unreadable for ${candidate.record?.id || 'unknown evidence'}`);
+        error.code = 'EVIDENCE_IMAGE_ATTACHMENT_UNAVAILABLE';
+        error.details = { reason: cause?.code || 'ATTACHMENT_UNREADABLE' };
+        throw error;
+      }
+      if (sha256(content) !== candidate.attachment.artifactHash) {
+        const error = new Error(`Evidence image hash mismatch for ${candidate.record?.id || 'unknown evidence'}`);
+        error.code = 'EVIDENCE_IMAGE_INTEGRITY_MISMATCH';
+        throw error;
+      }
+      blocks.push({
+        type: 'image',
+        data: content.toString('base64'),
+        mimeType: candidate.mimeType
+      });
+    }
+    return blocks;
+  }
+
   async query({ projectId, missionId, taskId, type, ids, limit = 50 }) {
     const state = await this.store.read();
     let items = Object.values(state.evidence);

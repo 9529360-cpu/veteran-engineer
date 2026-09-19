@@ -11,6 +11,7 @@ import { toolWorkflowMeta } from './tool-workflow-relations.mjs';
 import { toolWorkflowBindingsMeta } from './tool-workflow-bindings.mjs';
 import { assertCurrentWorkflowBindingTypeSafety } from './tool-workflow-binding-type-safety.mjs';
 import { toolWorkflowSuggestionsMeta, toolWorkflowErrorSuggestionsMeta } from './tool-workflow-suggestions.mjs';
+import { jsonSafe, toolResultContent } from './tool-result-content.mjs';
 import { inspectMcpSdkIntegrity, assertMcpSdkIntegrity } from './mcp-sdk-integrity.mjs';
 
 const runtimeRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -18,10 +19,6 @@ assertCurrentWorkflowBindingTypeSafety();
 
 function stateRootFromEnv() {
   return path.resolve(process.env.VETERAN_ENGINEER_STATE_DIR || path.join(os.homedir(), '.veteran-engineer', 'state'));
-}
-
-function jsonSafe(value) {
-  return JSON.stringify(value, (_key, item) => typeof item === 'bigint' ? String(item) : item);
 }
 
 function errorPayload(error) {
@@ -67,7 +64,7 @@ async function createOfficialSdkServerFactory({ stateRoot, configPath }) {
         try {
           const result = await app.callTool(tool.name, args || {});
           return {
-            content: [{ type: 'text', text: jsonSafe(result) }],
+            content: await toolResultContent({ name: tool.name, args: args || {}, result, app }),
             structuredContent: toolOutputStructuredContent(tool.name, result),
             _meta: toolWorkflowSuggestionsMeta(tool.name, args || {}, result)
           };
@@ -122,7 +119,7 @@ async function startFallback({ stateRoot, configPath }) {
           try {
             const result = await app.callTool(name, args);
             success(message.id, {
-              content: [{ type: 'text', text: jsonSafe(result) }],
+              content: await toolResultContent({ name, args, result, app }),
               structuredContent: toolOutputStructuredContent(name, result, { legacyEnvelope: true }),
               _meta: toolWorkflowSuggestionsMeta(name, args, result)
             });
