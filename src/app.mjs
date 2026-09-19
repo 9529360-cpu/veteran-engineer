@@ -307,11 +307,45 @@ export async function createVeteranApp({
     }
   }
 
+  async function toolContent(name, args = {}, result = null) {
+    if (name !== 'evidence_query' || args?.includeImages !== true) return [];
+    if (!Array.isArray(args.ids) || args.ids.length === 0) {
+      throw Object.assign(new Error('includeImages requires one or more exact evidence ids'), { code: 'EVIDENCE_IMAGE_IDS_REQUIRED' });
+    }
+    if (args.ids.length > 4) {
+      throw Object.assign(new Error('includeImages accepts at most 4 exact evidence ids'), { code: 'EVIDENCE_IMAGE_DELIVERY_LIMIT' });
+    }
+    const ids = args.ids.map(String);
+    if (new Set(ids).size !== ids.length) {
+      throw Object.assign(new Error('includeImages requires unique evidence ids'), { code: 'EVIDENCE_IMAGE_IDS_DUPLICATE' });
+    }
+    if (!Array.isArray(result)) {
+      throw Object.assign(new Error('evidence_query must return an array before image projection'), { code: 'EVIDENCE_IMAGE_RESULT_INVALID' });
+    }
+    const byId = new Map(result.map((record) => [record?.id, record]));
+    const records = ids.map((id) => {
+      const record = byId.get(id);
+      if (!record) {
+        throw Object.assign(new Error(`Evidence id was not returned by the query: ${id}`), { code: 'EVIDENCE_IMAGE_EVIDENCE_NOT_FOUND' });
+      }
+      return record;
+    });
+    const images = await evidenceService.readQueryImages(records, { maxImages: args.maxImages });
+    return images.flatMap((image) => [
+      {
+        type: 'text',
+        text: `Evidence image metadata: ${JSON.stringify({ evidenceId: image.evidenceId, attachment: image.attachment, sha256: image.sha256, bytes: image.bytes })}`
+      },
+      { type: 'image', data: image.data.toString('base64'), mimeType: image.mimeType }
+    ]);
+  }
+
   return {
     store,
     services: { projectService, missionService, missionExecutionLeaseManager, evidenceService, experienceService, worktreeManager, workerAdapter, liveSessionManager, coreWorkerOrchestrator, feedbackWorkerOrchestrator, workerOrchestrator, validationService, runtimeFeedbackService, reviewService, candidateService, runtimeService, handoffService, missionAdvanceService },
     handlers,
     callTool,
+    toolContent,
     operatorConfigPath,
     setProtocolMode: (mode) => runtimeService.setProtocolMode(mode)
   };

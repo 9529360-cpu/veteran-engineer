@@ -66,8 +66,9 @@ async function createOfficialSdkServerFactory({ stateRoot, configPath }) {
       }, async (args) => {
         try {
           const result = await app.callTool(tool.name, args || {});
+          const extraContent = await app.toolContent(tool.name, args || {}, result);
           return {
-            content: [{ type: 'text', text: jsonSafe(result) }],
+            content: [{ type: 'text', text: jsonSafe(result) }, ...extraContent],
             structuredContent: toolOutputStructuredContent(tool.name, result),
             _meta: toolWorkflowSuggestionsMeta(tool.name, args || {}, result)
           };
@@ -121,8 +122,9 @@ async function startFallback({ stateRoot, configPath }) {
           const args = message.params?.arguments || {};
           try {
             const result = await app.callTool(name, args);
+            const extraContent = await app.toolContent(name, args, result);
             success(message.id, {
-              content: [{ type: 'text', text: jsonSafe(result) }],
+              content: [{ type: 'text', text: jsonSafe(result) }, ...extraContent],
               structuredContent: toolOutputStructuredContent(name, result, { legacyEnvelope: true }),
               _meta: toolWorkflowSuggestionsMeta(name, args, result)
             });

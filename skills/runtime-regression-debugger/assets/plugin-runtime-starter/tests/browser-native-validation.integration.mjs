@@ -144,6 +144,18 @@ test('Remote Host MCP drives real Chromium UI-to-API validation with verified sc
     assert.equal(createHash('sha256').update(png).digest('hex'), screenshot.artifactHash);
     assert.ok(evidence.attachments.every((item) => item.bytes > 0 && item.artifactHash));
 
+    const imageResponse = await client.callTool({
+      name: 'evidence_query',
+      arguments: { projectId: project.id, ids: [result.evidenceId], includeImages: true, maxImages: 1 }
+    });
+    assert.notEqual(imageResponse.isError, true, JSON.stringify(imageResponse));
+    const imageBlocks = imageResponse.content.filter((item) => item.type === 'image');
+    assert.equal(imageBlocks.length, 1);
+    assert.equal(imageBlocks[0].mimeType, 'image/png');
+    const deliveredPng = Buffer.from(imageBlocks[0].data, 'base64');
+    assert.deepEqual(deliveredPng, png);
+    assert.equal(createHash('sha256').update(deliveredPng).digest('hex'), screenshot.artifactHash);
+
     // Export only this synthetic fixture's verified PNG, never a user's state
     // directory or arbitrary provider output. Retain it for visual inspection.
     if (process.env.VETERAN_TEST_EVIDENCE_DIR) {

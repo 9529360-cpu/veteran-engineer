@@ -89,6 +89,14 @@ const OUTPUT_CANDIDATE = openObject('Immutable candidate record.', {
   proofFresh: booleanField('Whether required proof still matches current authority.')
 });
 
+const OUTPUT_EVIDENCE_ATTACHMENT = openObject('Durable evidence attachment metadata. Attachment bytes stay out of structuredContent and may be projected separately as MCP content.', {
+  name: stringField('Original bounded attachment name.', { minLength: null }),
+  kind: stringField('Attachment kind.', { minLength: null }),
+  artifactPointer: stringField('Runtime-owned artifact pointer.', { minLength: null }),
+  artifactHash: stringField('SHA-256 of the stored attachment.', { minLength: null }),
+  bytes: integerField('Stored attachment byte length.', 0, Number.MAX_SAFE_INTEGER)
+}, ['artifactPointer', 'artifactHash', 'bytes']);
+
 const OUTPUT_EVIDENCE = openObject('Evidence metadata record.', {
   id: stringField('Stable evidence id.'),
   projectId: stringField('Owning project id.', { minLength: null }),
@@ -97,6 +105,8 @@ const OUTPUT_EVIDENCE = openObject('Evidence metadata record.', {
   type: stringField('Evidence type.', { minLength: null }),
   summary: stringField('Bounded evidence summary.', { minLength: null }),
   artifactPointer: nullable(stringField('Runtime artifact pointer when one exists.', { minLength: null })),
+  artifactHash: nullable(stringField('SHA-256 for the primary evidence artifact when one exists.', { minLength: null })),
+  attachments: { type: 'array', items: OUTPUT_EVIDENCE_ATTACHMENT, description: 'Durable attachment metadata; binary data is never embedded here.' },
   createdAt: stringField('Evidence creation time.', { minLength: null })
 });
 
