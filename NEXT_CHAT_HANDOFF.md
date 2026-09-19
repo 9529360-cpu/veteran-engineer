@@ -35,13 +35,13 @@ Pinned MCP SDK graph remains:
 
 ## Current executable evidence
 
-The product/runtime stack through #465 is now merged into `main`.
+The product/runtime stack through #466 is now merged into `main`.
 
 Current merged product/runtime base:
 
-`main = 9f1859e792fd81ba185ac84befe3acbaeb5e02b7`
+`main = 628399e41d663fae5931ad7ba7677725a9d5d605`
 
-That main commit is the merge of #465. The merge sequence was:
+That main commit is the merge of the final authority-docs cap #466. The merge sequence was:
 
 - #456 -> `4295cfcea94ce2ae41847b0523f73f52e1728c8c`
 - #457 -> `ab7db508a693a3830f51cf84288f5517fea4b30d`
@@ -51,6 +51,7 @@ That main commit is the merge of #465. The merge sequence was:
 - #461 -> `24ec3436c3fe4fcdd8491bfdddec1910f496941a`
 - #464 -> `14f989d31bd71e8debe7377b4fcbd4670722713a`
 - #465 -> `9f1859e792fd81ba185ac84befe3acbaeb5e02b7`
+- #466 -> `628399e41d663fae5931ad7ba7677725a9d5d605`
 
 #456 and #457 were freshly revalidated after retargeting to the evolving `main`; #458 also completed fresh post-retarget validation. For #459 onward, merge proof was selectively reused only after proving that each newly merged `main` tree was byte-identical to the parent PR head tree, the child remained mergeable with the intended current-main diff, and the child's exact head already had green CI, Cross-platform host smoke, Package Plugin Artifacts, and Release dry-run evidence. No release was published.
 
@@ -64,7 +65,7 @@ The resulting mainline includes:
 
 The latest public GitHub Release remains `v0.4.0`; the repository development package remains `0.5.0`. No release/publish action has been authorized or performed.
 
-This documentation cap (#466) is based on the exact merged #465 product/runtime base above. Its eventual merge commit cannot be self-referenced from inside this file; on resume, refresh the literal `main` HEAD from GitHub before any consequential action.
+The documentation cap #466 is now merged. `628399e41d663fae5931ad7ba7677725a9d5d605` is the authoritative main checkpoint for this handoff; refresh live `main` from GitHub before any later consequential action.
 
 ## Recent convergence line
 
@@ -83,7 +84,7 @@ Merged convergence:
 
 #454 and #455 remain closed staging predecessors superseded by #456. #463 remains closed as the duplicate image-delivery exploration whose stronger exact-id/output-schema ideas were reused in #464. #462 remains closed because its parallel documentation branch was superseded by this final stack-cap documentation line.
 
-After this documentation cap lands, there is no remaining non-Draft product/runtime PR from the former stack. The older `native-*` family (#381, #385, #388, #390, #391, #393, #395, #397-#400, #402-#404, #406) remains parked as Draft. Treat their historical CI as non-current and recompute current-main drift before any replay.
+With #466 merged, there is no remaining non-Draft product/runtime PR from the former stack. The older `native-*` family (#381, #385, #388, #390, #391, #393, #395, #397-#400, #402-#404, #406) remains parked as Draft. Treat their historical CI as non-current and recompute current-main drift before any replay.
 
 Issue **#338** remains the repository-governance frontier: repository rulesets are still empty and the current GitHub App receives `403 Resource not accessible by integration` for `main` branch-protection inspection. Do not confuse green engineering evidence with enforced merge governance.
 

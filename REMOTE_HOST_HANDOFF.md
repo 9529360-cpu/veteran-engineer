@@ -1,4 +1,4 @@
-# Veteran Remote Host - Continuation Checkpoint
+# Veteran Remote Host - Merged Baseline / Continuation Checkpoint
 
 ## Product target
 
@@ -14,17 +14,19 @@ That entire sequence has **not** been proven on the user's spare machine.
 
 Repository: `9529360-cpu/veteran-engineer`.
 
-Active branch: `feat/remote-host-windows-visual-validation`, PR **#461**.
+Current merged baseline: `main = 628399e41d663fae5931ad7ba7677725a9d5d605`. The former Remote Host stack is merged; there is no active non-Draft Remote Host PR from that line.
 
-The stacked implementation line is:
+The merged implementation line was:
 
 - #457: `feat/remote-host-control-plane-v1-final` - device/config/digest token, authenticated loopback HTTP MCP, workspace-gated project opening.
 - #458: `feat/remote-host-supervised-service-v1` - Windows current-user Task Scheduler/supervisor lifecycle.
 - #459: `feat/remote-host-clean-machine-bootstrap` - verified release bootstrap orchestration using the existing canonical installer.
 - #460: `feat/remote-host-secure-tunnel-stdio` - local stdio entrypoint and shared remote MCP surface factory. This is not an installed/provisioned OpenAI tunnel.
-- #461: Windows native Chromium execution and screenshot evidence, plus the startup fixes below.
+- #461: Windows native Chromium execution and screenshot evidence, live token invalidation, and real supervisor restart repair.
+- #464: bounded verified screenshot image delivery through existing `evidence_query`, exact-id scoped.
+- #465: shared-state workspace authorization with fail-closed handling for future unclassified tools.
 
-Refresh current PR heads, bases, workflow outcomes, and release state. Do not merge the stack or create a public release merely because tests pass.
+The implementation stack is merged. Refresh live `main`, open PR/issue state, workflow outcomes, and release state before new mutation. Do not create a public release merely because the merged line is green.
 
 ## Windows startup failure and actual owner fix
 
@@ -67,25 +69,25 @@ Local execution in the chat container established 23 passing related native/prov
 
 ## Important remaining gaps
 
-### Web connection and image delivery
+### Web connection and image delivery status
 
 Authenticated local HTTP and local `tunnel-stdio` are machine-side boundaries. No real Web app/tunnel association or user-machine connection has been established here. Do not fabricate app IDs, tunnel commands, OAuth configuration, or public endpoints.
 
-`evidence_query` currently returns records and artifact pointers. The runtime can persist screenshots, but remote model-visible image retrieval still needs a bounded, explicitly selected, scoped contract. Prefer extending the existing evidence/MCP path rather than adding an arbitrary file-read endpoint. Verify recorded ownership, containment, regular-file status, size/MIME constraints, and SHA-256 before returning bytes. Broad metadata queries must not automatically emit every screenshot.
+Image delivery is closed in the merged #464 line: `evidence_query(includeImages=true)` can return bounded standard MCP image content only for 1..4 unique exact evidence IDs. Runtime-owned realpath containment, regular-file/size checks, PNG/JPEG/WebP constraints, SHA-256 verification, per-image/total-byte caps, and metadata-only default queries are enforced. Do not replace this with an arbitrary file-read endpoint.
 
-### Revocation and running host state
+### Revocation and running host state — closed
 
-The current HTTP host reads its config at startup. A later disk token rotation is not proof that an already-running host rejects the old token. Add real running-host negative tests and fix live authorization freshness before relying on immediate-revocation wording. No actual user token should be rotated during development.
+The merged #461 line refreshes credential authority on each authenticated request. A live regression proves that after token rotation an already-running host rejects the old token on both `/status` and `/mcp` and accepts the replacement token. Do not rotate a real user token merely for development proof.
 
-### Supervisor/bootstrap and physical machine proof
+### Supervisor/bootstrap and physical machine proof status
 
-Task Scheduler registration/removal smoke is not a complete daemon lifecycle proof. Exercise real readiness, stop/pause, restart/recovery, repair and orphan cleanup. The clean-machine bootstrap code is not a released/downloadable version until a separately authorized release exists, and it has not installed the user's machine.
+The hosted Windows proof now exercises real Task Scheduler start, Remote Host readiness/health, forced child termination, same-supervisor child restart, and stop/drain. The clean-machine bootstrap implementation is merged, but it is not a new public release until separately authorized, and it has not installed or accepted the user's spare machine.
 
 A hosted headless Chromium scenario is not arbitrary desktop control, Windows Electron proof, an autonomous visual repair demonstration, or a spare-machine acceptance run.
 
 ## Continuation rules
 
-1. Refresh #461, current head, and CI; fix any failing runtime/integration owner first.
+1. Refresh current `main`, open PR/issue state, and CI truth; fix any failing runtime/integration owner first.
 2. Read the current implementation before creating another subsystem or duplicating the installer, browser provider, evidence service, or Mission runtime.
 3. Keep all 34 MCP tools and existing input/output authority unless a real product requirement justifies an additive change.
 4. Mirror every changed runtime/test path and NEXT_CHAT_HANDOFF.md byte-for-byte in the recovery starter.
