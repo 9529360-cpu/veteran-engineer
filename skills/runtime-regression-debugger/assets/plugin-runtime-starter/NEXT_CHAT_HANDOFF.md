@@ -35,13 +35,13 @@ Pinned MCP SDK graph remains:
 
 ## Current executable evidence
 
-The product/runtime stack through #466, the post-merge authority refresh #468, and the clean V16 Skill-brain replay #469 are now merged into `main`.
+The product/runtime stack through #466, the post-merge authority refresh #468, the clean V16 Skill-brain replay #469, and the Windows Unicode-safe Remote Host service launcher fix #472 are now merged into `main`.
 
 Last behavior-bearing repository checkpoint captured by this handoff:
 
-`behavior checkpoint = ed3b9a90759f17e348c19a06be15ad85b7d5a4ef` (`#469`)
+`behavior checkpoint = 82f2cfd980914362e1a699db8965a4fc801e3744` (`#472`)
 
-The live `main` branch is remote authority and must be refreshed before consequential work. #470 later merged documentation-only as `ab992cf9fe9776b7d792a1f7f7a6936659999201`; documentation-only descendants do not change runtime/Skill behavior and must not be used as a reason to rewrite this checkpoint. The recent behavior-bearing convergence sequence was:
+The live `main` branch is remote authority and must be refreshed before consequential work. #470 and #471 were documentation-only descendants; #472 is the next behavior-bearing change because it alters Windows Remote Host service launch behavior. The recent behavior-bearing convergence sequence was:
 
 - #456 -> `4295cfcea94ce2ae41847b0523f73f52e1728c8c`
 - #457 -> `ab7db508a693a3830f51cf84288f5517fea4b30d`
@@ -54,6 +54,7 @@ The live `main` branch is remote authority and must be refreshed before conseque
 - #466 -> `628399e41d663fae5931ad7ba7677725a9d5d605`
 - #468 -> `eda67060d78f7bf6ef58f5d9e5a036b675350cfe`
 - #469 -> `ed3b9a90759f17e348c19a06be15ad85b7d5a4ef`
+- #472 -> `82f2cfd980914362e1a699db8965a4fc801e3744`
 
 #456 and #457 were freshly revalidated after retargeting to the evolving `main`; #458 also completed fresh post-retarget validation. For #459 onward, merge proof was selectively reused only after proving that each newly merged `main` tree was byte-identical to the parent PR head tree, the child remained mergeable with the intended current-main diff, and the child's exact head already had green CI, Cross-platform host smoke, Package Plugin Artifacts, and Release dry-run evidence. No release was published.
 
@@ -61,14 +62,14 @@ The resulting mainline includes:
 
 - outcome-clause preservation, evidence-bearing semantic review, and bounded remediation re-entry;
 - Veteran Remote Host control plane, Windows supervised service, clean-machine bootstrap, and Secure MCP Tunnel stdio transport;
-- live pairing-token invalidation, real Windows service restart lifecycle proof, and native Windows Chromium screenshot validation;
+- live pairing-token invalidation, real Windows service restart lifecycle proof, native Windows Chromium screenshot validation, and a Unicode-safe PowerShell launcher for non-ASCII Windows service paths;
 - bounded verified screenshot image delivery through the existing `evidence_query` tool without increasing the 34-tool public surface;
 - Remote Host workspace authorization for pre-existing shared-state project/Mission/candidate/evidence/experience identities, plus fail-closed handling of future unclassified unscoped tools;
 - the V16 Optimized Skill brain replayed cleanly on the merged desktop runtime authority, including current routing/evidence/frontier/journal/decision machinery, eval fixtures, and specialist references without replacing runtime ownership.
 
 The latest public GitHub Release remains `v0.4.0`; the repository development package remains `0.5.0`. No release/publish action has been authorized or performed.
 
-Post-merge authority refresh #468 and the V16 Skill-brain replay #469 are merged, followed by documentation-only #470 at `ab992cf9fe9776b7d792a1f7f7a6936659999201`. `ed3b9a90759f17e348c19a06be15ad85b7d5a4ef` remains the last behavior-bearing checkpoint captured here; exact live `main` is always refreshed from GitHub before consequential action.
+Post-merge authority refresh #468 and the V16 Skill-brain replay #469 are merged, followed by documentation-only #470 and #471, then behavior-bearing #472 at `82f2cfd980914362e1a699db8965a4fc801e3744`. That #472 merge is the last behavior-bearing checkpoint captured here; exact live `main` is always refreshed from GitHub before consequential action.
 
 ## Recent convergence line
 
@@ -87,10 +88,12 @@ Merged convergence:
 - **#468** — post-merge repository/Remote Host authority refresh after the runtime stack landed.
 - **#469** — clean V16 Optimized Skill-brain replay on current desktop-runtime main; 133-file Skill/test/workflow write set only.
 - **#470** — documentation-only V16 authority cap; merged as `ab992cf9fe9776b7d792a1f7f7a6936659999201` with no runtime, Skill, package, or release-intent mutation.
+- **#471** — documentation-only authority-semantics stabilization so handoffs distinguish stable behavior checkpoints from live remote `main`.
+- **#472** — Windows Remote Host service launcher changed from `.cmd` to a Veteran-owned UTF-8 PowerShell launcher, with non-ASCII path coverage and real Windows lifecycle proof.
 
 #454 and #455 remain closed staging predecessors superseded by #456. #463 remains closed as the duplicate image-delivery exploration whose stronger exact-id/output-schema ideas were reused in #464. #462 remains closed because its parallel documentation branch was superseded by this final stack-cap documentation line.
 
-With #470 merged and #467 closed as superseded, there is no remaining non-Draft product/runtime/Skill PR from this convergence line. The older `native-*` family (#381, #385, #388, #390, #391, #393, #395, #397-#400, #402-#404, #406) remains parked as Draft. Treat their historical CI as non-current and recompute current-main drift before any replay.
+With #472 merged and #467 closed as superseded, there is no remaining non-Draft product/runtime/Skill PR from this convergence line. The older `native-*` family (#381, #385, #388, #390, #391, #393, #395, #397-#400, #402-#404, #406) remains parked as Draft. Treat their historical CI as non-current and recompute current-main drift before any replay.
 
 Issue **#338** remains the repository-governance frontier: repository rulesets are still empty and the current GitHub App receives `403 Resource not accessible by integration` for `main` branch-protection inspection. Do not confuse green engineering evidence with enforced merge governance.
 
