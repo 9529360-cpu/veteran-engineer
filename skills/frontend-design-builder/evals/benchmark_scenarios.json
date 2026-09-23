@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "purpose": "Regression scenarios for the full product-design cycle, cross-tool design-system synchronization, Figma/Code Connect, Storybook/component labs, external pattern research, fidelity, graceful degradation, and evidence-backed implementation.",
+  "purpose": "Regression scenarios for evidence-first product design, progressive context routing, Figma design/code/library/motion/SwiftUI/FigJam workflows, Code Connect, cross-tool design-system synchronization, component labs, reference research, fidelity, and graceful degradation.",
   "scenarios": [
     {
       "id": "existing-system-small-change",
@@ -422,6 +422,101 @@
       "must_not": [
         "remove the production state just to match Figma",
         "hide the drift in documentation"
+      ]
+    },
+    {
+      "id": "figma-motion-to-code",
+      "request": "Implement the motion defined on this Figma component in the existing production UI without rebuilding the screen.",
+      "expected_mode": "production",
+      "must_load": [
+        "references/figma-integration.md",
+        "references/modes-and-architecture.md",
+        "references/qa-checklist.md"
+      ],
+      "must_do": [
+        "route to the dedicated Figma motion implementation workflow when available",
+        "preserve the existing component structure and merge motion into it",
+        "verify interaction motion performance and reduced-motion behavior"
+      ],
+      "must_not": [
+        "rebuild unrelated UI just to add animation",
+        "translate Figma or CSS easing into an unsupported framework API by guesswork"
+      ]
+    },
+    {
+      "id": "swiftui-figma-roundtrip",
+      "request": "Keep an iOS SwiftUI screen and its Figma design aligned in both directions.",
+      "expected_mode": "existing-system",
+      "must_load": [
+        "references/figma-integration.md",
+        "references/modes-and-architecture.md",
+        "references/design-source-authority.md"
+      ],
+      "must_do": [
+        "route to the dedicated SwiftUI Figma workflow when available",
+        "preserve semantic iOS colors symbols and system patterns",
+        "treat the screenshot as visual truth while mapping to native SwiftUI structure"
+      ],
+      "must_not": [
+        "transliterate web layout primitives directly into SwiftUI",
+        "replace SF Symbol semantics with guessed glyph codepoints"
+      ]
+    },
+    {
+      "id": "figjam-product-flow",
+      "request": "Map the real onboarding journey as an editable FigJam flow before redesigning it.",
+      "expected_mode": "concept-first",
+      "must_load": [
+        "references/figma-integration.md",
+        "references/product-design-cycle.md",
+        "references/design-source-authority.md"
+      ],
+      "must_do": [
+        "ground the diagram in the inspected product flow",
+        "use the dedicated FigJam diagram workflow when supported",
+        "keep product evidence separate from visual annotations"
+      ],
+      "must_not": [
+        "invent missing steps to make the diagram look complete",
+        "use a diagram as a substitute for inspecting the actual flow"
+      ]
+    },
+    {
+      "id": "code-to-figma-screen",
+      "request": "Push an existing production screen into Figma while preserving our component and token system.",
+      "expected_mode": "existing-system",
+      "must_load": [
+        "references/figma-integration.md",
+        "references/design-system.md",
+        "references/tool-orchestration.md"
+      ],
+      "must_do": [
+        "inspect production components tokens and Code Connect before writing",
+        "route to the dedicated Figma page-generation workflow when available",
+        "reuse existing Figma variables and library components instead of recreating them"
+      ],
+      "must_not": [
+        "create a parallel Figma design system",
+        "hardcode repeated values that already exist as variables"
+      ]
+    },
+    {
+      "id": "code-connect-authoring",
+      "request": "Create or update Figma Code Connect mappings for our published design-system components.",
+      "expected_mode": "existing-system",
+      "must_load": [
+        "references/figma-integration.md",
+        "references/design-system-sync.md",
+        "references/design-system.md"
+      ],
+      "must_do": [
+        "route to the dedicated Code Connect authoring workflow when available",
+        "map real Figma properties to real production component props",
+        "validate nested and variant mappings against the production API"
+      ],
+      "must_not": [
+        "invent code props to match Figma properties",
+        "replace an existing parser-based mapping blindly when a parallel supported mapping format is required"
       ]
     }
   ]

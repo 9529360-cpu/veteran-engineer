@@ -15,6 +15,38 @@ When the host exposes dedicated Figma skills/tools, use their prerequisite workf
 
 If those capabilities are unavailable, fall back to exported screenshots/specs and state exactly what structured Figma data could not be inspected.
 
+## Host capability routing
+
+When the host exposes the following dedicated Figma skills, route to them instead of reproducing their detailed tool contracts here. Load only the capability needed for the current phase.
+
+| Need | Preferred host workflow |
+| --- | --- |
+| Inspect/write Figma through the Plugin API | `figma-use` before the write/unique-read call |
+| Create a new Design, FigJam, or Slides file | `figma-create-new-file` before file creation |
+| Figma design → production code | `figma-design-to-code` before design-context retrieval |
+| Build/update a full screen or composed view in Figma | `figma-use` + `figma-generate-design` |
+| Create variables, tokens, components, variants, or a library | `figma-use` + `figma-generate-library` |
+| Create/maintain component-to-code mappings | `figma-code-connect` |
+| Implement Figma motion in production code | `figma-implement-motion` |
+| Author or inspect motion inside Figma | `figma-use` + `figma-use-motion` |
+| SwiftUI ↔ Figma | `figma-swiftui`; add `figma-use` for code → design |
+| Editable flow/architecture/state/sequence diagrams in FigJam | `figma-generate-diagram`; use `figma-use-figjam` for hybrid edits |
+| Procedural shader/effect authoring | `figma-shaders` only when explicitly requested |
+| Reusable generative Figma-plugin authoring | `figma-generative-plugins` only when explicitly requested |
+| Figma Slides editing | `figma-use` + `figma-use-slides` only for slide work |
+
+These are host capabilities, not hard dependencies. If a named workflow is unavailable, continue with the strongest available structured Figma/read/export path and record the limitation.
+
+### Routing discipline
+
+- Do not load all Figma capabilities because a Figma URL exists.
+- Design-to-code, code-to-design, library evolution, motion, SwiftUI translation, diagrams, and plugin/effect authoring are different modes with different evidence.
+- Keep the active Figma node/frame/component identity stable through a phase.
+- For design-to-code, preserve both structured context and a visual render; neither replaces the other.
+- For code-to-design, inspect production components/tokens before creating parallel Figma primitives.
+- For motion, preserve the existing DOM/view/component structure when possible; motion should augment the implementation rather than trigger an unrelated rebuild.
+- For diagrams, ground nodes/edges in real product or repository evidence instead of inventing a visually complete but false flow.
+
 ## Read before write
 
 For an existing file:

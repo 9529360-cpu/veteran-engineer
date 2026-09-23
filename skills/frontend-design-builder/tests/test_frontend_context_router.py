@@ -134,3 +134,58 @@ def test_design_system_sync_owns_cross_tool_drift(tmp_path):
         "references/design-system.md",
         "references/design-source-authority.md",
     ]
+
+
+def test_figma_motion_routes_to_motion_and_qa(tmp_path):
+    root = _seed_refs(tmp_path)
+    result = route_signals("figma-motion,production", skill_root=root)
+    assert result["primary_mode"] == "figma-motion"
+    assert paths(result) == [
+        "references/figma-integration.md",
+        "references/modes-and-architecture.md",
+        "references/qa-checklist.md",
+    ]
+
+
+def test_figma_swiftui_routes_to_platform_translation(tmp_path):
+    root = _seed_refs(tmp_path)
+    result = route_signals("figma-swiftui", skill_root=root)
+    assert result["primary_mode"] == "figma-swiftui"
+    assert paths(result) == [
+        "references/figma-integration.md",
+        "references/modes-and-architecture.md",
+        "references/design-source-authority.md",
+    ]
+
+
+def test_figjam_routes_to_evidence_first_product_flow(tmp_path):
+    root = _seed_refs(tmp_path)
+    result = route_signals("figma-board", skill_root=root)
+    assert result["primary_mode"] == "figjam"
+    assert paths(result) == [
+        "references/figma-integration.md",
+        "references/product-design-cycle.md",
+        "references/design-source-authority.md",
+    ]
+
+
+def test_figma_library_route_prefers_sync_contract(tmp_path):
+    root = _seed_refs(tmp_path)
+    result = route_signals("figma-library", skill_root=root)
+    assert result["primary_mode"] == "figma-library"
+    assert paths(result) == [
+        "references/figma-integration.md",
+        "references/design-system-sync.md",
+        "references/design-system.md",
+    ]
+
+
+def test_code_to_figma_route_uses_existing_system_before_write(tmp_path):
+    root = _seed_refs(tmp_path)
+    result = route_signals("code-to-figma", skill_root=root)
+    assert result["primary_mode"] == "figma-write"
+    assert paths(result) == [
+        "references/figma-integration.md",
+        "references/design-system.md",
+        "references/tool-orchestration.md",
+    ]
