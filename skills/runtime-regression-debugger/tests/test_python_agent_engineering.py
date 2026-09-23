@@ -61,6 +61,7 @@ def test_python_agent_eval_fixture_covers_core_failure_classes():
 def test_python_agent_reference_preserves_source_workflow_without_forcing_chat_only_rules():
     text = (ROOT / "references" / "python-agent-system-engineering.md").read_text()
     assert "## Agent Context Capsule" in text
+    assert "## Contents" in text
     for phrase in ("project type", "Python/framework stack", "current stage", "known symptoms/risks"):
         assert phrase in text
     assert "3-6 sentence design summary" in text

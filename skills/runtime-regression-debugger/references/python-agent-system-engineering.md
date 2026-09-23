@@ -4,6 +4,20 @@ Use this reference for Python-based Agent systems: tool-using task agents, LangC
 
 This is an implementation discipline, not a framework preference. Preserve the repository's existing stack when it is viable.
 
+## Contents
+
+- [Agent Context Capsule](#agent-context-capsule)
+- [1. Design before code](#1-design-before-code)
+- [2. Split by real ownership](#2-split-by-real-ownership)
+- [3. Make state explicit](#3-make-state-explicit)
+- [4. Treat tool contracts as code contracts](#4-treat-tool-contracts-as-code-contracts)
+- [5. Bound every agent loop](#5-bound-every-agent-loop)
+- [6. Engineer external calls for failure](#6-engineer-external-calls-for-failure)
+- [7. Keep Python contracts readable](#7-keep-python-contracts-readable)
+- [8. Validate the failure edges](#8-validate-the-failure-edges)
+- [9. Report evidence, not confidence](#9-report-evidence-not-confidence)
+- [10. Deliver code without duplicating repository work](#10-deliver-code-without-duplicating-repository-work)
+
 ## Agent Context Capsule
 
 Before substantial work, recover a compact context capsule from repository/runtime evidence instead of asking the user to restate facts the project already proves:
