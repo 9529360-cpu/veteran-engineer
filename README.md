@@ -47,7 +47,7 @@ The design-source authority model prevents accidental mixing of "what exists", "
 
 ## Current checkpoint
 
-Current development version is `0.5.0`; the latest public release is `v0.4.0`. State schema remains `3`. The public MCP surface remains exactly **34 tools**.
+Current development version is `0.5.0`; the latest public release is `v0.4.0`. State schema remains `3`. The public MCP surface remains exactly **36 tools**.
 
 Protocol support is intentionally split:
 

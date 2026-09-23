@@ -28,10 +28,10 @@ async function tempState() {
   return fs.mkdtemp(path.join(os.tmpdir(), 'veteran-mcp-test-'));
 }
 
-test('standalone fallback performs real legacy handshake with exact 34-tool surface', async () => {
+test('standalone fallback performs real legacy handshake with exact 36-tool surface', async () => {
   const state = await tempState();
   try {
-    const result = await runProcess(process.execPath, [handshake, '--server', server, '--mode', 'legacy', '--force-fallback', '--expect-tools', '34', '--state-root', state], { cwd: root });
+    const result = await runProcess(process.execPath, [handshake, '--server', server, '--mode', 'legacy', '--force-fallback', '--expect-tools', '36', '--state-root', state], { cwd: root });
     const report = JSON.parse(result.stdout.trim());
     assert.equal(report.ok, true);
     assert.equal(report.era, 'legacy');
@@ -78,7 +78,7 @@ test('standalone fallback rejects modern server/discover instead of pretending t
 test('pinned official SDK 2026-era handshake passes when pinned SDK packages are installed', { skip: !officialSdkAvailable }, async () => {
   const state = await tempState();
   try {
-    const result = await runProcess(process.execPath, [handshake, '--server', server, '--mode', 'modern-pinned', '--require-sdk', '--require-server-sdk', '--stateful', '--expect-tools', '34', '--state-root', state], { cwd: root, timeoutMs: 45_000 });
+    const result = await runProcess(process.execPath, [handshake, '--server', server, '--mode', 'modern-pinned', '--require-sdk', '--require-server-sdk', '--stateful', '--expect-tools', '36', '--state-root', state], { cwd: root, timeoutMs: 45_000 });
     const report = JSON.parse(result.stdout.trim());
     assert.equal(report.era, 'modern');
     assert.equal(report.toolCount, 34);
@@ -94,11 +94,11 @@ test('pinned official SDK 2026-era handshake passes when pinned SDK packages are
 test('modern official client auto-negotiates safely down to legacy fallback', { skip: !officialSdkAvailable }, async () => {
   const state = await tempState();
   try {
-    const result = await runProcess(process.execPath, [handshake, '--server', server, '--mode', 'auto', '--require-sdk', '--force-fallback', '--expect-tools', '34', '--state-root', state], { cwd: root, timeoutMs: 45_000 });
+    const result = await runProcess(process.execPath, [handshake, '--server', server, '--mode', 'auto', '--require-sdk', '--force-fallback', '--expect-tools', '36', '--state-root', state], { cwd: root, timeoutMs: 45_000 });
     const report = JSON.parse(result.stdout.trim());
     assert.equal(report.era, 'legacy');
     assert.equal(report.runtime.mcp.implementation, 'standalone-fallback');
-    const pinned = await runProcess(process.execPath, [handshake, '--server', server, '--mode', 'modern-pinned', '--require-sdk', '--force-fallback', '--expect-tools', '34', '--state-root', state], { cwd: root, timeoutMs: 45_000, allowFailure: true });
+    const pinned = await runProcess(process.execPath, [handshake, '--server', server, '--mode', 'modern-pinned', '--require-sdk', '--force-fallback', '--expect-tools', '36', '--state-root', state], { cwd: root, timeoutMs: 45_000, allowFailure: true });
     assert.notEqual(pinned.code, 0, 'modern pin must fail against standalone fallback');
   } finally {
     await fs.rm(state, { recursive: true, force: true });

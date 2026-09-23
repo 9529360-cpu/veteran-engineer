@@ -412,8 +412,8 @@ export function toolInputZodSchema(z, name) {
   return schemaToZod(z, toolInputJsonSchema(name));
 }
 
-if (TOOL_NAMES.length !== 34) {
-  throw new Error(`Veteran Engineer MCP surface must contain exactly 34 tools, got ${TOOL_NAMES.length}`);
+if (TOOL_NAMES.length !== 36) {
+  throw new Error(`Veteran Engineer MCP surface must contain exactly 36 tools, got ${TOOL_NAMES.length}`);
 }
 if (Object.keys(TOOL_INPUT_CONTRACTS).length !== TOOL_NAMES.length) {
   throw new Error(`Every public tool must have exactly one input contract; got ${Object.keys(TOOL_INPUT_CONTRACTS).length} contracts for ${TOOL_NAMES.length} tools`);

@@ -18,7 +18,7 @@ Do not fork Mission, MCP, worker, state, evidence, or experience logic per host.
 
 - Runtime/package/plugin development version: `0.5.0` (latest public release: `v0.4.0`)
 - State schema: `3`
-- Public MCP tool surface: exactly **34 tools**
+- Public MCP tool surface: exactly **36 tools**
 - Official modern protocol: `2026-07-28`
 - Legacy protocol: `2025-11-25`
 - Standalone fallback is legacy-only; modern pin never falls back

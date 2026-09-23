@@ -35,7 +35,7 @@ test('repeated stateful modern handshakes succeed against the same persistent st
     '--require-sdk',
     '--require-server-sdk',
     '--stateful',
-    '--expect-tools', '34',
+    '--expect-tools', '36',
     '--state-root', state
   ];
   try {

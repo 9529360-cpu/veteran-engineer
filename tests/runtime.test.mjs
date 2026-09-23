@@ -16,7 +16,7 @@ test('runtime health reports explicit fallback and official SDK protocol capabil
     const exp = new ExperienceService({ store });
     const runtime = new RuntimeService({ store, experienceService: exp, protocolMode: MCP_TRANSPORT_MODES.STANDALONE_FALLBACK });
     let health = await runtime.health();
-    assert.equal(health.toolCount, 34);
+    assert.equal(health.toolCount, 36);
     assert.deepEqual(health.toolSurface, [...TOOL_NAMES]);
     assert.equal(health.surface.id, 'local-stdio');
     assert.equal(health.surface.contract, 'veteran-surface-capabilities-v1');

@@ -92,7 +92,7 @@ A hosted or existing-developer-machine Chromium scenario is not arbitrary deskto
 
 1. Refresh current `main`, open PR/issue state, and CI truth; fix any failing runtime/integration owner first.
 2. Read the current implementation before creating another subsystem or duplicating the installer, browser provider, evidence service, or Mission runtime.
-3. Keep all 34 MCP tools and existing input/output authority unless a real product requirement justifies an additive change.
+3. Keep all 36 MCP tools and existing input/output authority unless a real product requirement justifies an additive change.
 4. Mirror every changed runtime/test path and NEXT_CHAT_HANDOFF.md byte-for-byte in the recovery starter.
 5. Keep default HTTP loopback, workspace canonicalization, secret isolation, and explicit consequential-action authority.
 6. Close each product clause with its actual evidence level. Do not substitute passing unit tests, a release dry run, or an artifact pointer for a working Web-to-machine result.
