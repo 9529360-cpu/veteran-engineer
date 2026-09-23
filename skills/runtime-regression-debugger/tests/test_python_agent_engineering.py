@@ -56,3 +56,14 @@ def test_python_agent_eval_fixture_covers_core_failure_classes():
         assert row["request"]
         assert row["must_do"]
         assert row["must_not"]
+
+
+def test_python_agent_reference_preserves_source_workflow_without_forcing_chat_only_rules():
+    text = (ROOT / "references" / "python-agent-system-engineering.md").read_text()
+    assert "## Agent Context Capsule" in text
+    for phrase in ("project type", "Python/framework stack", "current stage", "known symptoms/risks"):
+        assert phrase in text
+    assert "3-6 sentence design summary" in text
+    assert "When the task is executed in a repository" in text
+    assert "do not paste large code blocks back into chat" in text
+    assert "do not invent a new approval gate" in text

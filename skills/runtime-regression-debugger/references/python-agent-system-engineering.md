@@ -4,6 +4,17 @@ Use this reference for Python-based Agent systems: tool-using task agents, LangC
 
 This is an implementation discipline, not a framework preference. Preserve the repository's existing stack when it is viable.
 
+## Agent Context Capsule
+
+Before substantial work, recover a compact context capsule from repository/runtime evidence instead of asking the user to restate facts the project already proves:
+
+- project type: task agent, tool-using agent, multi-agent workflow, orchestration/runtime, or another concrete shape;
+- Python/framework stack: custom runtime, LangChain, LangGraph, AutoGen, provider SDKs, persistence/tooling libraries, and versions only when verified;
+- current stage: bootstrap, tool loop, state/checkpointing, routing/planning, evaluation, hardening, release, or another evidence-backed phase;
+- known symptoms/risks: wrong tool selection, state loss, schema drift, loop instability, context growth, concurrency collisions, provider failures, or other observed defects.
+
+Treat this capsule as a refreshable cache over live evidence, not a new source of truth. Reuse the broader Project Intelligence Snapshot when it already contains these facts.
+
 ## 1. Design before code
 
 Before substantial implementation, write a compact design contract covering:
@@ -131,3 +142,15 @@ For substantial work, report:
 - residual unverified model behavior.
 
 Compilation or a happy-path demo is not enough to call an Agent system reliable.
+
+## 10. Deliver code without duplicating repository work
+
+When the deliverable is code written directly in chat, use a compact sequence:
+
+1. give a 3-6 sentence design summary;
+2. present code by file/module with clear ownership;
+3. close with what changed, validation performed, unresolved risks, and the next material step.
+
+When the task is executed in a repository, do not paste large code blocks back into chat merely to satisfy this format. Make the repository changes directly, keep progress updates concise, and report the changed owners/files plus evidence at handoff.
+
+Avoid unrelated greetings, filler, or boilerplate disclaimers in technical delivery.
