@@ -128,7 +128,7 @@ class Runtime {
     this.child.stdin.on('error', () => {});
     this.child.stdout.resume();
     this.child.stderr.on('data', (c) => { this.stderrBytes += Buffer.byteLength(c); });
-    this.cdp = new Cdp(this.child); await this.cdp.request('Browser.getVersion', {}, null, 15_000);
+    this.cdp = new Cdp(this.child); await this.cdp.request('Browser.getVersion', {}, null, 30_000);
     const target = await this.cdp.request('Target.createTarget', { url: 'about:blank' });
     const attached = await this.cdp.request('Target.attachToTarget', { targetId: target.targetId, flatten: true }); this.session = attached.sessionId;
     for (const method of ['Page.enable', 'Runtime.enable', 'Network.enable', 'Inspector.enable']) await this.cdp.request(method, {}, this.session);
