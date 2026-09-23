@@ -113,8 +113,8 @@ def test_studio_composition_contract():
     assert "product-ui-pattern-library.md" in frontend_text
     testing_quality = (SKILL_ROOT / "references" / "testing-quality-patterns.md").read_text()
     assert "Test-code semantic self-check" in testing_quality
-    assert r'`"\\\\n"` means a backslash followed by `n`' in testing_quality
-    assert r'`"\\n"` represents an actual newline at runtime' in testing_quality
+    assert r'`"\\n"` means a backslash followed by `n`' in testing_quality
+    assert r'`"\n"` represents an actual newline at runtime' in testing_quality
 
     workflow = (REPO_ROOT / ".github" / "workflows" / "skill-engineering-tools.yml").read_text()
     assert 'skills/runtime-regression-debugger/**' in workflow
