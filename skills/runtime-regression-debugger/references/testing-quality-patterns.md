@@ -65,7 +65,8 @@ Before finishing test code, self-check:
 - multiline text: confirm normalization rules and platform line endings such as `\n` vs `\r\n` are intentional;
 - encoding: confirm UTF-8/text decoding boundaries before comparing textual output;
 - collection/order semantics: confirm order-sensitive assertions are only used when order is part of the contract;
-- generated expectations: inspect the expectation rather than copying output blindly.
+- generated expectations: inspect the expectation rather than copying output blindly;
+- prompt/docs assertions: assert the semantic contract or structured field, not incidental Markdown punctuation/quoting, unless that formatting is itself the contract.
 
 For Python test files after programmatic text generation or replacement, run `python -m compileall` or an equivalent syntax check before waiting on a broader CI suite. For other languages, use the cheapest parser/type/lint check that can catch malformed test source first.
 
