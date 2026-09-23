@@ -85,3 +85,12 @@ Typecheck/build first to catch wrong imports and props. Then render. A compiler 
 If no browser/preview tooling exists, fall back to a dev-server smoke test plus the strongest available static/runtime verification and state the limitation.
 
 If a repeated override appears three or more times, treat it as evidence of a missing variant or system-level need rather than continuing to scatter one-off fixes.
+
+
+## Cross-tool synchronization
+
+When Figma, code tokens, Storybook, and production components all participate in the same design system, read `design-system-sync.md`.
+
+Assign one authority per decision type instead of declaring every surface a source of truth. Keep token values, semantic aliases, component APIs, Figma properties/variants, Storybook states, and Code Connect mappings aligned through an explicit drift-resolution loop.
+
+For design-system changes that cross tools, update the canonical owner first, then synchronize the projections and verify the final rendered component.

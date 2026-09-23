@@ -66,3 +66,24 @@ Keep this as a lean project-specific cache of discovered intent and non-obvious 
 
 ## Gotchas
 - [Non-obvious issue worth remembering]
+
+
+## Cross-tool mapping
+- Token value authority:
+- Semantic token authority:
+- Component API authority:
+- Visual state authority:
+- Design-to-code mapping authority:
+- Runtime render authority:
+
+### Figma ↔ code ↔ Storybook
+| Item | Code | Figma | Storybook | Authority | Status / action |
+| --- | --- | --- | --- | --- | --- |
+| [token/component/state] | | | | | |
+
+### Mapping freshness
+- Code Connect/equivalent mapping last reviewed:
+- Component API drift found:
+- Token drift found:
+- Story/state drift found:
+- Follow-up:

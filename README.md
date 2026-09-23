@@ -31,6 +31,7 @@ The frontend specialist uses a source-aware design workflow rather than treating
 - **Screenshots/mockups/exports** for accepted visual targets when structured design data is unavailable.
 - **Image-generated concepts** for new visual directions before a target is selected.
 - **Product-design cycle** for evidence-first audit, targeted research, distinct concept exploration, implementation, and blocking visual QA when the work is broader than direct coding.
+- **Cross-tool design-system sync** for reconciling Figma variables/components, code tokens/APIs, Storybook states, Code Connect mappings, and the rendered product without creating parallel authorities.
 
 The design-source authority model prevents accidental mixing of "what exists", "what should exist", and "what merely inspired the direction".
 

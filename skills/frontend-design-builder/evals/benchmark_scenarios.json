@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "purpose": "Regression scenarios for the full product-design cycle: audit/research/ideation, design-source authority, Figma/Code Connect, pattern research, component labs, fidelity, graceful degradation, and evidence-backed implementation.",
+  "purpose": "Regression scenarios for the full product-design cycle, cross-tool design-system synchronization, Figma/Code Connect, Storybook/component labs, external pattern research, fidelity, graceful degradation, and evidence-backed implementation.",
   "scenarios": [
     {
       "id": "existing-system-small-change",
@@ -365,6 +365,63 @@
       "must_not": [
         "file issues caused only by scale or browser chrome",
         "pass QA from build success without visual comparison"
+      ]
+    },
+    {
+      "id": "design-system-cross-tool-drift",
+      "request": "Our Figma variables, CSS token files, and Storybook component states have drifted apart. Reconcile them without creating another source of truth.",
+      "expected_mode": "existing-system",
+      "must_load": [
+        "references/design-system.md",
+        "references/design-system-sync.md",
+        "references/figma-integration.md",
+        "references/component-lab.md"
+      ],
+      "must_do": [
+        "assign one authority per decision type",
+        "build a bounded drift map across tokens component API Figma states and Storybook states",
+        "update the canonical owner first and synchronize projections"
+      ],
+      "must_not": [
+        "edit every surface independently",
+        "call multiple conflicting surfaces the source of truth"
+      ]
+    },
+    {
+      "id": "token-mode-sync",
+      "request": "Add dark mode across an existing tokenized design system that is represented in Figma and code.",
+      "expected_mode": "production",
+      "must_load": [
+        "references/design-system.md",
+        "references/design-system-sync.md"
+      ],
+      "must_do": [
+        "preserve semantic aliases across modes",
+        "avoid duplicating components when token modes can express the change",
+        "verify affected rendered states in both modes"
+      ],
+      "must_not": [
+        "scatter raw dark-mode colors through components",
+        "create a second unrelated token pipeline"
+      ]
+    },
+    {
+      "id": "component-api-figma-drift",
+      "request": "The production Button has a loading prop, Storybook has a loading story, but Figma has no loading state.",
+      "expected_mode": "existing-system",
+      "must_load": [
+        "references/design-system-sync.md",
+        "references/figma-integration.md",
+        "references/component-lab.md"
+      ],
+      "must_do": [
+        "treat production component API as implemented behavior authority",
+        "identify the missing Figma state and mapping gap",
+        "update design representation and mapping without changing working code unnecessarily"
+      ],
+      "must_not": [
+        "remove the production state just to match Figma",
+        "hide the drift in documentation"
       ]
     }
   ]
