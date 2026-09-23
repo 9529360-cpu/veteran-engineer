@@ -76,10 +76,13 @@ def test_studio_composition_contract():
             if rel.startswith("references/"):
                 assert len(Path(rel).parts) == 2, f"deep reference path is not allowed: {rel}"
 
+    runtime_agent = (SKILL_ROOT / "agents" / "openai.yaml").read_text()
     frontend_agent = (FRONTEND_ROOT / "agents" / "openai.yaml").read_text()
-    assert "allow_implicit_invocation: true" in frontend_agent
+    assert "allow_implicit_invocation: true" in runtime_agent
     for product in ("chatgpt", "codex", "api", "atlas"):
-        assert f"- {product}" in frontend_agent
+        assert f"- {product}" in runtime_agent
+    assert "policy:" not in frontend_agent
+    assert "allow_implicit_invocation" not in frontend_agent
 
     benchmark = json.loads((FRONTEND_ROOT / "evals" / "benchmark_scenarios.json").read_text())
     scenarios = benchmark["scenarios"]

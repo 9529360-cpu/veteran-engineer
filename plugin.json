@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "veteran-engineering-studio",
-  "version": "1.9.0",
+  "version": "1.9.3",
   "description": "End-to-end software engineering plus a product-design specialist with progressive routing, automatic design-system discovery, advanced Figma/Code Connect workflows, authorized live URL reconstruction, Python Agent engineering, accessibility, and rendered QA.",
   "keywords": [
     "full-stack",

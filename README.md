@@ -20,6 +20,8 @@ Do not force these numbers to match unless the same change actually releases bot
 
 The Studio keeps one accountable delivery path. `runtime-regression-debugger` owns whole-product/repository engineering and integration. `frontend-design-builder` owns material UI/frontend design and implementation phases, then returns implementation evidence, intentional deviations, and unresolved UI gaps to the full-stack owner. CI validates this composition and both Skill packages together.
 
+Invocation authority is deliberately singular: `runtime-regression-debugger` owns the ChatGPT/Codex/API/Atlas implicit-invocation policy. `frontend-design-builder` exposes only its interface metadata and is routed as the specialist sibling. This avoids duplicate trigger authorities and matches the Plugin Creator install contract.
+
 ## Design intelligence stack
 
 The frontend specialist uses a source-aware design workflow rather than treating every reference as equivalent:
