@@ -802,6 +802,26 @@
         "treat token fidelity as proof of product-level design quality",
         "continue expanding a failed layout because it already compiles"
       ]
+    },
+    {
+      "id": "weak-repo-needs-product-pattern-library",
+      "request": "Redesign a weak desktop agent workspace with no accepted design target. The current UI is generic and its component system offers little product guidance.",
+      "expected_mode": "visual-authority",
+      "must_load": [
+        "references/product-ui-pattern-library.md",
+        "references/visual-design-authority.md",
+        "references/visual-direction.md"
+      ],
+      "must_do": [
+        "derive composition from first-class product objects and tasks before choosing chrome",
+        "choose workspace patterns such as project rail thread list command center editor evidence split or contextual inspector only when the operating model justifies them",
+        "reuse existing repo primitives where useful without treating a component library as product design authority"
+      ],
+      "must_not": [
+        "default to sidebar topbar cards because the repository has no strong design",
+        "add a new UI dependency merely to obtain visual taste",
+        "show terminal diff browser or inspector panels as decorative props"
+      ]
     }
   ]
 }

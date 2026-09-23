@@ -84,6 +84,7 @@ Determine from the prompt and available project context:
 
 Read `references/modes-and-architecture.md` when delivery mode or technology architecture matters.
 Read `references/visual-direction.md` when visual direction is underspecified.
+Read `references/product-ui-pattern-library.md` when an existing product has weak structure, no accepted visual target exists, or a dense desktop/IDE/agent workspace needs stronger composition and interaction patterns.
 Read `references/visual-design-authority.md` when this is a substantial new screen, major redesign, or explicit visual-quality recovery task.
 
 ### 2. Resolve the design-system source
@@ -136,6 +137,7 @@ For non-trivial multi-source work or uncertain routing, use `scripts/frontend_co
 
 Load only what the task needs:
 - `references/visual-direction.md` — aesthetic direction, reference interpretation, typography, density, motion, accessibility baseline, anti-generic design heuristics.
+- `references/product-ui-pattern-library.md` — structural product patterns for dense workspaces, IDE/agent tools, navigation, task execution, artifacts, evidence, disclosure, and anti-template composition.
 - `references/visual-design-authority.md` — blocking pre-code visual target, concept competition, anti-generic rejection test, design selection standard, and rendered handoff gate for substantial UI.
 - `references/design-system.md` — discovery/reuse, semantic tokens, component APIs, version-aware cache, Figma-sourced systems.
 - `references/concept-and-assets.md` — image-generated concept strategy, section/state coverage, approval mode, asset passes, game art separation.

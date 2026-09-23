@@ -123,7 +123,7 @@ Escalate only as risk requires:
 
 Run the cheapest discriminating check near each edit; broad green checks never replace the boundary proving the outcome. Treat the harness as part of the system. Use independent review/evaluation when risk, product subjectivity, depth, or model reliability justifies it. UI/interaction claims require live rendered/task evidence when available.
 
-Before handoff inspect the complete change, remove diagnostics/unrelated churn, close companion responsibilities, and bind material evidence to exact source/build/runtime/cohort identity. Read `references/testing-quality-patterns.md`, `references/engineering-evidence-gates.md`, and `references/proof-carrying-change-evidence.md` only when deeper proof design is current.
+Before handoff inspect the complete change, remove diagnostics/unrelated churn, close companion responsibilities, and bind material evidence to exact source/build/runtime/cohort identity. Whenever writing or materially editing tests/assertions, read `references/testing-quality-patterns.md` and perform its test-code semantic self-check before broader CI. Read `references/engineering-evidence-gates.md` and `references/proof-carrying-change-evidence.md` only when deeper proof design is current.
 
 ## 7. Scale execution without multiplying authority
 
