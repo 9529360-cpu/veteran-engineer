@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Behavior fixtures for Python Agent engineering discipline derived from the design-first, explicit-state, strict-tool-contract, bounded-loop, resilience, and self-validation workflow.",
+  "scenarios": [
+    {
+      "id": "tool-schema-mismatch",
+      "request": "The model calls search_docs with queryText but the registered tool requires query.",
+      "must_do": [
+        "inspect the live tool schema",
+        "validate or repair structured arguments before invocation",
+        "separate model-output error from tool-runtime error"
+      ],
+      "must_not": [
+        "silently rename fields from memory",
+        "send an invalid call and treat the tool failure as normal reasoning"
+      ]
+    },
+    {
+      "id": "state-lost-between-turns",
+      "request": "A multi-turn agent forgets which task IDs were already completed after a restart.",
+      "must_do": [
+        "identify the authoritative state owner",
+        "make serialization/checkpoint lifecycle explicit",
+        "test restart recovery"
+      ],
+      "must_not": [
+        "rely on conversation text as the only state store",
+        "hide durable state in a module global"
+      ]
+    },
+    {
+      "id": "react-loop-no-stop",
+      "request": "A ReAct agent keeps retrying the same tool after the same error.",
+      "must_do": [
+        "add goal/fatal/cancel stop conditions",
+        "enforce maximum iterations",
+        "detect repeated identical failure cycles"
+      ],
+      "must_not": [
+        "allow an unbounded loop",
+        "retry every failure indiscriminately"
+      ]
+    },
+    {
+      "id": "timeout-after-side-effect",
+      "request": "A write tool times out after the remote service may already have committed the change.",
+      "must_do": [
+        "model timeout-after-commit ambiguity",
+        "use idempotency or reconciliation before replay",
+        "preserve evidence of attempted side effect"
+      ],
+      "must_not": [
+        "blindly retry a non-idempotent write",
+        "assume timeout means no mutation occurred"
+      ]
+    },
+    {
+      "id": "langgraph-production-change",
+      "request": "Add a new LangGraph node that mutates shared workflow state.",
+      "must_do": [
+        "design the state transition before coding",
+        "type the state boundary",
+        "define node input/output ownership",
+        "test invalid and restart paths"
+      ],
+      "must_not": [
+        "mutate unrelated shared fields implicitly",
+        "treat graph topology alone as proof of correctness"
+      ]
+    },
+    {
+      "id": "multi-agent-handoff",
+      "request": "A planner hands execution to two workers that may update the same task record.",
+      "must_do": [
+        "make the handoff payload explicit",
+        "define one mutation/reconciliation authority",
+        "test concurrent/replayed writes"
+      ],
+      "must_not": [
+        "let both workers become independent authorities",
+        "depend on unstated turn ordering"
+      ]
+    },
+    {
+      "id": "external-provider-failure",
+      "request": "The model provider returns rate limits and intermittent malformed responses.",
+      "must_do": [
+        "define timeout/retry/backoff policy",
+        "validate response shape",
+        "expose retry exhaustion to agent state"
+      ],
+      "must_not": [
+        "use bare except",
+        "retry forever"
+      ]
+    },
+    {
+      "id": "direct-code-authorized",
+      "request": "The user says directly implement the Python agent fix now.",
+      "must_do": [
+        "establish a compact design contract first",
+        "proceed in the same authorized execution cycle",
+        "validate boundary cases after implementation"
+      ],
+      "must_not": [
+        "invent a mandatory approval pause",
+        "skip design entirely"
+      ]
+    }
+  ]
+}

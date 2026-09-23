@@ -2,7 +2,7 @@
 
 Veteran Engineering Studio is one cross-host engineering plugin with two cooperating Skills, one shared Mission/MCP runtime, one durable control plane, and thin host adapters for Codex, Hermes, generic MCP hosts, and future integrations.
 
-- `runtime-regression-debugger` is the Veteran Full-Stack Engineer control plane for repository takeover, architecture, backend/data, debugging, migrations, release, operations, and cross-host engineering execution.
+- `runtime-regression-debugger` is the Veteran Full-Stack Engineer control plane for repository takeover, architecture, backend/data, debugging, migrations, release, operations, and cross-host engineering execution. It now includes a routed Python Agent engineering profile for explicit state lifecycles, strict tool schemas, bounded execution loops, resilient external calls, and Agent-specific boundary validation.
 - `frontend-design-builder` is the specialist UI/frontend design and implementation layer for visual direction, design-system reuse, design-to-code, responsive behavior, motion, accessibility, and rendered visual QA.
 
 The Full-Stack Engineer keeps end-to-end ownership. Material UI/UX work routes into Frontend Design Builder, and broader backend/data/infrastructure/release concerns route back to the Full-Stack Engineer.

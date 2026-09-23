@@ -139,6 +139,7 @@ After manifest/path evidence exists, use `stack_fingerprint.py` only for proven 
 - design direction/experience/public website/desktop -> design synthesis, `references/frontend-product-patterns.md`, website, or `references/desktop-product-experience.md`;
 - styling/client behavior/rendered QA -> styling implementation, frontend implementation, or `references/visual-ui-quality-assurance-product-engineering.md`;
 - API/data-migration/auth-security/async -> direct specialist owner;
+- Python Agent / LangChain / LangGraph / AutoGen / ReAct implementation -> `references/python-agent-system-engineering.md` for design-first module boundaries, explicit state lifecycle, exact tool schemas, bounded loops, external-call resilience, and boundary validation;
 - desktop host/runtime -> runtime + host-shell only when native/process behavior is current;
 - performance/distributed/reliability/release -> concrete mechanism only; generic nouns must not preload future-stage specialists.
 

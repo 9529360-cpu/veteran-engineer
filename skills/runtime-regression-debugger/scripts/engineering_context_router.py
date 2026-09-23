@@ -204,6 +204,7 @@ ROUTES = {
     "rag": ["references/ai-llm-product-engineering.md", "references/search-relevance-serving.md"],
     "tool-calling": ["references/ai-llm-product-engineering.md", "references/api-backend-patterns.md"],
     "agent-loop": ["references/ai-llm-product-engineering.md", "references/async-edge-job-patterns.md"],
+    "python-agent": ["references/python-agent-system-engineering.md", "references/ai-llm-product-engineering.md", "references/async-edge-job-patterns.md"],
     "model-eval": ["references/ai-llm-product-engineering.md", "references/engineering-evidence-gates.md"],
     "structured-output": ["references/ai-llm-product-engineering.md"],
     "lifecycle": ["references/temporal-debugging-state-transitions.md", "references/runtime-lifecycle-patterns.md"],
@@ -311,7 +312,7 @@ ALIASES = {
     "cloud-agent": "foreground-agent", "web-agent": "foreground-agent", "continuous-agent": "foreground-agent", "continuous-web-agent": "foreground-agent", "foreground-autopilot": "foreground-agent", "keep-working-web": "foreground-agent",
     "design-direction": "design-synthesis", "design-concept": "design-synthesis", "ui-concept": "design-synthesis", "mockup": "design-synthesis", "prototype-design": "design-synthesis",
     "product-spec": "product-requirements", "product-specification": "product-requirements", "requirements-engineering": "product-requirements", "requirements-discovery": "requirement-discovery", "story": "user-story", "user-stories": "user-story", "acceptance": "acceptance-criteria", "acceptance-test": "acceptance-criteria", "scoping": "scope-definition",
-    "ai": "ai-product", "ai-feature": "ai-product", "genai": "ai-product", "generative-ai": "ai-product", "large-language-model": "llm", "prompt": "prompt-engineering", "retrieval-augmented-generation": "rag", "retrieval-augmented": "rag", "function-calling": "tool-calling", "agentic": "agent-loop", "agent": "agent-loop", "llm-eval": "model-eval", "ai-eval": "model-eval", "json-output": "structured-output", "schema-output": "structured-output",
+    "ai": "ai-product", "ai-feature": "ai-product", "genai": "ai-product", "generative-ai": "ai-product", "large-language-model": "llm", "prompt": "prompt-engineering", "retrieval-augmented-generation": "rag", "retrieval-augmented": "rag", "function-calling": "tool-calling", "agentic": "agent-loop", "agent": "agent-loop", "python-agent-system": "python-agent", "python-agentic": "python-agent", "python-multi-agent": "python-agent", "langchain": "python-agent", "langgraph": "python-agent", "autogen": "python-agent", "react-agent": "python-agent", "react-loop": "python-agent", "llm-eval": "model-eval", "ai-eval": "model-eval", "json-output": "structured-output", "schema-output": "structured-output",
 }
 
 ROUTES.update({
@@ -409,7 +410,7 @@ IMPLEMENTATION_CONTEXT_SIGNALS = {
     "frontend", "frontend-style", "api", "mobile", "ios", "android", "react-native", "expo", "flutter",
     "desktop", "electron", "desktop-runtime", "desktop-shell", "electron-ipc",
     "browser-extension", "chrome-extension", "firefox-extension", "webextension",
-    "cli", "tui", "sdk", "library", "client-library", "database", "async-job", "queue",
+    "cli", "tui", "sdk", "library", "client-library", "python-agent", "database", "async-job", "queue",
 }
 IMPLEMENTATION_SIGNALS = IMPLEMENTATION_GATE_SIGNALS | IMPLEMENTATION_CONTEXT_SIGNALS
 RELEASE_SIGNALS = {
