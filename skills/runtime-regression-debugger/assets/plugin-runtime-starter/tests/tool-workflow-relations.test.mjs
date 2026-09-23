@@ -35,7 +35,7 @@ function relation(from, to, kind) {
 }
 
 function assertPublishedWorkflow(tools) {
-  assert.equal(tools.length, 34);
+  assert.equal(tools.length, 36);
   for (const tool of tools) {
     assert.ok(TOOL_NAMES.includes(tool.name), `unexpected tool ${tool.name}`);
     assert.deepEqual(
@@ -46,8 +46,8 @@ function assertPublishedWorkflow(tools) {
   }
 }
 
-test('workflow relations cover the exact 34-tool public surface with valid discoverability metadata', () => {
-  assert.equal(TOOL_NAMES.length, 34);
+test('workflow relations cover the exact 36-tool public surface with valid discoverability metadata', () => {
+  assert.equal(TOOL_NAMES.length, 36);
   assert.equal(Object.keys(TOOL_WORKFLOW_RELATIONS).length, TOOL_NAMES.length);
   for (const name of TOOL_NAMES) {
     const workflow = TOOL_WORKFLOW_RELATIONS[name];
@@ -70,6 +70,8 @@ test('workflow relations cover the exact 34-tool public surface with valid disco
 });
 
 test('workflow relations make the primary operator journeys and recovery paths discoverable', () => {
+  assert.ok(relation('machine_inspect', 'machine_act', 'next'));
+  assert.ok(relation('machine_act', 'machine_inspect', 'inspect'));
   assert.ok(relation('project_open', 'mission_plan', 'next'));
   assert.ok(relation('project_open', 'project_snapshot', 'refresh'));
   assert.ok(relation('mission_plan', 'mission_execute', 'next'));

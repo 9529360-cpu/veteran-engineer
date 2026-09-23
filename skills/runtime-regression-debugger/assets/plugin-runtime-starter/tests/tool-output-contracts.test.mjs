@@ -16,7 +16,7 @@ const ARRAY_OUTPUT_TOOLS = new Set([
 ]);
 
 test('every public tool publishes one semantic output contract', () => {
-  assert.equal(TOOL_NAMES.length, 34);
+  assert.equal(TOOL_NAMES.length, 36);
   for (const name of TOOL_NAMES) {
     const schema = toolOutputJsonSchema(name);
     assert.equal(schema.type, ARRAY_OUTPUT_TOOLS.has(name) ? 'array' : 'object', `${name} output root drifted`);

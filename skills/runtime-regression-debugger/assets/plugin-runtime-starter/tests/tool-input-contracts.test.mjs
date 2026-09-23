@@ -38,6 +38,8 @@ const REQUIRED_BY_TOOL = {
   experience_challenge: ['experienceId', 'statement'],
   experience_audit: [],
   experience_compact: ['projectId'],
+  machine_inspect: ['operation'],
+  machine_act: ['operation'],
   runtime_health: [],
   runtime_integrity: [],
   runtime_cleanup: [],
@@ -46,7 +48,7 @@ const REQUIRED_BY_TOOL = {
 };
 
 test('every public tool publishes one semantic input contract', () => {
-  assert.equal(TOOL_NAMES.length, 34);
+  assert.equal(TOOL_NAMES.length, 36);
   assert.deepEqual(Object.keys(REQUIRED_BY_TOOL).sort(), [...TOOL_NAMES].sort());
   for (const name of TOOL_NAMES) {
     const schema = toolInputJsonSchema(name);

@@ -45,7 +45,7 @@ function selection(from, to, target, kind = null) {
 }
 
 function assertPublishedBindings(tools) {
-  assert.equal(tools.length, 34);
+  assert.equal(tools.length, 36);
   for (const tool of tools) {
     assert.ok(TOOL_NAMES.includes(tool.name), `unexpected tool ${tool.name}`);
     assert.deepEqual(
@@ -57,7 +57,7 @@ function assertPublishedBindings(tools) {
 }
 
 test('workflow bindings project deterministic carry, transforms, and explicit selections onto the exact relation graph', () => {
-  assert.equal(TOOL_NAMES.length, 34);
+  assert.equal(TOOL_NAMES.length, 36);
   assert.equal(Object.keys(TOOL_IDENTITY_SOURCES).length, TOOL_NAMES.length);
   assert.equal(Object.keys(TOOL_WORKFLOW_BINDINGS).length, TOOL_NAMES.length);
 

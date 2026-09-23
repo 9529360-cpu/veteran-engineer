@@ -27,7 +27,7 @@ const officialSdkAvailable = (() => {
 })();
 
 function assertPublishedAnnotations(tools) {
-  assert.equal(tools.length, 34);
+  assert.equal(tools.length, 36);
   for (const tool of tools) {
     assert.ok(TOOL_NAMES.includes(tool.name), `unexpected tool ${tool.name}`);
     assert.deepEqual(tool.annotations, TOOL_ANNOTATIONS[tool.name], `annotation drift for ${tool.name}`);
@@ -36,7 +36,7 @@ function assertPublishedAnnotations(tools) {
 
 test('tool annotations cover the exact public surface and align with mutation authority', () => {
   assert.equal(Object.keys(TOOL_ANNOTATIONS).length, TOOL_NAMES.length);
-  assert.equal(TOOL_NAMES.length, 34);
+  assert.equal(TOOL_NAMES.length, 36);
   for (const name of TOOL_NAMES) {
     const annotations = toolAnnotations(name);
     if (toolRequiresRequestId(name)) {
@@ -48,7 +48,7 @@ test('tool annotations cover the exact public surface and align with mutation au
       assert.equal('idempotentHint' in annotations, false, name);
     }
   }
-  assert.equal(REQUEST_ID_TOOL_NAMES.length, 23);
+  assert.equal(REQUEST_ID_TOOL_NAMES.length, 24);
   assert.equal(toolAnnotations('project_open').openWorldHint, true);
   assert.equal(toolAnnotations('mission_status').openWorldHint, false);
   assert.equal(toolAnnotations('mission_execute').destructiveHint, true);

@@ -64,8 +64,8 @@ test('requestId catalog matches the runtime mutation gate for every public tool'
   const stateRoot = await tempDir('veteran-request-id-contract-');
   try {
     const app = await createVeteranApp({ stateRoot });
-    assert.equal(TOOL_NAMES.length, 34);
-    assert.equal(REQUEST_ID_TOOL_NAMES.length, 23);
+    assert.equal(TOOL_NAMES.length, 36);
+    assert.equal(REQUEST_ID_TOOL_NAMES.length, 24);
     assert.deepEqual([...new Set(REQUEST_ID_TOOL_NAMES)].sort(), [...REQUEST_ID_TOOL_NAMES].sort());
 
     for (const name of TOOL_NAMES) {
@@ -92,7 +92,7 @@ test('fallback tools/list publishes requestId only for mutating tools', async ()
   const stateRoot = await tempDir('veteran-request-id-mcp-');
   try {
     const tools = await requestFallbackTools(stateRoot);
-    assert.equal(tools.length, 34);
+    assert.equal(tools.length, 36);
     for (const tool of tools) {
       const required = tool.inputSchema?.required || [];
       const requiresRequestId = required.includes('requestId');
