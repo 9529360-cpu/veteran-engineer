@@ -211,7 +211,7 @@ export class VeteranInstaller {
       if (result.code === 0) {
         try { legacy = JSON.parse(result.stdout.trim()); } catch { /* reported below */ }
       }
-      checks.push({ name: 'mcp-legacy-handshake', ok: result.code === 0 && legacy?.toolCount === 34, exitCode: result.code, report: legacy, stderr: result.stderr.slice(0, 2000) });
+      checks.push({ name: 'mcp-legacy-handshake', ok: result.code === 0 && legacy?.toolCount === 36, exitCode: result.code, report: legacy, stderr: result.stderr.slice(0, 2000) });
     } else {
       checks.push({ name: 'mcp-legacy-handshake', ok: false, skipped: true, reason: 'runtime-prerequisite-failed' });
     }

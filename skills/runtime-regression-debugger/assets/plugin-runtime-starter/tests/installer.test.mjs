@@ -69,7 +69,7 @@ test('generic host lifecycle installs, doctors, and purges shared runtime', asyn
     assert.equal(await fs.readFile(dependencySentinel, 'utf8'), 'preserve', 'repair must preserve installed SDK/dependency tree');
     const doctor = await installer.doctor('generic');
     assert.equal(doctor.ok, true, JSON.stringify(doctor, null, 2));
-    assert.equal(doctor.runtime.legacy.toolCount, 34);
+    assert.equal(doctor.runtime.legacy.toolCount, 36);
     assert.equal(doctor.runtime.activeMcp.implementation, 'standalone-fallback');
     const removed = await installer.uninstall('generic', { purge: true });
     assert.equal(removed.purged, true);
