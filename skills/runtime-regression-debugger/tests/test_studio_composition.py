@@ -102,6 +102,7 @@ def test_studio_composition_contract():
     assert (FRONTEND_ROOT / "tests" / "test_design_action_router.py").is_file()
     assert (FRONTEND_ROOT / "references" / "design-action-fabric.md").is_file()
     assert (FRONTEND_ROOT / "references" / "visual-design-authority.md").is_file()
+    assert (FRONTEND_ROOT / "references" / "product-ui-pattern-library.md").is_file()
     assert "Deep implementation is blocked" in frontend_text
     assert "anti-generic" in frontend_text.lower()
     assert "generated images, Figma concepts, and standalone surrogate HTML" in frontend_text
@@ -109,6 +110,10 @@ def test_studio_composition_contract():
     assert "First-render kill switch" in visual_authority
     assert "Skin-vs-redesign test" in visual_authority
     assert "operating model" in visual_authority
+    assert "product-ui-pattern-library.md" in frontend_text
+    testing_quality = (SKILL_ROOT / "references" / "testing-quality-patterns.md").read_text()
+    assert "Test-code semantic self-check" in testing_quality
+    assert '"\\\\n" means a backslash followed by `n`' in testing_quality
 
     workflow = (REPO_ROOT / ".github" / "workflows" / "skill-engineering-tools.yml").read_text()
     assert 'skills/runtime-regression-debugger/**' in workflow
