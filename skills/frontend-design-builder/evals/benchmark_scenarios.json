@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "purpose": "Regression scenarios for evidence-first product design, progressive context routing, Figma design/code/library/motion/SwiftUI/FigJam workflows, live URL reconstruction, Code Connect, cross-tool design-system synchronization, component labs, reference research, fidelity, and graceful degradation.",
+  "purpose": "Regression scenarios for evidence-first product design, progressive context routing, provider-neutral Design Action Fabric execution, Figma design/code/library/motion/assets/Code Connect workflows, live URL reconstruction, cross-tool design-system synchronization, component labs, reference research, fidelity, and graceful degradation.",
   "scenarios": [
     {
       "id": "existing-system-small-change",
@@ -554,6 +554,98 @@
       "must_not": [
         "recreate the source pixel-for-pixel without being asked",
         "mix clone constraints with redesign freedom implicitly"
+      ]
+    },
+    {
+      "id": "design-action-provider-routing",
+      "request": "Use whatever design tools are actually connected in this ChatGPT session to update the supplied product design without claiming unavailable Figma actions.",
+      "expected_mode": "design-action",
+      "must_load": [
+        "references/design-action-fabric.md",
+        "references/tool-orchestration.md"
+      ],
+      "must_do": [
+        "inventory real host design capabilities before selecting a provider",
+        "route by capability instead of vendor name",
+        "record fallback limitations when required actions are absent"
+      ],
+      "must_not": [
+        "assume Figma write access from a Figma URL alone",
+        "claim a canvas mutation that no provider performed"
+      ]
+    },
+    {
+      "id": "live-url-to-design",
+      "request": "Capture our running product screen into the design workspace and reconcile it with the existing component library rather than keeping a flat screenshot.",
+      "expected_mode": "figma-write",
+      "must_load": [
+        "references/design-action-fabric.md",
+        "references/figma-integration.md",
+        "references/design-system.md"
+      ],
+      "must_do": [
+        "use live-page capture when the provider exposes it",
+        "discover library components and tokens before finalizing the design",
+        "verify the resulting design canvas from structural and visual evidence"
+      ],
+      "must_not": [
+        "treat a captured page as the final reusable design system",
+        "invent a design-file write when capture tooling is unavailable"
+      ]
+    },
+    {
+      "id": "design-asset-roundtrip",
+      "request": "Move approved icons and images between the production repository and the design file without losing source fidelity.",
+      "expected_mode": "design-action",
+      "must_load": [
+        "references/design-action-fabric.md",
+        "references/figma-integration.md"
+      ],
+      "must_do": [
+        "use provider asset import/export capabilities when available",
+        "keep production assets local and stable after transfer",
+        "verify target node/asset geometry where relevant"
+      ],
+      "must_not": [
+        "leave temporary provider URLs in production code",
+        "redraw exact assets when the provider can transfer them directly"
+      ]
+    },
+    {
+      "id": "design-motion-context",
+      "request": "Implement the motion from this Figma interaction in production while preserving the existing component structure.",
+      "expected_mode": "figma-motion",
+      "must_load": [
+        "references/design-action-fabric.md",
+        "references/figma-integration.md",
+        "references/modes-and-architecture.md"
+      ],
+      "must_do": [
+        "retrieve structured motion data when the provider exposes it",
+        "preserve existing component semantics",
+        "verify final runtime motion against accepted design evidence"
+      ],
+      "must_not": [
+        "invent keyframes when exact motion data is available",
+        "rebuild unrelated layout solely to add animation"
+      ]
+    },
+    {
+      "id": "design-advanced-resource-gating",
+      "request": "Create a custom Figma shader or generative design plugin only when explicitly requested and the corresponding provider capability exists.",
+      "expected_mode": "design-action",
+      "must_load": [
+        "references/design-action-fabric.md",
+        "references/tool-orchestration.md"
+      ],
+      "must_do": [
+        "treat shaders and generative plugins as explicit advanced resource types",
+        "load only the dedicated provider workflow for the requested resource",
+        "fall back to code-native effects or automation when provider authoring is absent"
+      ],
+      "must_not": [
+        "activate shader/plugin authoring for ordinary screen design",
+        "claim a published Figma resource from generic canvas access"
       ]
     }
   ]

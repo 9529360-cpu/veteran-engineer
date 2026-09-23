@@ -9,6 +9,12 @@ The Full-Stack Engineer keeps end-to-end ownership. Material UI/UX work routes i
 
 The GitHub repository `9529360-cpu/veteran-engineer` is the implementation source of truth. Current repository/runtime evidence and executable gates outrank old exported artifacts, historical claims, or remembered checkpoints.
 
+## Design Action Fabric
+
+Frontend Design Builder now uses a provider-neutral Design Action Fabric instead of hard-wiring design execution to one vendor. The current Figma provider can supply structured design context, screenshots, variables, libraries, Code Connect, motion, canvas writes, live URL capture, asset import/export, FigJam diagrams, Slides, shaders, and generative tools when those host capabilities are actually connected.
+
+The routing contract is capability-first: the Skill inventories what the current host can really do, loads only the workflow required for the active design phase, executes through the strongest provider, and degrades to repository/browser/image/code-native evidence when a design provider is unavailable. Figma remains the richest current provider, but it is not the permanent architecture of Veteran.
+
 ## Veteran Machine Bridge
 
 Veteran Remote Host now includes an opt-in cross-device Machine Action Fabric for web-first engineering. It exposes only two intention-level MCP tools: `machine_inspect` for read-only device/files/process evidence and `machine_act` for request-id protected filesystem/process actions. Operators must explicitly enable the bridge and configure workspace roots plus executable policy; it is an application-level policy boundary, not an OS sandbox.

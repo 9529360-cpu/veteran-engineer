@@ -98,6 +98,9 @@ def test_studio_composition_contract():
     exporter = (SKILL_ROOT / "scripts" / "export_plugin_bundle.py").read_text()
     assert "frontend-design-builder" in exporter
     assert "copy_portable_manifest" in exporter
+    assert (FRONTEND_ROOT / "scripts" / "design_action_router.py").is_file()
+    assert (FRONTEND_ROOT / "tests" / "test_design_action_router.py").is_file()
+    assert (FRONTEND_ROOT / "references" / "design-action-fabric.md").is_file()
 
     workflow = (REPO_ROOT / ".github" / "workflows" / "skill-engineering-tools.yml").read_text()
     assert 'skills/runtime-regression-debugger/**' in workflow

@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "veteran-engineering-studio",
-  "version": "1.10.0",
-  "description": "End-to-end software engineering with a web-first Veteran Machine Bridge, specialist frontend product design, Python Agent engineering, repository/runtime takeover, debugging, release/operations, Figma/design-system workflows, accessibility, and rendered QA.",
+  "version": "1.11.0",
+  "description": "End-to-end software engineering with web-first machine execution and a provider-neutral Design Action Fabric: advanced Figma workflows, design systems, Code Connect, motion, assets, code-to-design, Python Agent engineering, debugging, release/operations, accessibility, and rendered QA.",
   "keywords": [
     "full-stack",
     "software-engineering",
@@ -48,14 +48,17 @@
     "repo-probe",
     "remote-machine",
     "terminal",
-    "cross-device"
+    "cross-device",
+    "design-action-fabric",
+    "design-provider",
+    "asset-sync"
   ],
   "extensions": {
     "com.openai": {
       "interface": {
         "displayName": "Veteran Engineering Studio",
-        "shortDescription": "Full-stack engineering with advanced Figma product design and visual QA",
-        "longDescription": "A two-skill engineering plugin with one accountable delivery path. Veteran Full-Stack Engineer owns repository-wide engineering and can use an explicitly connected Veteran Machine Bridge for workspace-bounded files and managed local processes from web-capable hosts. Frontend Design Builder owns material UI/UX design, Figma/design-system work, responsive interaction, accessibility and rendered visual fidelity.",
+        "shortDescription": "Full-stack engineering with machine actions and advanced design tooling",
+        "longDescription": "Veteran Full-Stack Engineer owns repository-wide engineering and web-first machine execution. Frontend Design Builder owns a provider-neutral Design Action Fabric that can bind to Figma-style design context, variables, libraries, Code Connect, motion, assets, canvas writes, live URL capture, diagrams and other host design capabilities while preserving graceful fallbacks and rendered QA.",
         "developerName": "Veteran Engineer Project",
         "category": "Developer Tools",
         "capabilities": [
