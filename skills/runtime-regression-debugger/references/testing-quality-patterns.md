@@ -50,6 +50,27 @@ Evidence ladder:
 
 A test should fail for the regression it is meant to prevent.
 
+## Test-code semantic self-check
+
+Tests can be wrong even when the product is right. Before trusting a newly written or modified assertion, inspect the test code itself as an executable specification.
+
+For string-heavy assertions, explicitly distinguish **source-code escape syntax** from the **runtime value**:
+- `"\\n"` means a backslash followed by `n`;
+- `"\n"` represents an actual newline at runtime;
+- apply the same check to `\t`, `\r`, `\\`, quotes, regex escapes, shell quoting, JSON escaping, and nested language/tool layers.
+
+Before finishing test code, self-check:
+- escape characters: confirm each `\n`, `\t`, `\r`, `\\`, quote, regex, or shell escape is intended as a literal sequence or an actual control character;
+- value types: confirm actual and expected values have compatible types such as `str` vs `bytes`, numeric vs string, path object vs string, decoded vs encoded data;
+- multiline text: confirm normalization rules and platform line endings such as `\n` vs `\r\n` are intentional;
+- encoding: confirm UTF-8/text decoding boundaries before comparing textual output;
+- collection/order semantics: confirm order-sensitive assertions are only used when order is part of the contract;
+- generated expectations: inspect the expectation rather than copying output blindly.
+
+For Python test files after programmatic text generation or replacement, run `python -m compileall` or an equivalent syntax check before waiting on a broader CI suite. For other languages, use the cheapest parser/type/lint check that can catch malformed test source first.
+
+When a new test fails at parse/import/collection time, classify it as a **test-source/harness defect** before treating it as product evidence.
+
 ## Keep tests deterministic and isolated
 
 Control sources of nondeterminism:
