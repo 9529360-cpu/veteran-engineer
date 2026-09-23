@@ -1,6 +1,6 @@
 interface:
   display_name: "Frontend Design Builder"
-  short_description: "Design, build, and visually QA polished frontend UI"
+  short_description: "Figma-aware product design, frontend implementation, and visual QA"
 policy:
   products:
     - chatgpt

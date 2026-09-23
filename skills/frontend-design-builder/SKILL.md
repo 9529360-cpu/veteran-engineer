@@ -30,6 +30,20 @@ Choose the lightest valid path:
 
 Do not force a long discovery interview when the user already supplied enough context. Resolve only material ambiguity that would change product type, audience, aesthetic, platform, delivery mode, responsive strategy, or implementation approach.
 
+## Design-source intelligence
+
+Before substantial design work, classify available design sources as **authority, evidence, or inspiration**. Read `references/design-source-authority.md` whenever more than one source exists or sources disagree.
+
+Use the strongest structured source available:
+- Figma with variables/components/Code Connect for design-to-code or design-system work;
+- Storybook/component catalogs for implemented component APIs and states;
+- live product/browser renders for current behavior and final evidence;
+- Mobbin or similar pattern libraries for external inspiration and flow research;
+- screenshots/mockups/exports as visual targets when accepted;
+- ImageGen concepts as proposals until selected.
+
+For Figma-heavy work, read `references/figma-integration.md`. For external pattern research, read `references/reference-research.md`. When the repo has Storybook or visual regression tooling, read `references/component-lab.md`.
+
 ## Core rules
 
 - Design the requested surface as a coherent whole; do not stop at an attractive hero when the task is a full page or app.
@@ -118,6 +132,10 @@ Load only what the task needs:
 - `references/design-system-reference.template.md` — optional living cache for a specific project's discovered system.
 - `references/tool-orchestration.md` — repository, Figma, image generation, browser/preview, research, and graceful-degradation tool policy.
 - `references/execution-contract.md` — implementation discipline and evidence-bound completion criteria.
+- `references/design-source-authority.md` — authority/evidence/inspiration classification and conflict resolution across code, Figma, Storybook, live product, screenshots, reference libraries, and generated concepts.
+- `references/figma-integration.md` — structured Figma workflow, variables/components, Code Connect, design-to-code, write-back, and evidence loop.
+- `references/reference-research.md` — Mobbin-style screen/flow/section research and pattern synthesis without cargo-cult copying.
+- `references/component-lab.md` — Storybook/component state coverage, interaction/a11y checks, and visual regression evidence.
 
 ## Handoff
 

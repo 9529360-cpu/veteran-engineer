@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "veteran-engineering-studio",
-  "version": "1.2.0",
-  "description": "End-to-end software engineering plus specialist frontend product design in one plugin: repository takeover, architecture, debugging, backend, data, release and operations, paired with high-fidelity UI/UX design, design-system reuse, implementation, responsive polish, and rendered visual QA.",
+  "version": "1.3.0",
+  "description": "End-to-end software engineering plus a design-intelligent frontend specialist: Figma/Code Connect, design systems, external pattern research, component labs, responsive implementation, accessibility, and rendered visual QA.",
   "keywords": [
     "full-stack",
     "software-engineering",
@@ -17,14 +17,21 @@
     "figma",
     "design-to-code",
     "responsive",
-    "accessibility"
+    "accessibility",
+    "code-connect",
+    "storybook",
+    "visual-regression",
+    "mobbin",
+    "design-research",
+    "design-tokens",
+    "component-library"
   ],
   "extensions": {
     "com.openai": {
       "interface": {
         "displayName": "Veteran Engineering Studio",
-        "shortDescription": "Full-stack engineering with specialist frontend design and visual QA",
-        "longDescription": "A two-skill engineering plugin with one accountable delivery path. Veteran Full-Stack Engineer owns substantial software work end to end across architecture, frontend integration, backend, data, debugging, migrations, release and operations. Frontend Design Builder owns material UI/UX design, design systems, design-to-code, responsive interaction, motion, accessibility and rendered visual fidelity, then returns evidence and deviations to the full-stack owner.",
+        "shortDescription": "Full-stack engineering with Figma-aware product design and visual QA",
+        "longDescription": "A two-skill engineering plugin with one accountable delivery path. Veteran Full-Stack Engineer owns repository-wide engineering. Frontend Design Builder adds design-source intelligence across Figma and Code Connect, design systems, Storybook/component labs, Mobbin-style pattern research, screenshots/live products, concept generation, responsive implementation, accessibility and rendered visual fidelity.",
         "developerName": "Veteran Engineer Project",
         "category": "Developer Tools",
         "capabilities": [

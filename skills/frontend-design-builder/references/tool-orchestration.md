@@ -44,3 +44,16 @@ Use web research only when current external facts materially affect the interfac
 ## Missing tools
 
 Optional tooling must not create a dead end. Choose the strongest available path and continue. Ask the user only when a missing input is truly necessary to determine the product or implementation; do not ask merely because an optional design tool is unavailable.
+
+
+## Pattern libraries and design research
+
+When Mobbin or a comparable reference library is available, use it for bounded pattern research, not as an automatic source of truth. Search screens for one state, flows for journeys, and sections for public-web patterns. Inspect actual imagery before drawing conclusions. Read `references/reference-research.md`.
+
+## Storybook and component labs
+
+When Storybook or an equivalent component catalog exists in the repository, inspect it before recreating component states. Reuse the repository's own stories, interaction tests, accessibility checks, and visual regression commands where available. Read `references/component-lab.md`.
+
+## Other design tools
+
+For Framer, Sketch, Penpot, ProtoPie, Principle, or other design sources without a dedicated connector, use exports, screenshots, specs, tokens, or repository artifacts as available. Apply the same authority/evidence model from `references/design-source-authority.md`; do not claim structured extraction that was not performed.

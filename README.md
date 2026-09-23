@@ -20,6 +20,19 @@ Do not force these numbers to match unless the same change actually releases bot
 
 The Studio keeps one accountable delivery path. `runtime-regression-debugger` owns whole-product/repository engineering and integration. `frontend-design-builder` owns material UI/frontend design and implementation phases, then returns implementation evidence, intentional deviations, and unresolved UI gaps to the full-stack owner. CI validates this composition and both Skill packages together.
 
+## Design intelligence stack
+
+The frontend specialist uses a source-aware design workflow rather than treating every reference as equivalent:
+
+- **Figma + Code Connect** for structured design intent, variables, component properties, libraries, and mapping to production components.
+- **Storybook / component labs** for implemented APIs, state coverage, interaction checks, accessibility checks, and visual regression when the repository already has those systems.
+- **Mobbin-style reference research** for mature screens, flows, and web sections; these sources are inspiration until explicitly promoted to a target.
+- **Live product + browser renders** for current behavior and final implementation evidence.
+- **Screenshots/mockups/exports** for accepted visual targets when structured design data is unavailable.
+- **Image-generated concepts** for new visual directions before a target is selected.
+
+The design-source authority model prevents accidental mixing of "what exists", "what should exist", and "what merely inspired the direction".
+
 ## Current checkpoint
 
 Current development version is `0.5.0`; the latest public release is `v0.4.0`. State schema remains `3`. The public MCP surface remains exactly **34 tools**.

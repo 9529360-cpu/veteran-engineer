@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "purpose": "Regression scenarios for the Frontend Design Builder decision contract. These fixtures protect routing, design-system reuse, fidelity, tool degradation, and completion evidence without turning the Skill into a larger always-loaded prompt.",
+  "purpose": "Regression scenarios for design-source authority, Figma/Code Connect, pattern research, component labs, fidelity, tool degradation, and evidence-backed frontend implementation.",
   "scenarios": [
     {
       "id": "existing-system-small-change",
@@ -180,6 +180,118 @@
       "must_not": [
         "expand this Skill into backend/release orchestration",
         "ping-pong ownership repeatedly"
+      ]
+    },
+    {
+      "id": "figma-code-connect",
+      "request": "Implement a Figma design where the design system has Code Connect mappings to production components.",
+      "expected_mode": "reference-led",
+      "must_load": [
+        "references/design-source-authority.md",
+        "references/figma-integration.md",
+        "references/design-system.md"
+      ],
+      "must_do": [
+        "treat the accepted Figma frame as visual authority",
+        "reuse mapped production components",
+        "preserve mapped props/states and verify the rendered result"
+      ],
+      "must_not": [
+        "replace connected components with raw markup for convenience",
+        "use generic generated snippets as stronger authority than Code Connect"
+      ]
+    },
+    {
+      "id": "figma-library-evolution",
+      "request": "Extend the product design system in Figma with a new reusable component family.",
+      "expected_mode": "existing-system",
+      "must_load": [
+        "references/figma-integration.md",
+        "references/design-system.md"
+      ],
+      "must_do": [
+        "inspect variables libraries and existing component conventions first",
+        "define token bindings and component properties before scaling variants",
+        "validate the created design-system entities from evidence"
+      ],
+      "must_not": [
+        "create a parallel token taxonomy without proving a gap",
+        "build a large variant matrix when composition or instance swaps are more appropriate"
+      ]
+    },
+    {
+      "id": "mobbin-flow-research",
+      "request": "Research mature onboarding patterns before redesigning our onboarding flow.",
+      "expected_mode": "concept-first",
+      "must_load": [
+        "references/reference-research.md",
+        "references/design-source-authority.md"
+      ],
+      "must_do": [
+        "research full flows rather than isolated screenshots",
+        "extract recurring interaction principles across several examples",
+        "adapt the principles to the target product system"
+      ],
+      "must_not": [
+        "treat a Mobbin result as authority unless the user selects it",
+        "copy another product's branding or proprietary copy"
+      ]
+    },
+    {
+      "id": "storybook-component-change",
+      "request": "Update an existing design-system component in a repository that already uses Storybook and visual regression tests.",
+      "expected_mode": "production",
+      "must_load": [
+        "references/component-lab.md",
+        "references/design-system.md",
+        "references/execution-contract.md"
+      ],
+      "must_do": [
+        "inspect existing stories and component API before editing",
+        "cover material new states in stories/tests",
+        "run the repository visual regression path when available"
+      ],
+      "must_not": [
+        "recreate states already represented by the component library",
+        "declare success from typecheck alone"
+      ]
+    },
+    {
+      "id": "multi-source-conflict",
+      "request": "Figma shows a new visual treatment, Storybook exposes fewer states, and the live product differs from both.",
+      "expected_mode": "reference-led",
+      "must_load": [
+        "references/design-source-authority.md",
+        "references/figma-integration.md",
+        "references/component-lab.md"
+      ],
+      "must_do": [
+        "classify each source as authority evidence or inspiration",
+        "identify the exact conflict before implementing",
+        "preserve one explicit visual target and one component-state authority"
+      ],
+      "must_not": [
+        "average conflicting sources into a guessed design",
+        "silently choose whichever source is easiest"
+      ]
+    },
+    {
+      "id": "external-design-tool-fallback",
+      "request": "Implement a design exported from Framer or Penpot when no native connector is available.",
+      "expected_mode": "graceful-degradation",
+      "must_load": [
+        "references/design-source-authority.md",
+        "references/tool-orchestration.md",
+        "references/fidelity-protocol.md"
+      ],
+      "must_do": [
+        "treat supplied exports/screenshots as the visual target",
+        "inspect repository components and tokens independently",
+        "state which structured design metadata could not be extracted"
+      ],
+      "must_not": [
+        "claim native design-tool inspection occurred",
+        "block solely because the native connector is unavailable"
       ]
     }
   ]
