@@ -178,6 +178,12 @@ def validate_export(root: pathlib.Path, profile: str) -> None:
     if missing:
         raise RuntimeError("plugin export missing required files: " + ", ".join(missing))
 
+    portable_manifest_path = root / "plugin.json"
+    if portable_manifest_path.is_file():
+        portable_manifest = load_json(portable_manifest_path)
+        if portable_manifest.get("name") != "veteran-engineering-studio":
+            raise RuntimeError("portable plugin manifest name must remain veteran-engineering-studio")
+
     manifest = load_json(manifest_path)
     if manifest.get("name") != "veteran-engineer":
         raise RuntimeError("plugin manifest name must remain veteran-engineer")

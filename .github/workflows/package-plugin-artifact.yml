@@ -167,6 +167,7 @@ jobs:
           profile = os.environ["PROFILE"]
           bundle = pathlib.Path(f"dist/veteran-engineer-{profile}.zip")
           required = {
+              "veteran-engineer/plugin.json",
               "veteran-engineer/.codex-plugin/plugin.json",
               "veteran-engineer/veteran-distribution.json",
               "veteran-engineer/skills/runtime-regression-debugger/SKILL.md",
@@ -196,9 +197,15 @@ jobs:
               metadata = json.loads(archive.read("veteran-engineer/veteran-distribution.json"))
               if metadata.get("profile") != profile:
                   raise SystemExit(f"distribution profile mismatch: {metadata.get('profile')} != {profile}")
+              portable_manifest = json.loads(archive.read("veteran-engineer/plugin.json"))
+              if portable_manifest.get("name") != "veteran-engineering-studio":
+                  raise SystemExit("portable plugin manifest identity is invalid")
+              if not portable_manifest.get("version"):
+                  raise SystemExit("portable plugin manifest version is missing")
+
               manifest = json.loads(archive.read("veteran-engineer/.codex-plugin/plugin.json"))
               if manifest.get("name") != "veteran-engineer" or manifest.get("skills") != "./skills/":
-                  raise SystemExit("plugin manifest identity/Skill binding is invalid")
+                  raise SystemExit("Codex compatibility manifest identity/Skill binding is invalid")
 
               if profile in {"desktop", "codex"}:
                   missing_local = sorted(local_required.difference(names))
