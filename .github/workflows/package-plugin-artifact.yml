@@ -44,7 +44,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        profile: [desktop, codex, web]
+        profile: [desktop, codex, web, workspace]
 
     steps:
       - name: Checkout
@@ -209,7 +209,14 @@ jobs:
                   raise SystemExit("portable plugin manifest version is missing")
 
               manifest = json.loads(archive.read("veteran-engineer/.codex-plugin/plugin.json"))
-              if manifest.get("name") != "veteran-engineer" or manifest.get("skills") != "./skills/":
+              if profile == "workspace":
+                  if manifest.get("name") != "veteran-engineering-studio" or manifest.get("skills") != "./skills":
+                      raise SystemExit("Workspace manifest identity/Skill binding is invalid")
+                  if manifest.get("version") != portable_manifest.get("version"):
+                      raise SystemExit("Workspace manifest and portable Studio versions differ")
+                  if manifest.get("interface") != portable_manifest.get("extensions", {}).get("com.openai", {}).get("interface"):
+                      raise SystemExit("Workspace manifest interface drifted from portable Studio metadata")
+              elif manifest.get("name") != "veteran-engineer" or manifest.get("skills") != "./skills/":
                   raise SystemExit("Codex compatibility manifest identity/Skill binding is invalid")
 
               if profile in {"desktop", "codex"}:

@@ -99,3 +99,28 @@ test('web exporter references only a caller-supplied app manifest instead of inv
     await cleanup(temp);
   }
 });
+
+
+test('workspace exporter normalizes Studio identity and remains skill-only', async (t) => {
+  if (!pythonAvailable()) return t.skip('python3 unavailable; exporter is validated by packaging CI instead');
+  const temp = await tempDir('veteran-export-workspace-');
+  try {
+    const workspace = path.join(temp, 'workspace.zip');
+    runPython([exporter, skillRoot, '--profile', 'workspace', '--output', workspace]);
+    const report = zipReport(workspace);
+    assert.equal(report.manifest.name, 'veteran-engineering-studio');
+    assert.equal(report.manifest.skills, './skills');
+    assert.equal(report.manifest.mcpServers, undefined);
+    assert.equal(report.manifest.apps, undefined);
+    assert.equal(report.distribution.profile, 'workspace');
+    assert.equal(report.distribution.surfaceProfile, 'workspace-skill');
+    assert.ok(report.names.includes('veteran-engineer/plugin.json'));
+    assert.ok(report.names.includes('veteran-engineer/skills/runtime-regression-debugger/SKILL.md'));
+    assert.ok(report.names.includes('veteran-engineer/skills/frontend-design-builder/SKILL.md'));
+    const portable = JSON.parse(zipText(workspace, 'veteran-engineer/plugin.json'));
+    assert.equal(report.manifest.version, portable.version);
+    assert.deepEqual(report.manifest.interface, portable.extensions['com.openai'].interface);
+  } finally {
+    await cleanup(temp);
+  }
+});

@@ -4,8 +4,10 @@
 Profiles:
   desktop  - Skill + local runtime + .mcp.json (Desktop-only by platform rules)
   codex    - Skill + local runtime + .mcp.json for Codex/local plugin use
-  web      - Skill-first plugin with no local MCP manifest. Optionally reference an
-             already-approved app by supplying a complete .app.json via --app-manifest.
+  web       - Skill-first compatibility plugin with no local MCP manifest. Optionally
+              reference an already-approved app via --app-manifest.
+  workspace - ChatGPT Workspace skill plugin with a normalized Studio identity and
+              no local MCP/runtime surface.
 
 The web exporter intentionally does not invent app IDs, OAuth configuration, remote MCP
 URLs, or Secure MCP Tunnel provisioning. Those remain workspace/app configuration.
@@ -27,7 +29,7 @@ import zipfile
 
 SKIP_NAMES = {"__pycache__", ".DS_Store", "node_modules", ".git"}
 LOCAL_PROFILES = {"desktop", "codex"}
-ALL_PROFILES = LOCAL_PROFILES | {"web"}
+ALL_PROFILES = LOCAL_PROFILES | {"web", "workspace"}
 ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 
 
@@ -90,6 +92,19 @@ def build_distribution_metadata(profile: str, *, app_reference: bool) -> dict:
             "platformNotes": {
                 "webCompatible": False,
                 "reason": "Local MCP manifests make imported plugins Desktop-only on ChatGPT web."
+            }
+        }
+    if profile == "workspace":
+        return {
+            "schemaVersion": 1,
+            "product": "veteran-engineering-studio",
+            "profile": "workspace",
+            "surfaceProfile": "workspace-skill",
+            "includes": {"skill": True, "runtime": False, "mcpManifest": False, "appReference": False},
+            "platformNotes": {
+                "webCompatible": True,
+                "actions": "skill-only",
+                "runtimeTopology": "Workspace skill plugin; local Veteran MCP/runtime remains a separate Desktop/Codex surface."
             }
         }
     return {
@@ -162,6 +177,32 @@ def build_web_profile(skill_root: pathlib.Path, runtime: pathlib.Path, plugin_ro
     write_json(plugin_root / "veteran-distribution.json", build_distribution_metadata("web", app_reference=app_manifest is not None))
 
 
+def build_workspace_profile(skill_root: pathlib.Path, plugin_root: pathlib.Path) -> None:
+    repository_root = skill_root.parent.parent
+    portable_path = repository_root / "plugin.json"
+    reject_symlink_components(repository_root, portable_path)
+    portable = load_json(portable_path)
+    if portable.get("name") != "veteran-engineering-studio":
+        raise RuntimeError("workspace profile requires veteran-engineering-studio portable identity")
+    interface = portable.get("extensions", {}).get("com.openai", {}).get("interface")
+    if not isinstance(interface, dict):
+        raise RuntimeError("workspace profile requires extensions.com.openai.interface")
+
+    manifest = {
+        "interface": interface,
+        "name": portable["name"],
+        "version": portable.get("version"),
+        "description": portable.get("description"),
+        "author": {"name": "Workspace upload"},
+        "keywords": portable.get("keywords", []),
+        "skills": "./skills",
+    }
+    write_json(plugin_root / ".codex-plugin" / "plugin.json", manifest)
+    bundle_skills(skill_root, plugin_root)
+    copy_portable_manifest(skill_root, plugin_root)
+    write_json(plugin_root / "veteran-distribution.json", build_distribution_metadata("workspace", app_reference=False))
+
+
 def validate_export(root: pathlib.Path, profile: str) -> None:
     skill_root = root / "skills" / "runtime-regression-debugger"
     frontend_root = root / "skills" / "frontend-design-builder"
@@ -174,21 +215,34 @@ def validate_export(root: pathlib.Path, profile: str) -> None:
         manifest_path,
         root / "veteran-distribution.json",
     ]
+    if profile == "workspace":
+        required.append(root / "plugin.json")
     missing = [str(path.relative_to(root)) for path in required if not path.is_file()]
     if missing:
         raise RuntimeError("plugin export missing required files: " + ", ".join(missing))
 
     portable_manifest_path = root / "plugin.json"
+    portable_manifest = None
     if portable_manifest_path.is_file():
         portable_manifest = load_json(portable_manifest_path)
         if portable_manifest.get("name") != "veteran-engineering-studio":
             raise RuntimeError("portable plugin manifest name must remain veteran-engineering-studio")
 
     manifest = load_json(manifest_path)
-    if manifest.get("name") != "veteran-engineer":
-        raise RuntimeError("plugin manifest name must remain veteran-engineer")
-    if manifest.get("skills") != "./skills/":
-        raise RuntimeError("plugin manifest must point to bundled skills")
+    if profile == "workspace":
+        if manifest.get("name") != "veteran-engineering-studio":
+            raise RuntimeError("workspace manifest name must remain veteran-engineering-studio")
+        if manifest.get("skills") != "./skills":
+            raise RuntimeError("workspace manifest must point to ./skills")
+        if portable_manifest is None or manifest.get("version") != portable_manifest.get("version"):
+            raise RuntimeError("workspace manifest and portable Studio versions must match")
+        if manifest.get("interface") != portable_manifest.get("extensions", {}).get("com.openai", {}).get("interface"):
+            raise RuntimeError("workspace manifest interface must mirror the portable Studio interface")
+    else:
+        if manifest.get("name") != "veteran-engineer":
+            raise RuntimeError("plugin manifest name must remain veteran-engineer")
+        if manifest.get("skills") != "./skills/":
+            raise RuntimeError("plugin manifest must point to bundled skills")
 
     metadata = load_json(root / "veteran-distribution.json")
     if metadata.get("profile") != profile:
@@ -219,16 +273,20 @@ def validate_export(root: pathlib.Path, profile: str) -> None:
         forbidden = [root / ".mcp.json", root / "mcp" / "server.mjs", root / "src" / "mcp-server.mjs"]
         present = [str(path.relative_to(root)) for path in forbidden if path.exists()]
         if present:
-            raise RuntimeError("web plugin must not embed local MCP/runtime surfaces: " + ", ".join(present))
+            raise RuntimeError(f"{profile} plugin must not embed local MCP/runtime surfaces: " + ", ".join(present))
         if "mcpServers" in manifest:
-            raise RuntimeError("web plugin manifest must not declare mcpServers")
+            raise RuntimeError(f"{profile} plugin manifest must not declare mcpServers")
         app_path = root / ".app.json"
-        if app_path.exists():
-            load_json(app_path)
-            if manifest.get("apps") != "./.app.json":
-                raise RuntimeError("web app reference must be declared through ./.app.json")
-        elif "apps" in manifest:
-            raise RuntimeError("web plugin manifest references an app but .app.json is missing")
+        if profile == "web":
+            if app_path.exists():
+                load_json(app_path)
+                if manifest.get("apps") != "./.app.json":
+                    raise RuntimeError("web app reference must be declared through ./.app.json")
+            elif "apps" in manifest:
+                raise RuntimeError("web plugin manifest references an app but .app.json is missing")
+        else:
+            if app_path.exists() or "apps" in manifest:
+                raise RuntimeError("workspace profile must remain skill-only unless a workspace app is explicitly added later")
 
 
 def normalized_archive_mode(path: pathlib.Path) -> int:
@@ -284,6 +342,8 @@ def main() -> int:
         plugin_root.mkdir(parents=True, exist_ok=True)
         if args.profile in LOCAL_PROFILES:
             build_local_profile(skill_root, runtime, plugin_root, args.profile)
+        elif args.profile == "workspace":
+            build_workspace_profile(skill_root, plugin_root)
         else:
             build_web_profile(skill_root, runtime, plugin_root, app_manifest)
         validate_export(plugin_root, args.profile)
