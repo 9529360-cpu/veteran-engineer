@@ -177,6 +177,8 @@ jobs:
               "veteran-engineer/skills/frontend-design-builder/evals/benchmark_scenarios.json",
               "veteran-engineer/skills/frontend-design-builder/scripts/frontend_context_router.py",
               "veteran-engineer/skills/frontend-design-builder/tests/test_frontend_context_router.py",
+              "veteran-engineer/skills/frontend-design-builder/scripts/design_system_probe.py",
+              "veteran-engineer/skills/frontend-design-builder/tests/test_design_system_probe.py",
           }
           local_required = {
               "veteran-engineer/.mcp.json",

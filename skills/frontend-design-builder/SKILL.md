@@ -84,6 +84,8 @@ Read `references/visual-direction.md` when visual direction is underspecified.
 
 For existing projects, inspect dependencies, theme/token sources, local components, Storybook/docs, app-shell/layout patterns, icon packages, and installed versions. Read `references/design-system.md`.
 
+When repository access exists and this discovery is non-trivial, run `scripts/design_system_probe.py <repo-root>` first. Treat its package/config/theme/token/component findings as bounded evidence, not authority. Feed its `routing_signals` into `scripts/frontend_context_router.py` instead of manually preloading the whole design reference set.
+
 If a real system exists, use it. If a Figma/reference system is provided but real components cannot be imported, reproduce the appearance faithfully while clearly distinguishing approximation from the original component.
 
 If no system exists, define a compact one before repeated implementation: color roles, typography, spacing, radius/elevation, motion, breakpoints, icon treatment, and component variants.

@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "veteran-engineering-studio",
-  "version": "1.4.0",
-  "description": "End-to-end software engineering plus specialist frontend product design and Python Agent engineering in one plugin: repository takeover, architecture, debugging, backend/data, tool-using agents, explicit state/loop contracts, release/operations, high-fidelity UI/UX, design-system reuse, responsive implementation, accessibility, and rendered visual QA.",
+  "version": "1.9.0",
+  "description": "End-to-end software engineering plus a product-design specialist with progressive routing, automatic design-system discovery, advanced Figma/Code Connect workflows, authorized live URL reconstruction, Python Agent engineering, accessibility, and rendered QA.",
   "keywords": [
     "full-stack",
     "software-engineering",
@@ -43,14 +43,16 @@
     "visual-reconstruction",
     "python-agent",
     "tool-calling",
-    "multi-agent"
+    "multi-agent",
+    "design-system-discovery",
+    "repo-probe"
   ],
   "extensions": {
     "com.openai": {
       "interface": {
         "displayName": "Veteran Engineering Studio",
         "shortDescription": "Full-stack engineering with advanced Figma product design and visual QA",
-        "longDescription": "A two-skill engineering plugin with one accountable delivery path. Veteran Full-Stack Engineer owns substantial software work end to end across architecture, frontend integration, backend, data, Python Agent systems, debugging, migrations, release and operations. Frontend Design Builder owns material UI/UX design, design systems, design-to-code, responsive interaction, motion, accessibility and rendered visual fidelity, then returns evidence and deviations to the full-stack owner.",
+        "longDescription": "A two-skill engineering plugin with one accountable delivery path. Veteran Full-Stack Engineer owns repository-wide engineering, including backend/data/runtime, Python Agent systems, debugging, migrations and release. Frontend Design Builder adds bounded repository design-system discovery, context-budgeted routing, advanced Figma/Code Connect workflows, authorized live URL reconstruction, cross-tool design-system synchronization, responsive implementation, accessibility and blocking rendered visual QA.",
         "developerName": "Veteran Engineer Project",
         "category": "Developer Tools",
         "capabilities": [

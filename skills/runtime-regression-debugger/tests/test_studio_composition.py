@@ -54,6 +54,7 @@ def test_studio_composition_contract():
     assert "Do not ping-pong ownership" in frontend_text
     assert "Keep the active reference set small" in frontend_text
     assert "scripts/frontend_context_router.py" in frontend_text
+    assert "scripts/design_system_probe.py" in frontend_text
 
     for root, expected_name in [
         (SKILL_ROOT, "runtime-regression-debugger"),
@@ -104,6 +105,10 @@ def test_studio_composition_contract():
     router_tests = FRONTEND_ROOT / "tests" / "test_frontend_context_router.py"
     assert router.is_file()
     assert router_tests.is_file()
+    probe = FRONTEND_ROOT / "scripts" / "design_system_probe.py"
+    probe_tests = FRONTEND_ROOT / "tests" / "test_design_system_probe.py"
+    assert probe.is_file()
+    assert probe_tests.is_file()
 
 
 def test_studio_version_domains_are_separate():
