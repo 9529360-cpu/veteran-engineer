@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "veteran-engineering-studio",
-  "version": "1.5.0",
-  "description": "End-to-end software engineering plus a product-design specialist spanning UX audit/research, concept exploration, Figma/Code Connect, cross-tool design-system sync, Storybook/component labs, reference research, responsive implementation, accessibility, and rendered QA.",
+  "version": "1.6.0",
+  "description": "End-to-end software engineering plus a product-design specialist spanning UX audit/research, concept exploration, Figma/Code Connect, cross-tool design-system sync, component labs, progressive context routing, responsive implementation, accessibility, and rendered QA.",
   "keywords": [
     "full-stack",
     "software-engineering",
@@ -31,14 +31,16 @@
     "design-qa",
     "design-system-sync",
     "token-sync",
-    "component-api"
+    "component-api",
+    "context-routing",
+    "progressive-loading"
   ],
   "extensions": {
     "com.openai": {
       "interface": {
         "displayName": "Veteran Engineering Studio",
         "shortDescription": "Full-stack engineering with product design systems, Figma, and visual QA",
-        "longDescription": "A two-skill engineering plugin with one accountable delivery path. Veteran Full-Stack Engineer owns repository-wide engineering. Frontend Design Builder adds evidence-first product design, Figma/Code Connect, token and component synchronization across Figma/code/Storybook, external pattern research, responsive implementation, accessibility, and blocking rendered design QA.",
+        "longDescription": "A two-skill engineering plugin with one accountable delivery path. Veteran Full-Stack Engineer owns repository-wide engineering. Frontend Design Builder adds evidence-first product design, Figma/Code Connect, cross-tool design-system synchronization, external pattern research, component labs, context-budgeted progressive routing, responsive implementation, accessibility, and blocking rendered design QA.",
         "developerName": "Veteran Engineer Project",
         "category": "Developer Tools",
         "capabilities": [

@@ -122,6 +122,8 @@ Read `references/fidelity-protocol.md` for reference-led work and `references/qa
 
 Keep the active reference set small: normally 1-3 references for the current decision, adding another only for a distinct active risk. Retire design/concept detail once implementation is stable, and retire implementation detail once the task is in rendered QA. Do not load the whole reference set by default.
 
+For non-trivial multi-source work or uncertain routing, use `scripts/frontend_context_router.py --signals <csv> --max 3 --max-bytes 49152`. Treat its output as a context-budget aid, not design authority: active references own only the next decision and deferred references remain available when evidence crosses a real boundary.
+
 Load only what the task needs:
 - `references/visual-direction.md` — aesthetic direction, reference interpretation, typography, density, motion, accessibility baseline, anti-generic design heuristics.
 - `references/design-system.md` — discovery/reuse, semantic tokens, component APIs, version-aware cache, Figma-sourced systems.

@@ -28,7 +28,7 @@ concurrency:
 
 jobs:
   python-tools:
-    name: Studio Skill regressions
+    name: Studio Skill and routing regressions
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -44,7 +44,7 @@ jobs:
         run: python -m pip install --disable-pip-version-check pytest
 
       - name: Compile Skill engineering tools
-        run: python -m compileall -q skills/runtime-regression-debugger/scripts skills/runtime-regression-debugger/tests
+        run: python -m compileall -q skills/runtime-regression-debugger/scripts skills/runtime-regression-debugger/tests skills/frontend-design-builder/scripts skills/frontend-design-builder/tests
 
       - name: Run Skill engineering tool regressions
-        run: python -m pytest -q skills/runtime-regression-debugger/tests
+        run: python -m pytest -q skills/runtime-regression-debugger/tests skills/frontend-design-builder/tests

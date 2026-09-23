@@ -48,6 +48,7 @@ def test_studio_composition_contract():
     assert "## Studio collaboration contract" in frontend_text
     assert "Do not ping-pong ownership" in frontend_text
     assert "Keep the active reference set small" in frontend_text
+    assert "scripts/frontend_context_router.py" in frontend_text
 
     for root, expected_name in [
         (SKILL_ROOT, "runtime-regression-debugger"),
@@ -91,6 +92,11 @@ def test_studio_composition_contract():
     assert 'skills/runtime-regression-debugger/**' in workflow
     assert 'skills/frontend-design-builder/**' in workflow
     assert 'plugin.json' in workflow
+
+    router = FRONTEND_ROOT / "scripts" / "frontend_context_router.py"
+    router_tests = FRONTEND_ROOT / "tests" / "test_frontend_context_router.py"
+    assert router.is_file()
+    assert router_tests.is_file()
 
 
 def test_studio_version_domains_are_separate():

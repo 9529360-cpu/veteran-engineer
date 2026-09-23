@@ -174,6 +174,9 @@ jobs:
               "veteran-engineer/skills/runtime-regression-debugger/agents/openai.yaml",
               "veteran-engineer/skills/frontend-design-builder/SKILL.md",
               "veteran-engineer/skills/frontend-design-builder/agents/openai.yaml",
+              "veteran-engineer/skills/frontend-design-builder/evals/benchmark_scenarios.json",
+              "veteran-engineer/skills/frontend-design-builder/scripts/frontend_context_router.py",
+              "veteran-engineer/skills/frontend-design-builder/tests/test_frontend_context_router.py",
           }
           local_required = {
               "veteran-engineer/.mcp.json",
