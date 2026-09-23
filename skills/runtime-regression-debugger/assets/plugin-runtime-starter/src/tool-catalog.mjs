@@ -4,6 +4,7 @@ const REQUEST_ID_TOOL_NAMES = Object.freeze([
   'project_open', 'project_snapshot', 'mission_plan', 'mission_execute', 'mission_advance',
   'mission_cancel', 'mission_resume', 'task_result_commit', 'worker_cancel', 'worker_resume',
   'worker_retry', 'validation_run', 'review_run', 'semantic_review_run', 'remediation_plan',
+  'machine_act',
   'candidate_refresh', 'experience_commit', 'experience_review', 'experience_challenge',
   'experience_compact', 'runtime_cleanup', 'runtime_maintenance', 'handoff_export'
 ]);
@@ -247,6 +248,42 @@ const TOOL_INPUT_CONTRACTS = Object.freeze({
   },
   experience_audit: { properties: { projectId: stringField('Optional project filter.'), sourceHead: stringField('Optional current source commit for freshness classification.') }, required: [] },
   experience_compact: { properties: { projectId: stringField('Project id.') }, required: ['projectId'] },
+  machine_inspect: {
+    description: 'Read-only inspection of an explicitly enabled Veteran Machine Bridge.',
+    properties: {
+      operation: stringField('Machine inspection operation.', { enumValues: ['status', 'fs.list', 'fs.stat', 'fs.read', 'fs.search', 'process.list', 'process.status', 'process.output'] }),
+      path: stringField('Workspace-bounded filesystem path.', { minLength: null }),
+      query: stringField('Literal case-insensitive search query for fs.search.', { minLength: null }),
+      includeContent: booleanField('For fs.search, also search bounded text-file contents. Defaults true.'),
+      offsetBytes: integerField('Byte offset for fs.read.', 0, Number.MAX_SAFE_INTEGER),
+      maxBytes: integerField('Maximum bytes returned by fs.read; runtime clamps to host policy.', 1, 4 * 1024 * 1024),
+      encoding: stringField('fs.read result encoding.', { enumValues: ['utf8', 'base64'] }),
+      sessionId: stringField('Managed process session id.', { minLength: null }),
+      offset: integerField('Event offset for process.output.', 0, Number.MAX_SAFE_INTEGER),
+      limit: integerField('Bounded result count for list/search/output.', 1, 2000)
+    },
+    required: ['operation']
+  },
+  machine_act: {
+    description: 'Workspace-bounded file mutation or allowlisted process action through an explicitly enabled Veteran Machine Bridge.',
+    properties: {
+      operation: stringField('Machine action operation.', { enumValues: ['fs.write', 'fs.append', 'fs.mkdir', 'fs.move', 'process.start', 'process.input', 'process.stop'] }),
+      path: stringField('Workspace-bounded source/target path.', { minLength: null }),
+      destination: stringField('Workspace-bounded move destination.', { minLength: null }),
+      content: stringField('Text or base64 file payload.', { minLength: null }),
+      encoding: stringField('File payload encoding.', { enumValues: ['utf8', 'base64'] }),
+      createParents: booleanField('Create parent directories for file writes/moves. Defaults true.'),
+      command: stringField('Allowlisted executable name; arbitrary executable paths and shell interpolation are rejected.', { minLength: null }),
+      args: stringArray('Bounded argv for process.start.', { maxItems: 128 }),
+      cwd: stringField('Workspace-bounded working directory for process.start.', { minLength: null }),
+      timeoutMs: integerField('Process timeout in milliseconds; runtime clamps to host policy.', 1, 24 * 60 * 60 * 1000),
+      persistent: booleanField('Keep the process as an interactive managed session instead of waiting for completion.'),
+      input: stringField('Initial stdin for process.start or stdin payload for process.input.', { minLength: null }),
+      sessionId: stringField('Managed process session id for process.input/process.stop.', { minLength: null }),
+      signal: stringField('Stop signal.', { enumValues: ['SIGTERM', 'SIGKILL'] })
+    },
+    required: ['operation']
+  },
   runtime_health: { properties: {}, required: [] },
   runtime_integrity: { properties: {}, required: [] },
   runtime_cleanup: { properties: { apply: booleanField('When true, remove runtime-owned orphan worktrees/candidate refs after blocker rechecks; false is inspection only.') }, required: [] },
@@ -284,6 +321,8 @@ const TOOL_DESCRIPTIONS = Object.freeze({
   experience_challenge: 'Challenge an active experience with contrary evidence.',
   experience_audit: 'Audit experience freshness, conflicts, evidence, and lifecycle state.',
   experience_compact: 'Compact exact duplicate candidate experiences without auto-activation.',
+  machine_inspect: 'Inspect device policy, bounded files, and managed process sessions through the Veteran Machine Bridge.',
+  machine_act: 'Perform an idempotent workspace-bounded file mutation or allowlisted process action through the Veteran Machine Bridge.',
   runtime_health: 'Report runtime, state, MCP transport mode, surface capability, and protocol health.',
   runtime_integrity: 'Verify audit hash chain, state readability, and runtime invariants.',
   runtime_cleanup: 'Inspect or remove orphaned runtime-owned temporary resources.',

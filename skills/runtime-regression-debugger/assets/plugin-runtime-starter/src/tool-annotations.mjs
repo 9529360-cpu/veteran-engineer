@@ -10,6 +10,7 @@ const READ_ONLY_TOOLS = new Set([
   'candidate_status',
   'experience_query',
   'experience_audit',
+  'machine_inspect',
   'runtime_health',
   'runtime_integrity'
 ]);
@@ -25,7 +26,8 @@ const DESTRUCTIVE_TOOLS = new Set([
   'experience_review',
   'experience_challenge',
   'experience_compact',
-  'runtime_cleanup'
+  'runtime_cleanup',
+  'machine_act'
 ]);
 
 const OPEN_WORLD_TOOLS = new Set([
@@ -34,7 +36,8 @@ const OPEN_WORLD_TOOLS = new Set([
   'mission_execute',
   'mission_advance',
   'validation_run',
-  'semantic_review_run'
+  'semantic_review_run',
+  'machine_act'
 ]);
 
 function assertKnownTools(names, label) {
