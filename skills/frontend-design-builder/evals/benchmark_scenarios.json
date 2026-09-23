@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "purpose": "Regression scenarios for evidence-first product design, progressive context routing, provider-neutral Design Action Fabric execution, Figma design/code/library/motion/assets/Code Connect workflows, live URL reconstruction, cross-tool design-system synchronization, component labs, reference research, fidelity, and graceful degradation.",
+  "purpose": "Regression scenarios for evidence-first product design, blocking Visual Design Authority, progressive context routing, provider-neutral Design Action Fabric execution, Figma design/code/library/motion/assets/Code Connect workflows, live URL reconstruction, cross-tool design-system synchronization, component labs, reference research, fidelity, and graceful degradation.",
   "scenarios": [
     {
       "id": "existing-system-small-change",
@@ -646,6 +646,83 @@
       "must_not": [
         "activate shader/plugin authoring for ordinary screen design",
         "claim a published Figma resource from generic canvas access"
+      ]
+    },
+    {
+      "id": "major-ui-visual-authority",
+      "request": "The current ZnAgent-style workspace UI is ugly and generic. Redesign the main frontend so it feels intentional and product-specific, then implement it.",
+      "expected_mode": "visual-authority",
+      "must_load": [
+        "references/visual-design-authority.md",
+        "references/visual-direction.md",
+        "references/product-design-cycle.md"
+      ],
+      "must_do": [
+        "inspect the current rendered product and existing design system before redesigning",
+        "materialize multiple meaningfully different visual directions before deep JSX implementation when visual tools are available",
+        "select one product-fit direction and lock a real visual target plus design contract before deep implementation",
+        "compare the coded result against the selected visual target and fix blocking visual drift"
+      ],
+      "must_not": [
+        "start by rewriting the page directly in JSX or CSS from a text idea",
+        "treat recolors or rearranged card grids as distinct concepts",
+        "hand off a generic sidebar topbar card dashboard merely because it builds"
+      ]
+    },
+    {
+      "id": "anti-generic-card-soup-gate",
+      "request": "Design a new AI operations dashboard with strong visual quality and no generic AI-template look.",
+      "expected_mode": "visual-authority",
+      "must_load": [
+        "references/visual-design-authority.md",
+        "references/visual-direction.md"
+      ],
+      "must_do": [
+        "establish a clear focal point hierarchy typography density and container model",
+        "reject decorative card soup meaningless pills fake metrics and arbitrary gradients",
+        "preserve product-specific operational affordances instead of copying a generic SaaS shell"
+      ],
+      "must_not": [
+        "wrap every region in rounded cards",
+        "use gradients glows or badges as substitutes for information hierarchy",
+        "declare the first coherent layout good enough without visual scrutiny"
+      ]
+    },
+    {
+      "id": "visual-provider-materialization",
+      "request": "Create a new high-visibility product screen from scratch. Figma and image generation are both available.",
+      "expected_mode": "visual-authority",
+      "must_load": [
+        "references/visual-design-authority.md",
+        "references/design-action-fabric.md",
+        "references/concept-and-assets.md"
+      ],
+      "must_do": [
+        "use a real visual provider to materialize design direction before deep production code",
+        "use Figma for structured UI design and image generation only where concept or asset exploration benefits",
+        "keep the selected visual artifact as implementation authority through rendered comparison"
+      ],
+      "must_not": [
+        "stop at a text-only design brief despite available visual tools",
+        "confuse generated concept art with code-native controls or final product structure"
+      ]
+    },
+    {
+      "id": "accepted-reference-skips-concept-competition",
+      "request": "Implement this already-approved Figma frame exactly in the existing product.",
+      "expected_mode": "reference-led",
+      "must_load": [
+        "references/figma-integration.md",
+        "references/fidelity-protocol.md"
+      ],
+      "must_do": [
+        "treat the approved frame as the active visual target",
+        "skip unnecessary concept competition",
+        "implement and compare the real render against the approved frame"
+      ],
+      "must_not": [
+        "invent alternate visual directions after the target is already approved",
+        "reinterpret the design because another layout is easier to code"
       ]
     }
   ]

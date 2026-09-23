@@ -182,6 +182,7 @@ jobs:
               "veteran-engineer/skills/frontend-design-builder/scripts/design_action_router.py",
               "veteran-engineer/skills/frontend-design-builder/tests/test_design_action_router.py",
               "veteran-engineer/skills/frontend-design-builder/references/design-action-fabric.md",
+              "veteran-engineer/skills/frontend-design-builder/references/visual-design-authority.md",
           }
           local_required = {
               "veteran-engineer/.mcp.json",

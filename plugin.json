@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "veteran-engineering-studio",
-  "version": "1.11.0",
-  "description": "End-to-end software engineering with web-first machine execution and a provider-neutral Design Action Fabric: advanced Figma workflows, design systems, Code Connect, motion, assets, code-to-design, Python Agent engineering, debugging, release/operations, accessibility, and rendered QA.",
+  "version": "1.12.0",
+  "description": "End-to-end software engineering with web-first machine execution, blocking Visual Design Authority, and a provider-neutral Design Action Fabric for high-quality product UI, Figma workflows, design systems, Code Connect, motion, assets, Python Agent engineering, debugging, release/operations, accessibility, and rendered QA.",
   "keywords": [
     "full-stack",
     "software-engineering",
@@ -51,14 +51,18 @@
     "cross-device",
     "design-action-fabric",
     "design-provider",
-    "asset-sync"
+    "asset-sync",
+    "visual-design-authority",
+    "concept-competition",
+    "design-quality-gate",
+    "anti-generic-ui"
   ],
   "extensions": {
     "com.openai": {
       "interface": {
         "displayName": "Veteran Engineering Studio",
-        "shortDescription": "Full-stack engineering with machine actions and advanced design tooling",
-        "longDescription": "Veteran Full-Stack Engineer owns repository-wide engineering and web-first machine execution. Frontend Design Builder owns a provider-neutral Design Action Fabric that can bind to Figma-style design context, variables, libraries, Code Connect, motion, assets, canvas writes, live URL capture, diagrams and other host design capabilities while preserving graceful fallbacks and rendered QA.",
+        "shortDescription": "Full-stack engineering with visual design authority and machine actions",
+        "longDescription": "Veteran Full-Stack Engineer owns repository-wide engineering and web-first machine execution. Frontend Design Builder owns blocking Visual Design Authority plus a provider-neutral Design Action Fabric: substantial unresolved UI must become a real visual target, survive concept/anti-generic design gates, then be implemented and compared as a rendered product. Figma remains a rich provider for structured design context, canvas, variables, libraries, Code Connect, motion and assets.",
         "developerName": "Veteran Engineer Project",
         "category": "Developer Tools",
         "capabilities": [

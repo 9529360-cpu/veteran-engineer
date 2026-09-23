@@ -9,6 +9,12 @@ The Full-Stack Engineer keeps end-to-end ownership. Material UI/UX work routes i
 
 The GitHub repository `9529360-cpu/veteran-engineer` is the implementation source of truth. Current repository/runtime evidence and executable gates outrank old exported artifacts, historical claims, or remembered checkpoints.
 
+## Visual Design Authority
+
+Substantial new UI, major redesigns, and explicit visual-quality recovery work now pass a blocking design gate before deep implementation. Frontend Design Builder must inspect the current product and system, materialize a real visual direction when capable tools exist, compete meaningfully different directions when the target is unresolved, reject generic AI-template patterns, lock one visual target/design contract, and only then proceed into deep frontend code.
+
+The gate is intentionally not a numeric beauty score. It rejects process and evidence failures that repeatedly produce weak AI UI: code-first design, card soup, meaningless badges/gradients, generic dashboard shells, weak hierarchy/typography, text-only concepts despite available visual tools, and handoff without direct rendered comparison.
+
 ## Design Action Fabric
 
 Frontend Design Builder now uses a provider-neutral Design Action Fabric instead of hard-wiring design execution to one vendor. The current Figma provider can supply structured design context, screenshots, variables, libraries, Code Connect, motion, canvas writes, live URL capture, asset import/export, FigJam diagrams, Slides, shaders, and generative tools when those host capabilities are actually connected.

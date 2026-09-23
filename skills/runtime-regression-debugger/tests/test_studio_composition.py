@@ -101,6 +101,9 @@ def test_studio_composition_contract():
     assert (FRONTEND_ROOT / "scripts" / "design_action_router.py").is_file()
     assert (FRONTEND_ROOT / "tests" / "test_design_action_router.py").is_file()
     assert (FRONTEND_ROOT / "references" / "design-action-fabric.md").is_file()
+    assert (FRONTEND_ROOT / "references" / "visual-design-authority.md").is_file()
+    assert "Deep implementation is blocked" in frontend_text
+    assert "anti-generic" in frontend_text.lower()
 
     workflow = (REPO_ROOT / ".github" / "workflows" / "skill-engineering-tools.yml").read_text()
     assert 'skills/runtime-regression-debugger/**' in workflow
