@@ -263,6 +263,56 @@ jobs:
           print(f"plugin_bytes={bundle.stat().st_size}")
           PY
 
+      - name: Stage workspace install artifact
+        if: matrix.profile == 'workspace'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist/workspace-install
+          mkdir -p dist/workspace-install
+          python3 - <<'PY'
+          import pathlib
+          import shutil
+          import zipfile
+
+          source = pathlib.Path("dist/veteran-engineer-workspace.zip")
+          target = pathlib.Path("dist/workspace-install")
+          prefix = "veteran-engineer/"
+          with zipfile.ZipFile(source) as archive:
+              for info in archive.infolist():
+                  if info.is_dir():
+                      continue
+                  if not info.filename.startswith(prefix):
+                      raise SystemExit(f"workspace member escaped plugin root: {info.filename}")
+                  rel = pathlib.PurePosixPath(info.filename[len(prefix):])
+                  if not rel.parts or rel.is_absolute() or ".." in rel.parts:
+                      raise SystemExit(f"unsafe workspace install member: {info.filename}")
+                  destination = target.joinpath(*rel.parts)
+                  destination.parent.mkdir(parents=True, exist_ok=True)
+                  with archive.open(info) as src, destination.open("wb") as dst:
+                      shutil.copyfileobj(src, dst)
+
+          required = [
+              target / "plugin.json",
+              target / ".codex-plugin" / "plugin.json",
+              target / "skills" / "runtime-regression-debugger" / "SKILL.md",
+              target / "skills" / "frontend-design-builder" / "SKILL.md",
+          ]
+          missing = [str(path) for path in required if not path.is_file()]
+          if missing:
+              raise SystemExit("workspace install staging missing: " + ", ".join(missing))
+          PY
+
+      - name: Upload workspace install artifact
+        if: matrix.profile == 'workspace'
+        uses: actions/upload-artifact@v4
+        with:
+          name: veteran-engineering-studio-workspace-install-${{ github.event.pull_request.head.sha || github.sha }}
+          path: dist/workspace-install/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Upload profile artifact
         uses: actions/upload-artifact@v4
         with:
