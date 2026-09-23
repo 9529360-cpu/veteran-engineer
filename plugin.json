@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "veteran-engineering-studio",
-  "version": "1.12.0",
-  "description": "End-to-end software engineering with web-first machine execution, blocking Visual Design Authority, and a provider-neutral Design Action Fabric for high-quality product UI, Figma workflows, design systems, Code Connect, motion, assets, Python Agent engineering, debugging, release/operations, accessibility, and rendered QA.",
+  "version": "1.13.0",
+  "description": "End-to-end software engineering with web-first machine execution, implementation-first Visual Design Authority, and a provider-neutral Design Action Fabric for high-quality product UI, real-runtime visual proof, Figma workflows, design systems, Code Connect, motion, assets, Python Agent engineering, debugging, release/operations, accessibility, and rendered QA.",
   "keywords": [
     "full-stack",
     "software-engineering",
@@ -55,14 +55,16 @@
     "visual-design-authority",
     "concept-competition",
     "design-quality-gate",
-    "anti-generic-ui"
+    "anti-generic-ui",
+    "implementation-first-ui",
+    "runtime-visual-proof"
   ],
   "extensions": {
     "com.openai": {
       "interface": {
         "displayName": "Veteran Engineering Studio",
-        "shortDescription": "Full-stack engineering with visual design authority and machine actions",
-        "longDescription": "Veteran Full-Stack Engineer owns repository-wide engineering and web-first machine execution. Frontend Design Builder owns blocking Visual Design Authority plus a provider-neutral Design Action Fabric: substantial unresolved UI must become a real visual target, survive concept/anti-generic design gates, then be implemented and compared as a rendered product. Figma remains a rich provider for structured design context, canvas, variables, libraries, Code Connect, motion and assets.",
+        "shortDescription": "Full-stack engineering with implementation-first visual design and machine actions",
+        "longDescription": "Veteran Full-Stack Engineer owns repository-wide engineering and web-first machine execution. Frontend Design Builder owns implementation-first Visual Design Authority plus a provider-neutral Design Action Fabric: concepts guide direction but never substitute for the real product. Substantial existing-product UI must survive an early code-native runtime render, reject generic or skin-only redesigns, and be visually verified through the actual implementation path before handoff.",
         "developerName": "Veteran Engineer Project",
         "category": "Developer Tools",
         "capabilities": [

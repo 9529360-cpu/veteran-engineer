@@ -24,7 +24,7 @@ When the sibling Full-Stack Engineer is present, keep one accountable engineerin
 Choose the lightest valid path:
 
 1. **Small change inside an existing system** — inspect the existing design system, reuse its components/tokens, implement, then verify.
-2. **New screen or major redesign** — invoke Visual Design Authority: inspect current evidence, materialize and select a strong visual direction, lock a visual target/design contract, then implement and visually compare. Deep implementation is blocked while the design remains only a text idea.
+2. **New screen or major redesign** — invoke Visual Design Authority: inspect current evidence, materialize and select a strong visual direction, lock a visual target/design contract, then prove that direction in the real product early. Concepts are proposals, not implementation evidence. Deep implementation is blocked while the design remains only a text idea, and broad implementation is blocked until the first representative code-native render survives visual review.
 3. **Reference-led implementation** — treat the accepted screenshot/mockup/Figma/image concept as the visual source of truth. Preserve its information architecture and visible hierarchy unless the user requests a change.
 4. **Concept-first work** — when no strong visual reference exists and visual quality matters, create enough concept material to specify the complete requested surface before deep implementation. Use image generation when available and appropriate.
 
@@ -49,6 +49,8 @@ For substantial new UI, major redesigns, or work where the current interface is 
 - Design the requested surface as a coherent whole; do not stop at an attractive hero when the task is a full page or app.
 - Prefer one strong visual idea over generic decoration, repetitive card grids, filler badges, fake metrics, or ornamental UI chrome.
 - For substantial unresolved UI, do not let the first plausible layout become production by default. Materialize competing directions when needed, reject generic AI-template patterns, and lock one visual target before deep code.
+- In an existing codebase, generated images, Figma concepts, and standalone surrogate HTML are design evidence only. They never prove that the real product UI is good. Final visual authority must converge on the actual code-native render in the repository stack.
+- A visual redesign is not complete if it only changes palette, border radius, shadows, cards, or column styling while preserving the same weak information architecture and task framing. Treat that as a skin, not a redesign.
 - Establish or discover the design system before producing repeated components.
 - In an existing codebase, **discover before inventing**. Reuse the installed component library, local primitives, app shell, semantic tokens, icon set, and existing patterns. Inspect real props/types/exports before using unfamiliar components.
 - Bind styling to semantic tokens or existing abstractions when they exist. Avoid hardcoded one-off values that bypass theming in production work.
@@ -104,6 +106,8 @@ If no adequate spec exists and the task is visually significant, use `references
 
 Deep implementation is blocked until the active direction exists as real visual evidence when the environment can produce it. A text-only description is not a sufficient visual target when Figma, image generation, or rendered prototyping is available.
 
+Visual evidence from ImageGen/Figma is still only a proposal until implementation begins. For an existing product, build one representative code-native slice or shell in the real stack and render it before scaling the redesign across the surface. If that first real render exposes generic structure, weak hierarchy, or major target drift, stop polishing the same direction and return to hierarchy/composition/task framing. Do not spend multiple passes cosmetically patching a failed structure.
+
 Before coding, extract and lock the visible copy, focal point/hierarchy, color/surface roles, typography, density and spacing/container rules, component families/variants, icon/imagery treatment, responsive behavior, motion cues, required interaction states, and design-system authority. Run the anti-generic rejection test before committing to production code.
 
 ### 4. Implement as a system
@@ -112,7 +116,7 @@ Build the actual usable surface, not a decorative wrapper around unfinished func
 
 Use focused components and clear ownership. Prefer shared primitives for repeated patterns and explicit variants for meaningful differences. Preserve the existing application shell and routing conventions when present.
 
-For multi-section or visually dense work, implement in slices. Compare each major slice against the active spec and correct drift before compounding it further.
+For multi-section or visually dense work, implement in slices. The first slice is a visual reality checkpoint, not merely a coding milestone. Compare it against the active spec and the product task model before expanding. Correct drift before compounding it further; abandon a structurally failed direction rather than rescuing it with layers of CSS overrides.
 
 Use `references/modes-and-architecture.md` for technology-specific implementation guidance.
 
@@ -120,7 +124,7 @@ Use `references/modes-and-architecture.md` for technology-specific implementatio
 
 A successful build/typecheck is necessary but not sufficient. Render and inspect the actual UI.
 
-Check the primary workflow, desktop/current viewport, and at least one mobile-sized viewport when relevant. Compare against the accepted reference for layout, copy, typography, color, spacing, component/container model, icons, imagery, responsive behavior, and motion.
+Check the primary workflow, desktop/current viewport, and at least one mobile-sized viewport when relevant. Prefer the actual application/runtime route and real component tree. A handcrafted static HTML surrogate may help exploration but is not acceptable final visual evidence when the real UI can be run. Compare against the accepted reference for layout, copy, typography, color, spacing, component/container model, icons, imagery, responsive behavior, and motion.
 
 Read `references/fidelity-protocol.md` for reference-led work and `references/qa-checklist.md` for substantial UI work. Keep fixing correctable visual, responsive, interaction, asset, or design-system mismatches before handoff.
 
@@ -152,4 +156,4 @@ Load only what the task needs:
 
 ## Handoff
 
-Report what was built, which design system/reference guided it, what viewport(s) and interactions were verified, and any intentional deviations or unresolved design-system gaps. Do not claim pixel-perfect or agency-signoff fidelity unless direct visual comparison supports that claim.
+Report what was built, which design system/reference guided it, what real runtime surface was rendered, what viewport(s) and interactions were verified, and any intentional deviations or unresolved design-system gaps. Never hand off generated concept imagery as proof that the implemented UI is good. Do not claim pixel-perfect or agency-signoff fidelity unless direct visual comparison supports that claim.

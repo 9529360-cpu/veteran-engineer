@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "purpose": "Regression scenarios for evidence-first product design, blocking Visual Design Authority, progressive context routing, provider-neutral Design Action Fabric execution, Figma design/code/library/motion/assets/Code Connect workflows, live URL reconstruction, cross-tool design-system synchronization, component labs, reference research, fidelity, and graceful degradation.",
+  "purpose": "Regression scenarios for evidence-first product design, blocking Visual Design Authority, implementation-first runtime visual proof, progressive context routing, provider-neutral Design Action Fabric execution, Figma design/code/library/motion/assets/Code Connect workflows, live URL reconstruction, cross-tool design-system synchronization, component labs, reference research, fidelity, and graceful degradation.",
   "scenarios": [
     {
       "id": "existing-system-small-change",
@@ -723,6 +723,84 @@
       "must_not": [
         "invent alternate visual directions after the target is already approved",
         "reinterpret the design because another layout is easier to code"
+      ]
+    },
+    {
+      "id": "concept-art-is-not-implementation-proof",
+      "request": "Redesign this existing desktop coding app to feel as polished as Codex Desktop. You can use image generation for ideas, but I need the real product to look good.",
+      "expected_mode": "visual-authority",
+      "must_load": [
+        "references/visual-design-authority.md",
+        "references/execution-contract.md",
+        "references/visual-direction.md"
+      ],
+      "must_do": [
+        "treat generated concepts as proposals rather than delivery evidence",
+        "implement a representative slice in the actual repository stack before scaling the redesign",
+        "render the real product and judge hierarchy density task framing and visual drift"
+      ],
+      "must_not": [
+        "present a generated image as proof the implementation is good",
+        "declare success because the concept image looks polished",
+        "keep patching a structurally failed implementation with cosmetic CSS"
+      ]
+    },
+    {
+      "id": "static-surrogate-cannot-replace-real-runtime",
+      "request": "We have a real React desktop app. Make a static HTML preview if useful, but verify that the redesign actually works in the real app.",
+      "expected_mode": "production",
+      "must_load": [
+        "references/visual-design-authority.md",
+        "references/execution-contract.md"
+      ],
+      "must_do": [
+        "use any static surrogate only for bounded exploration",
+        "verify the design through the real component tree and runtime route when available",
+        "open or capture the actual runnable surface for final visual evidence"
+      ],
+      "must_not": [
+        "treat a handcrafted HTML mock as final implementation proof",
+        "bypass the existing component system to make the screenshot easier",
+        "claim the app was visually verified when only a surrogate was rendered"
+      ]
+    },
+    {
+      "id": "named-reference-means-operating-model",
+      "request": "Make our agent desktop app more like Codex Desktop without cloning it.",
+      "expected_mode": "visual-authority",
+      "must_load": [
+        "references/visual-design-authority.md",
+        "references/visual-direction.md",
+        "references/product-design-cycle.md"
+      ],
+      "must_do": [
+        "extract the reference product operating model before its visual chrome",
+        "identify first-class objects task framing parallel work and contextual panels",
+        "translate those relationships into the target product before styling"
+      ],
+      "must_not": [
+        "reduce the reference to dark mode three columns blue accents or rounded panels",
+        "preserve the old information architecture and call the result a redesign",
+        "cargo-cult another product's branding"
+      ]
+    },
+    {
+      "id": "first-render-kill-switch",
+      "request": "The first coded redesign render still looks like a generic AI dashboard even though it matches the planned colors and spacing.",
+      "expected_mode": "visual-authority",
+      "must_load": [
+        "references/visual-design-authority.md",
+        "references/execution-contract.md"
+      ],
+      "must_do": [
+        "stop broad implementation when the representative render fails structurally",
+        "revisit hierarchy composition navigation or task framing",
+        "replace the failed direction before scaling it"
+      ],
+      "must_not": [
+        "spend repeated passes adding CSS overrides to save the same structure",
+        "treat token fidelity as proof of product-level design quality",
+        "continue expanding a failed layout because it already compiles"
       ]
     }
   ]
