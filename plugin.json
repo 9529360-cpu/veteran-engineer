@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "veteran-engineering-studio",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "End-to-end software engineering plus specialist frontend product design in one plugin: repository takeover, architecture, debugging, backend, data, release and operations, paired with high-fidelity UI/UX design, design-system reuse, implementation, responsive polish, and rendered visual QA.",
   "keywords": [
     "full-stack",
@@ -13,15 +13,19 @@
     "architecture",
     "design-system",
     "release",
-    "visual-qa"
+    "visual-qa",
+    "figma",
+    "design-to-code",
+    "responsive",
+    "accessibility"
   ],
   "extensions": {
     "com.openai": {
       "interface": {
         "displayName": "Veteran Engineering Studio",
         "shortDescription": "Full-stack engineering with specialist frontend design and visual QA",
-        "longDescription": "A two-skill engineering plugin. Veteran Full-Stack Engineer owns substantial software work end to end across architecture, frontend, backend, data, debugging, migrations, release and operations. Frontend Design Builder specializes in visual direction, design systems, design-to-code, responsive interaction, motion and rendered visual fidelity. The skills route work between each other without collapsing into one oversized prompt.",
-        "developerName": "Custom",
+        "longDescription": "A two-skill engineering plugin with one accountable delivery path. Veteran Full-Stack Engineer owns substantial software work end to end across architecture, frontend integration, backend, data, debugging, migrations, release and operations. Frontend Design Builder owns material UI/UX design, design systems, design-to-code, responsive interaction, motion, accessibility and rendered visual fidelity, then returns evidence and deviations to the full-stack owner.",
+        "developerName": "Veteran Engineer Project",
         "category": "Developer Tools",
         "capabilities": [
           "Read",

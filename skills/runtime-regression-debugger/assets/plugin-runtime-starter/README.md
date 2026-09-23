@@ -1,4 +1,4 @@
-# Veteran Engineer
+# Veteran Engineering Studio
 
 Veteran Engineering Studio is one cross-host engineering plugin with two cooperating Skills, one shared Mission/MCP runtime, one durable control plane, and thin host adapters for Codex, Hermes, generic MCP hosts, and future integrations.
 
@@ -8,6 +8,17 @@ Veteran Engineering Studio is one cross-host engineering plugin with two coopera
 The Full-Stack Engineer keeps end-to-end ownership. Material UI/UX work routes into Frontend Design Builder, and broader backend/data/infrastructure/release concerns route back to the Full-Stack Engineer.
 
 The GitHub repository `9529360-cpu/veteran-engineer` is the implementation source of truth. Current repository/runtime evidence and executable gates outrank old exported artifacts, historical claims, or remembered checkpoints.
+
+## Studio contract and versioning
+
+This repository has two intentionally separate version domains:
+
+- `plugin.json` versions the portable/workspace **Veteran Engineering Studio** plugin.
+- `package.json` plus `.codex-plugin/plugin.json` version the **Veteran runtime/MCP** compatibility surface and must stay aligned with each other.
+
+Do not force these numbers to match unless the same change actually releases both domains. The Studio plugin may evolve its Skills and packaging without pretending the runtime protocol changed; runtime releases may evolve independently while preserving the Studio composition contract.
+
+The Studio keeps one accountable delivery path. `runtime-regression-debugger` owns whole-product/repository engineering and integration. `frontend-design-builder` owns material UI/frontend design and implementation phases, then returns implementation evidence, intentional deviations, and unresolved UI gaps to the full-stack owner. CI validates this composition and both Skill packages together.
 
 ## Current checkpoint
 

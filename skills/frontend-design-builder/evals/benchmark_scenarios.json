@@ -1,0 +1,186 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Regression scenarios for the Frontend Design Builder decision contract. These fixtures protect routing, design-system reuse, fidelity, tool degradation, and completion evidence without turning the Skill into a larger always-loaded prompt.",
+  "scenarios": [
+    {
+      "id": "existing-system-small-change",
+      "request": "Add a compact filter control to an existing dashboard that already has tokens and shared form components.",
+      "expected_mode": "existing-system",
+      "must_load": [
+        "references/design-system.md",
+        "references/execution-contract.md"
+      ],
+      "must_do": [
+        "reuse existing tokens/components",
+        "preserve the current app shell",
+        "render and verify the changed surface"
+      ],
+      "must_not": [
+        "replace the project stack",
+        "invent a parallel design system"
+      ]
+    },
+    {
+      "id": "reference-led-screenshot",
+      "request": "Rebuild this supplied product screenshot as a working responsive page.",
+      "expected_mode": "reference-led",
+      "must_load": [
+        "references/fidelity-protocol.md",
+        "references/qa-checklist.md"
+      ],
+      "must_do": [
+        "preserve visible hierarchy and copy",
+        "keep controls code-native",
+        "compare the rendered result against the reference"
+      ],
+      "must_not": [
+        "reinterpret the design without approval",
+        "ship the screenshot as the UI"
+      ]
+    },
+    {
+      "id": "figma-to-production",
+      "request": "Implement the supplied Figma frame inside the existing product.",
+      "expected_mode": "reference-led",
+      "must_load": [
+        "references/tool-orchestration.md",
+        "references/design-system.md",
+        "references/fidelity-protocol.md"
+      ],
+      "must_do": [
+        "extract design context when Figma tooling is available",
+        "reuse local product primitives where compatible",
+        "verify the rendered implementation"
+      ],
+      "must_not": [
+        "eyeball values when exact design data is available",
+        "claim exact extraction when Figma access is unavailable"
+      ]
+    },
+    {
+      "id": "greenfield-concept-first",
+      "request": "Create a visually distinctive new marketing experience with no supplied reference.",
+      "expected_mode": "concept-first",
+      "must_load": [
+        "references/visual-direction.md",
+        "references/concept-and-assets.md"
+      ],
+      "must_do": [
+        "establish a coherent visual direction",
+        "cover the complete requested surface",
+        "use generated assets only when they materially help"
+      ],
+      "must_not": [
+        "stop at a hero section",
+        "fill the page with generic cards and fake metrics"
+      ]
+    },
+    {
+      "id": "production-feature",
+      "request": "Build a production account-management screen with loading, empty, error, disabled, focus, and responsive states.",
+      "expected_mode": "production",
+      "must_load": [
+        "references/modes-and-architecture.md",
+        "references/execution-contract.md",
+        "references/qa-checklist.md"
+      ],
+      "must_do": [
+        "preserve repository conventions",
+        "implement material interaction states",
+        "verify desktop and smaller viewport behavior"
+      ],
+      "must_not": [
+        "hide prototype shortcuts as production quality",
+        "treat build success as visual completion"
+      ]
+    },
+    {
+      "id": "prototype-fast-path",
+      "request": "Prototype a new editor interaction so the team can evaluate the idea quickly.",
+      "expected_mode": "prototype",
+      "must_load": [
+        "references/modes-and-architecture.md",
+        "references/visual-direction.md"
+      ],
+      "must_do": [
+        "optimize for learning speed",
+        "keep the prototype coherent enough to evaluate",
+        "identify shortcuts that should not enter production"
+      ],
+      "must_not": [
+        "overengineer production infrastructure",
+        "pretend prototype debt is production-ready"
+      ]
+    },
+    {
+      "id": "tool-degradation",
+      "request": "Implement a reference-led UI but the preferred design/browser tool is unavailable.",
+      "expected_mode": "graceful-degradation",
+      "must_load": [
+        "references/tool-orchestration.md",
+        "references/execution-contract.md"
+      ],
+      "must_do": [
+        "use the strongest available fallback",
+        "continue when optional tools are missing",
+        "state the exact verification limitation"
+      ],
+      "must_not": [
+        "claim an unavailable tool was used",
+        "block solely because an optional tool is missing"
+      ]
+    },
+    {
+      "id": "design-system-gap",
+      "request": "A requested control is missing from the existing component library.",
+      "expected_mode": "existing-system",
+      "must_load": [
+        "references/design-system.md"
+      ],
+      "must_do": [
+        "verify the gap first",
+        "extend the system at the narrowest reusable owner when justified",
+        "preserve semantic tokens and variants"
+      ],
+      "must_not": [
+        "fork library internals casually",
+        "scatter repeated one-off overrides"
+      ]
+    },
+    {
+      "id": "responsive-fidelity",
+      "request": "Match a dense desktop reference and make it behave correctly on mobile.",
+      "expected_mode": "reference-led",
+      "must_load": [
+        "references/fidelity-protocol.md",
+        "references/qa-checklist.md"
+      ],
+      "must_do": [
+        "audit density typography icons and container behavior",
+        "check at least one mobile-sized viewport",
+        "record unresolved fidelity gaps"
+      ],
+      "must_not": [
+        "declare pixel-perfect without direct comparison",
+        "ignore mobile line breaks and interaction states"
+      ]
+    },
+    {
+      "id": "cross-layer-handoff",
+      "request": "The UI is done but the feature now requires auth, data migration, and release work.",
+      "expected_mode": "handoff",
+      "must_load": [
+        "references/execution-contract.md"
+      ],
+      "must_do": [
+        "finish the active UI phase",
+        "return implementation evidence and deviations",
+        "hand broader engineering ownership to runtime-regression-debugger"
+      ],
+      "must_not": [
+        "expand this Skill into backend/release orchestration",
+        "ping-pong ownership repeatedly"
+      ]
+    }
+  ]
+}

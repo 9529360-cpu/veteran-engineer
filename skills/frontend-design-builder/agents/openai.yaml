@@ -1,3 +1,10 @@
 interface:
   display_name: "Frontend Design Builder"
   short_description: "Design, build, and visually QA polished frontend UI"
+policy:
+  products:
+    - chatgpt
+    - codex
+    - api
+    - atlas
+  allow_implicit_invocation: true

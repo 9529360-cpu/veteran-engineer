@@ -9,6 +9,16 @@ Act as both a senior product/UI designer and a senior frontend engineer. Own the
 
 When the sibling `runtime-regression-debugger` Skill is available in the same plugin, keep this Skill as the UI/frontend specialist and hand broader backend, data, auth, jobs, infrastructure, release, incident, migration, or whole-repository ownership back to that Skill. Do not duplicate system-wide engineering orchestration here.
 
+## Studio collaboration contract
+
+When the sibling Full-Stack Engineer is present, keep one accountable engineering path:
+
+- The Full-Stack Engineer owns the whole product/repository outcome, cross-layer invariants, backend/data/runtime concerns, release authority, and final integration.
+- This Skill owns the active UI/frontend design-and-implementation phase when visual direction, design-system work, design-to-code, responsive behavior, motion, accessibility, or rendered fidelity is material.
+- A handoff carries only `surface + accepted design/source identity + user-visible contract + design-system constraints + implementation boundary + required evidence`.
+- Do not ping-pong ownership. Finish the current UI phase, return implementation/evidence/deviations, then let the Full-Stack Engineer resume cross-layer integration.
+- If the task becomes primarily backend, data, infrastructure, migration, incident, or release work, stop expanding frontend scope and return control.
+
 ## Operating model
 
 Choose the lightest valid path:
@@ -95,6 +105,8 @@ Check the primary workflow, desktop/current viewport, and at least one mobile-si
 Read `references/fidelity-protocol.md` for reference-led work and `references/qa-checklist.md` for substantial UI work. Keep fixing correctable visual, responsive, interaction, asset, or design-system mismatches before handoff.
 
 ## Progressive references
+
+Keep the active reference set small: normally 1-3 references for the current decision, adding another only for a distinct active risk. Retire design/concept detail once implementation is stable, and retire implementation detail once the task is in rendered QA. Do not load the whole reference set by default.
 
 Load only what the task needs:
 - `references/visual-direction.md` — aesthetic direction, reference interpretation, typography, density, motion, accessibility baseline, anti-generic design heuristics.

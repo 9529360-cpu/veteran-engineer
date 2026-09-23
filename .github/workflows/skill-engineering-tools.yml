@@ -3,15 +3,19 @@ name: Skill Engineering Tools
 on:
   pull_request:
     paths:
-      - "skills/runtime-regression-debugger/scripts/**"
-      - "skills/runtime-regression-debugger/tests/**"
+      - "skills/runtime-regression-debugger/**"
+      - "skills/frontend-design-builder/**"
+      - "plugin.json"
+      - ".codex-plugin/plugin.json"
       - ".github/workflows/skill-engineering-tools.yml"
   push:
     branches:
       - main
     paths:
-      - "skills/runtime-regression-debugger/scripts/**"
-      - "skills/runtime-regression-debugger/tests/**"
+      - "skills/runtime-regression-debugger/**"
+      - "skills/frontend-design-builder/**"
+      - "plugin.json"
+      - ".codex-plugin/plugin.json"
       - ".github/workflows/skill-engineering-tools.yml"
   workflow_dispatch:
 
@@ -24,7 +28,7 @@ concurrency:
 
 jobs:
   python-tools:
-    name: Python engineering tool regressions
+    name: Studio Skill regressions
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
