@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "purpose": "Regression scenarios for design-source authority, Figma/Code Connect, pattern research, component labs, fidelity, tool degradation, and evidence-backed frontend implementation.",
+  "purpose": "Regression scenarios for the full product-design cycle: audit/research/ideation, design-source authority, Figma/Code Connect, pattern research, component labs, fidelity, graceful degradation, and evidence-backed implementation.",
   "scenarios": [
     {
       "id": "existing-system-small-change",
@@ -292,6 +292,79 @@
       "must_not": [
         "claim native design-tool inspection occurred",
         "block solely because the native connector is unavailable"
+      ]
+    },
+    {
+      "id": "audit-before-redesign",
+      "request": "Redesign an existing checkout flow whose current experience is available to inspect.",
+      "expected_mode": "concept-first",
+      "must_load": [
+        "references/product-design-cycle.md",
+        "references/design-source-authority.md"
+      ],
+      "must_do": [
+        "inspect the current flow before proposing the redesign",
+        "tie UX findings to observable steps or states",
+        "separate evidence from inference before ideation"
+      ],
+      "must_not": [
+        "redesign from memory without inspecting the available product",
+        "reduce the audit to aesthetic opinions"
+      ]
+    },
+    {
+      "id": "research-led-ux",
+      "request": "We know onboarding is weak but do not know where users struggle most. Research the problem before designing.",
+      "expected_mode": "concept-first",
+      "must_load": [
+        "references/product-design-cycle.md",
+        "references/reference-research.md"
+      ],
+      "must_do": [
+        "collect evidence that can change the design",
+        "cluster recurring friction and distinguish severity frequency and confidence",
+        "turn research into a bounded product opportunity"
+      ],
+      "must_not": [
+        "treat one anecdote as representative",
+        "dump complaints without a design implication"
+      ]
+    },
+    {
+      "id": "multi-direction-ideation",
+      "request": "Explore three genuinely different directions for a new workspace home screen.",
+      "expected_mode": "concept-first",
+      "must_load": [
+        "references/product-design-cycle.md",
+        "references/visual-direction.md",
+        "references/concept-and-assets.md"
+      ],
+      "must_do": [
+        "make the directions differ in hierarchy interaction or product framing",
+        "preserve hard product constraints in every direction",
+        "treat generated concepts as proposals until selected"
+      ],
+      "must_not": [
+        "present recolors of the same layout as distinct concepts",
+        "start production implementation before the active direction is resolved"
+      ]
+    },
+    {
+      "id": "normalized-design-qa",
+      "request": "Compare a coded mobile screen against an accepted visual target before handoff.",
+      "expected_mode": "reference-led",
+      "must_load": [
+        "references/product-design-cycle.md",
+        "references/fidelity-protocol.md"
+      ],
+      "must_do": [
+        "normalize viewport state crop and density before judging",
+        "inspect typography spacing colors assets and copy explicitly",
+        "block clean handoff while actionable P0 P1 or P2 mismatches remain"
+      ],
+      "must_not": [
+        "file issues caused only by scale or browser chrome",
+        "pass QA from build success without visual comparison"
       ]
     }
   ]

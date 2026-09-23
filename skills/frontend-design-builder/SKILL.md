@@ -42,7 +42,7 @@ Use the strongest structured source available:
 - screenshots/mockups/exports as visual targets when accepted;
 - ImageGen concepts as proposals until selected.
 
-For Figma-heavy work, read `references/figma-integration.md`. For external pattern research, read `references/reference-research.md`. When the repo has Storybook or visual regression tooling, read `references/component-lab.md`.
+For Figma-heavy work, read `references/figma-integration.md`. For external pattern research, read `references/reference-research.md`. When the repo has Storybook or visual regression tooling, read `references/component-lab.md`. For redesigns, UX improvement, audits, research-led design, or unresolved product directions, read `references/product-design-cycle.md`.
 
 ## Core rules
 
@@ -136,6 +136,7 @@ Load only what the task needs:
 - `references/figma-integration.md` — structured Figma workflow, variables/components, Code Connect, design-to-code, write-back, and evidence loop.
 - `references/reference-research.md` — Mobbin-style screen/flow/section research and pattern synthesis without cargo-cult copying.
 - `references/component-lab.md` — Storybook/component state coverage, interaction/a11y checks, and visual regression evidence.
+- `references/product-design-cycle.md` — evidence-first audit, research, concept exploration, design-contract lock, implementation, and blocking design QA.
 
 ## Handoff
 

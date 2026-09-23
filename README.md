@@ -30,6 +30,7 @@ The frontend specialist uses a source-aware design workflow rather than treating
 - **Live product + browser renders** for current behavior and final implementation evidence.
 - **Screenshots/mockups/exports** for accepted visual targets when structured design data is unavailable.
 - **Image-generated concepts** for new visual directions before a target is selected.
+- **Product-design cycle** for evidence-first audit, targeted research, distinct concept exploration, implementation, and blocking visual QA when the work is broader than direct coding.
 
 The design-source authority model prevents accidental mixing of "what exists", "what should exist", and "what merely inspired the direction".
 

@@ -39,7 +39,7 @@ Follow these defaults unless the existing file has a stronger convention:
 - Avoid variant explosion. If a component matrix becomes unwieldy, split responsibilities or use nested components/instance swaps.
 - Preserve component descriptions and usage guidance as part of the handoff contract.
 
-Figma's variables and component properties are machine-readable signals. A well-structured file should let an agent infer supported states instead of guessing from visual inspection. citeturn509490search1turn509490search2turn509490search7
+Figma's variables and component properties are machine-readable signals. A well-structured file should let an agent infer supported states instead of guessing from visual inspection.
 
 ## Code Connect and production components
 
@@ -51,7 +51,7 @@ When Code Connect or an equivalent mapping exists, treat it as the preferred bri
 - Keep mappings current when the code component API changes.
 - If a mapped component is close but insufficient, identify the smallest extension or wrapper instead of abandoning the mapping.
 
-Figma describes Code Connect as a bridge between repository components and Dev Mode/MCP context, specifically to provide more precise implementation guidance to AI agents. citeturn509490search3turn509490search9
+Figma describes Code Connect as a bridge between repository components and Dev Mode/MCP context, specifically to provide more precise implementation guidance to AI agents.
 
 ## Figma-to-code evidence loop
 
@@ -92,4 +92,4 @@ Figma design system / product frames
 rendered implementation + visual QA
 ```
 
-The goal is not "export code from Figma." The goal is to keep design intent, reusable component APIs, tokens, and rendered behavior aligned. Figma's current Dev Mode explicitly supports MCP context, Code Connect, variables, Storybook/GitHub integrations, and write-to-canvas workflows. citeturn801656search0turn801656search3turn801656search9
+The goal is not "export code from Figma." The goal is to keep design intent, reusable component APIs, tokens, and rendered behavior aligned. Figma's current Dev Mode explicitly supports MCP context, Code Connect, variables, Storybook/GitHub integrations, and write-to-canvas workflows.

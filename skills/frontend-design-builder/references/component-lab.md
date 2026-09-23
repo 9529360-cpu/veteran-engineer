@@ -38,7 +38,7 @@ Do not create meaningless stories for every theoretical combination. Cover risk-
 
 ## Interaction tests
 
-If the project already uses Storybook interaction tests, extend them for meaningful behavior changes. Storybook's current interaction testing uses stories plus play functions to simulate user actions and assertions, and can run in CI. citeturn509490search0
+If the project already uses Storybook interaction tests, extend them for meaningful behavior changes. Storybook's current interaction testing uses stories plus play functions to simulate user actions and assertions, and can run in CI.
 
 Use interaction tests for behavior such as:
 
@@ -51,7 +51,7 @@ Use interaction tests for behavior such as:
 
 ## Accessibility checks
 
-If the repository already uses Storybook a11y tooling, keep changed stories clean or document known pre-existing violations. Automated checks are a first-line heuristic, not a substitute for keyboard/screen-reader reasoning. Storybook's a11y addon is based on axe-core and integrates with story-based testing. citeturn509490search4
+If the repository already uses Storybook a11y tooling, keep changed stories clean or document known pre-existing violations. Automated checks are a first-line heuristic, not a substitute for keyboard/screen-reader reasoning. Storybook's a11y addon is based on axe-core and integrates with story-based testing.
 
 ## Visual regression
 
@@ -64,7 +64,7 @@ If Chromatic or another visual baseline system already exists:
 5. accept only intentional changes;
 6. keep the final passing baseline as evidence.
 
-Storybook documents snapshot-style visual tests as comparisons of stories against last-known-good baselines, including cross-browser testing through Chromatic. citeturn801656search1
+Storybook documents snapshot-style visual tests as comparisons of stories against last-known-good baselines, including cross-browser testing through Chromatic.
 
 Do not install Storybook/Chromatic solely for a tiny one-off UI fix unless the user asked or the repository is clearly becoming a reusable component system.
 

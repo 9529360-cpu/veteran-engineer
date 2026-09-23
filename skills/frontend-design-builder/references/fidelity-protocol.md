@@ -54,6 +54,40 @@ For long or dense surfaces, implement and compare in slices:
 
 This prevents small visual errors from compounding across a large page.
 
+## Normalize before judging
+
+Before filing visual mismatches, align the comparison state:
+
+- same viewport/breakpoint;
+- same content/data state;
+- same theme/mode;
+- same interaction state;
+- equivalent crop/device frame;
+- comparable image density when pixel dimensions differ.
+
+Do not report drift caused only by browser chrome, canvas padding, device framing, or scale mismatch.
+
+## Required fidelity surfaces
+
+Every substantial comparison must explicitly inspect:
+
+1. typography — family/fallback, weight, size, line height, letter spacing, wrapping;
+2. spacing/layout — container size, alignment, margins, padding, gaps, radii, vertical rhythm;
+3. color/tokens — surfaces, foregrounds, gradients, opacity, semantic state colors;
+4. assets/media — correct subject, crop, scale, sharpness, icon family, imagery treatment;
+5. copy/content — visible text, labels, hierarchy, truncation, metadata.
+
+Also inspect responsive behavior and material interaction states when relevant.
+
+## Finding severity
+
+- **P0** — core use is broken, severe accessibility failure, or layout is unusable.
+- **P1** — major visual or interaction mismatch users will clearly notice.
+- **P2** — moderate fidelity, responsive, or state drift.
+- **P3** — minor polish.
+
+For substantial reference-led work, actionable P0/P1/P2 findings block a clean handoff when they can be fixed in the current environment. P3 findings may remain as follow-up polish.
+
 ## Verification order
 
 1. Typecheck/build/lint/tests supported by the repo.
