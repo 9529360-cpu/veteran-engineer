@@ -22,7 +22,7 @@ function parseArgs(argv) {
     requireServerSdk: false,
     forceFallback: false,
     stateful: false,
-    expectTools: 34,
+    expectTools: 36,
     stateRoot: null
   };
   for (let i = 0; i < argv.length; i += 1) {

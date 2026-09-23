@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "veteran-engineering-studio",
-  "version": "1.9.3",
-  "description": "End-to-end software engineering plus a product-design specialist with progressive routing, automatic design-system discovery, advanced Figma/Code Connect workflows, authorized live URL reconstruction, Python Agent engineering, accessibility, and rendered QA.",
+  "version": "1.10.0",
+  "description": "End-to-end software engineering with a web-first Veteran Machine Bridge, specialist frontend product design, Python Agent engineering, repository/runtime takeover, debugging, release/operations, Figma/design-system workflows, accessibility, and rendered QA.",
   "keywords": [
     "full-stack",
     "software-engineering",
@@ -45,14 +45,17 @@
     "tool-calling",
     "multi-agent",
     "design-system-discovery",
-    "repo-probe"
+    "repo-probe",
+    "remote-machine",
+    "terminal",
+    "cross-device"
   ],
   "extensions": {
     "com.openai": {
       "interface": {
         "displayName": "Veteran Engineering Studio",
         "shortDescription": "Full-stack engineering with advanced Figma product design and visual QA",
-        "longDescription": "A two-skill engineering plugin with one accountable delivery path. Veteran Full-Stack Engineer owns repository-wide engineering, including backend/data/runtime, Python Agent systems, debugging, migrations and release. Frontend Design Builder adds bounded repository design-system discovery, context-budgeted routing, advanced Figma/Code Connect workflows, authorized live URL reconstruction, cross-tool design-system synchronization, responsive implementation, accessibility and blocking rendered visual QA.",
+        "longDescription": "A two-skill engineering plugin with one accountable delivery path. Veteran Full-Stack Engineer owns repository-wide engineering and can use an explicitly connected Veteran Machine Bridge for workspace-bounded files and managed local processes from web-capable hosts. Frontend Design Builder owns material UI/UX design, Figma/design-system work, responsive interaction, accessibility and rendered visual fidelity.",
         "developerName": "Veteran Engineer Project",
         "category": "Developer Tools",
         "capabilities": [

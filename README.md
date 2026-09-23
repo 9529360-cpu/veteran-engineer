@@ -9,6 +9,12 @@ The Full-Stack Engineer keeps end-to-end ownership. Material UI/UX work routes i
 
 The GitHub repository `9529360-cpu/veteran-engineer` is the implementation source of truth. Current repository/runtime evidence and executable gates outrank old exported artifacts, historical claims, or remembered checkpoints.
 
+## Veteran Machine Bridge
+
+Veteran Remote Host now includes an opt-in cross-device Machine Action Fabric for web-first engineering. It exposes only two intention-level MCP tools: `machine_inspect` for read-only device/files/process evidence and `machine_act` for request-id protected filesystem/process actions. Operators must explicitly enable the bridge and configure workspace roots plus executable policy; it is an application-level policy boundary, not an OS sandbox.
+
+The bridge is designed for ChatGPT Web and other remote MCP-capable hosts that need local checkout state, terminal execution, persistent process sessions, local services, or desktop/runtime evidence without depending on a third-party desktop-control provider.
+
 ## Studio contract and versioning
 
 This repository has two intentionally separate version domains:
