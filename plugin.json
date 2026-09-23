@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "veteran-engineering-studio",
-  "version": "1.3.0",
-  "description": "End-to-end software engineering plus a product-design specialist with progressive routing across Figma, Code Connect, libraries, motion, SwiftUI, FigJam, authorized live URL reconstruction, design-system sync, component labs, accessibility, and rendered QA.",
+  "version": "1.4.0",
+  "description": "End-to-end software engineering plus specialist frontend product design and Python Agent engineering in one plugin: repository takeover, architecture, debugging, backend/data, tool-using agents, explicit state/loop contracts, release/operations, high-fidelity UI/UX, design-system reuse, responsive implementation, accessibility, and rendered visual QA.",
   "keywords": [
     "full-stack",
     "software-engineering",
