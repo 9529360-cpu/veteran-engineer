@@ -366,7 +366,9 @@ export class MachineActionService {
         const exit = await new Promise((resolve, reject) => { child.once('error', reject); child.once('close', (code, signal) => resolve({ code, signal })); });
         clearTimeout(timeoutHandle);
         return {
-          operation, persistent: false, pid: child.pid, command, args: argv, cwd, exitCode: exit.code, signal: exit.signal || null,
+          operation, persistent: false, pid: child.pid, command, args: argv, cwd,
+          ...(Number.isInteger(exit.code) ? { exitCode: exit.code } : {}),
+          ...(exit.signal ? { signal: exit.signal } : {}),
           timedOut, durationMs: Date.now() - startedAt, stdout, stderr, truncated: { stdout: stdoutTruncated, stderr: stderrTruncated }
         };
       }

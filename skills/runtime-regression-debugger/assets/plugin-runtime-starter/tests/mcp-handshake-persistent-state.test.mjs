@@ -48,8 +48,8 @@ test('repeated stateful modern handshakes succeed against the same persistent st
     assert.equal(secondReport.ok, true);
     assert.equal(firstReport.era, 'modern');
     assert.equal(secondReport.era, 'modern');
-    assert.equal(firstReport.toolCount, 34);
-    assert.equal(secondReport.toolCount, 34);
+    assert.equal(firstReport.toolCount, 36);
+    assert.equal(secondReport.toolCount, 36);
     assert.equal(firstReport.stateful.tool, 'project_open');
     assert.equal(secondReport.stateful.tool, 'project_open');
     assert.ok(firstReport.stateful.projectId);

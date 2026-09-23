@@ -28,7 +28,7 @@ test('installer doctor verifies modern MCP without persisting a probe project', 
     assert.equal(report.ok, true, JSON.stringify(report, null, 2));
     assert.equal(report.runtime.sdkAvailable, true, 'source runtime should expose the installed official SDK graph');
     assert.equal(report.runtime.modern.era, 'modern');
-    assert.equal(report.runtime.modern.toolCount, 34);
+    assert.equal(report.runtime.modern.toolCount, 36);
     assert.equal(report.runtime.modern.runtime.mcp.implementation, 'official-sdk');
     assert.equal(report.runtime.modern.stateful, null, 'doctor must not execute the mutating project_open stateful probe');
 
