@@ -51,9 +51,15 @@ ALIASES = {
     "design-gate": "visual-authority",
     "major-ui": "visual-authority",
     "ui-redesign": "visual-authority",
+    "product-patterns": "product-patterns",
+    "ui-patterns": "product-patterns",
+    "desktop-workspace": "product-patterns",
+    "agent-workspace": "product-patterns",
+    "ide-workspace": "product-patterns",
 }
 
 ROUTES = {
+    "product-patterns": ["references/product-ui-pattern-library.md", "references/visual-design-authority.md", "references/visual-direction.md"],
     "visual-authority": ["references/visual-design-authority.md", "references/visual-direction.md", "references/product-design-cycle.md"],
     "product-design": ["references/product-design-cycle.md", "references/design-source-authority.md", "references/visual-direction.md"],
     "design-system-sync": ["references/design-system-sync.md", "references/design-system.md", "references/design-source-authority.md"],
@@ -93,6 +99,7 @@ ROUTES = {
 }
 
 MODE_PRIORITY = [
+    ("product-patterns", {"product-patterns"}),
     ("visual-authority", {"visual-authority"}),
     ("design-action", {"design-action"}),
     ("product-design", {"product-design"}),
