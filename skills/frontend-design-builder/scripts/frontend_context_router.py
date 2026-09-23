@@ -42,11 +42,15 @@ ALIASES = {
     "url-to-code": "live-reference",
     "live-url": "live-reference",
     "site-recreation": "live-reference",
+    "design-tools": "design-action",
+    "figma-tools": "design-action",
+    "design-action-fabric": "design-action",
 }
 
 ROUTES = {
     "product-design": ["references/product-design-cycle.md", "references/design-source-authority.md", "references/visual-direction.md"],
     "design-system-sync": ["references/design-system-sync.md", "references/design-system.md", "references/design-source-authority.md"],
+    "design-action": ["references/design-action-fabric.md", "references/tool-orchestration.md", "references/figma-integration.md"],
     "figma": ["references/figma-integration.md", "references/design-source-authority.md", "references/design-system.md"],
     "code-connect": ["references/figma-integration.md", "references/design-source-authority.md", "references/design-system.md"],
     "figma-write": ["references/figma-integration.md", "references/design-system.md", "references/tool-orchestration.md"],
@@ -82,6 +86,7 @@ ROUTES = {
 }
 
 MODE_PRIORITY = [
+    ("design-action", {"design-action"}),
     ("product-design", {"product-design"}),
     ("design-system-sync", {"design-system-sync"}),
     ("figma-library", {"figma-library"}),

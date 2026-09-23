@@ -10,6 +10,7 @@ from frontend_context_router import normalize_signals, route_signals  # noqa: E4
 REFS = {
     "component-lab.md",
     "concept-and-assets.md",
+    "design-action-fabric.md",
     "design-source-authority.md",
     "design-system-sync.md",
     "design-system.md",
@@ -200,4 +201,15 @@ def test_live_reference_routes_capture_before_fidelity(tmp_path):
         "references/live-reference-workflow.md",
         "references/tool-orchestration.md",
         "references/fidelity-protocol.md",
+    ]
+
+
+def test_design_action_route_loads_provider_contract_first(tmp_path):
+    root = _seed_refs(tmp_path)
+    result = route_signals("figma-tools", skill_root=root)
+    assert result["primary_mode"] == "design-action"
+    assert paths(result) == [
+        "references/design-action-fabric.md",
+        "references/tool-orchestration.md",
+        "references/figma-integration.md",
     ]

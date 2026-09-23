@@ -64,3 +64,8 @@ For Framer, Sketch, Penpot, ProtoPie, Principle, or other design sources without
 When a user explicitly asks to faithfully recreate a live URL they are authorized to reproduce, read `references/live-reference-workflow.md` before coding. Use browser/rendered tools to capture desktop/mobile, DOM/layout, assets, and material interactions first. A live page that is blocked, logged out, half-rendered, or redirected is not valid fidelity evidence.
 
 When the user asks for a redesign or says "like this site," treat the URL as evidence/inspiration unless they explicitly establish it as the target. Do not silently switch into clone mode.
+
+
+## Design Action Fabric
+
+For tool-heavy design work, read `design-action-fabric.md`. Route the requested design intent against the tools actually exposed by the current host before choosing Figma or a fallback. Treat design tools as capability providers, not as permanent product architecture.

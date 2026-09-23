@@ -15,6 +15,12 @@ When the host exposes dedicated Figma skills/tools, use their prerequisite workf
 
 If those capabilities are unavailable, fall back to exported screenshots/specs and state exactly what structured Figma data could not be inspected.
 
+## Design Action Fabric binding
+
+Before a tool-heavy Figma phase, use `references/design-action-fabric.md` as the provider-neutral contract. When availability is uncertain, route the current host tool inventory through `scripts/design_action_router.py` and only then bind the selected capability to concrete Figma tools.
+
+This keeps Figma as the richest current provider without making Figma-specific tool names the permanent architecture of Veteran.
+
 ## Host capability routing
 
 When the host exposes the following dedicated Figma skills, route to them instead of reproducing their detailed tool contracts here. Load only the capability needed for the current phase.
