@@ -20,6 +20,7 @@ REFS = {
     "modes-and-architecture.md",
     "live-reference-workflow.md",
     "product-design-cycle.md",
+    "product-ui-pattern-library.md",
     "qa-checklist.md",
     "reference-research.md",
     "tool-orchestration.md",
@@ -232,3 +233,14 @@ def test_visual_authority_alias_does_not_collapse_to_generic_product_design(tmp_
     result = route_signals("ui-redesign", skill_root=root)
     assert result["primary_mode"] == "visual-authority"
     assert paths(result)[0] == "references/visual-design-authority.md"
+
+
+def test_dense_workspace_routes_to_product_patterns(tmp_path):
+    root = _seed_refs(tmp_path)
+    result = route_signals("agent-workspace,visual-authority", skill_root=root)
+    assert result["primary_mode"] == "product-patterns"
+    assert paths(result) == [
+        "references/product-ui-pattern-library.md",
+        "references/visual-design-authority.md",
+        "references/visual-direction.md",
+    ]
