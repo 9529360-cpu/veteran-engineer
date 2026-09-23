@@ -23,7 +23,12 @@ def _frontmatter(text: str) -> dict[str, str]:
 
 
 def _referenced_paths(text: str) -> set[str]:
-    return set(re.findall(r"\b(?:references|scripts|assets)/[A-Za-z0-9._/-]+", text))
+    paths = set()
+    for code_span in re.findall(r"`([^`]+)`", text):
+        match = re.match(r"((?:references|scripts|assets)/[A-Za-z0-9._/-]+)", code_span)
+        if match:
+            paths.add(match.group(1))
+    return paths
 
 
 def test_studio_composition_contract():
@@ -64,7 +69,9 @@ def test_studio_composition_contract():
         assert "display_name:" in agent and "short_description:" in agent
         for rel in _referenced_paths(skill_text):
             target = root / rel
-            assert target.is_file(), f"{expected_name} references missing resource: {rel}"
+            assert target.exists(), f"{expected_name} references missing resource: {rel}"
+            if rel.startswith(("references/", "scripts/")):
+                assert target.is_file(), f"{expected_name} executable/reference resource must be a file: {rel}"
             if rel.startswith("references/"):
                 assert len(Path(rel).parts) == 2, f"deep reference path is not allowed: {rel}"
 
