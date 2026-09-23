@@ -117,7 +117,11 @@ Do not call a change a redesign when the underlying product structure is materia
 
 A redesign must improve at least one product-level relationship such as hierarchy, focal point, navigation, task framing, workflow, content emphasis, or interaction model.
 
-### Named-reference translation
+### Product pattern support
+
+When the target product has weak existing structure and no accepted visual target, read `product-ui-pattern-library.md` before selecting composition. Use it to reason from first-class objects, task framing, navigation scope, parallel work, contextual panels, artifacts, and execution evidence. It is a structural vocabulary, not a component package and not a visual authority.
+
+## Named-reference translation
 
 When the user says "like Codex", "like Linear", or names another product, extract the **operating model** before the aesthetic:
 - what is first-class: projects, tasks, threads, documents, canvases, agents?
