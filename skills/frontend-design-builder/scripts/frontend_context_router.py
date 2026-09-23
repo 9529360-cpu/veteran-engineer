@@ -45,9 +45,16 @@ ALIASES = {
     "design-tools": "design-action",
     "figma-tools": "design-action",
     "design-action-fabric": "design-action",
+    "visual-quality": "visual-authority",
+    "design-quality": "visual-authority",
+    "visual-authority": "visual-authority",
+    "design-gate": "visual-authority",
+    "major-ui": "visual-authority",
+    "ui-redesign": "visual-authority",
 }
 
 ROUTES = {
+    "visual-authority": ["references/visual-design-authority.md", "references/visual-direction.md", "references/product-design-cycle.md"],
     "product-design": ["references/product-design-cycle.md", "references/design-source-authority.md", "references/visual-direction.md"],
     "design-system-sync": ["references/design-system-sync.md", "references/design-system.md", "references/design-source-authority.md"],
     "design-action": ["references/design-action-fabric.md", "references/tool-orchestration.md", "references/figma-integration.md"],
@@ -86,6 +93,7 @@ ROUTES = {
 }
 
 MODE_PRIORITY = [
+    ("visual-authority", {"visual-authority"}),
     ("design-action", {"design-action"}),
     ("product-design", {"product-design"}),
     ("design-system-sync", {"design-system-sync"}),

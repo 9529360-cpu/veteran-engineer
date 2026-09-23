@@ -9,6 +9,7 @@ Apply this contract to substantial frontend work.
 3. Decide whether the task is prototype, production, reference-led, or concept-first.
 4. Identify the design-system source of truth.
 5. Decide what evidence will prove completion: build, tests, screenshots, interaction checks, responsive checks, or direct comparison.
+6. For substantial new/redesigned UI without an accepted reference, do not begin deep implementation until a real visual target and compact design contract have been selected under `visual-design-authority.md`.
 
 ## During implementation
 

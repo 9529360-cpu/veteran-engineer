@@ -2,6 +2,14 @@
 
 Use before handoff for substantial UI work.
 
+## Visual quality gate
+
+Before fidelity details, judge whether the rendered result still expresses the selected design direction.
+
+Block a clean handoff when the surface has drifted into generic AI-template behavior: unclear focal point, weak typography hierarchy, card soup, decorative gradients/glows/badges, generic sidebar-dashboard composition, uniform density, or product-irrelevant visual filler. Compare against the active visual target rather than rationalizing the coded result.
+
+A visually polished build that no longer matches the selected product-specific direction is still a design failure.
+
 ## Visual fidelity
 
 Compare the implementation with the accepted reference or declared design direction:

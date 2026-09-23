@@ -24,6 +24,7 @@ REFS = {
     "reference-research.md",
     "tool-orchestration.md",
     "visual-direction.md",
+    "visual-design-authority.md",
 }
 
 
@@ -213,3 +214,21 @@ def test_design_action_route_loads_provider_contract_first(tmp_path):
         "references/tool-orchestration.md",
         "references/figma-integration.md",
     ]
+
+
+def test_visual_authority_owns_major_ui_quality_recovery(tmp_path):
+    root = _seed_refs(tmp_path)
+    result = route_signals("major-ui,visual-quality", skill_root=root)
+    assert result["primary_mode"] == "visual-authority"
+    assert paths(result) == [
+        "references/visual-design-authority.md",
+        "references/visual-direction.md",
+        "references/product-design-cycle.md",
+    ]
+
+
+def test_visual_authority_alias_does_not_collapse_to_generic_product_design(tmp_path):
+    root = _seed_refs(tmp_path)
+    result = route_signals("ui-redesign", skill_root=root)
+    assert result["primary_mode"] == "visual-authority"
+    assert paths(result)[0] == "references/visual-design-authority.md"

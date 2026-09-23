@@ -78,7 +78,7 @@ Do not mistake one loud anecdote for a common problem. Cluster recurring frictio
 
 ## 3. Explore distinct directions
 
-When the visual or interaction direction is unresolved, explore meaningfully different concepts before deep implementation.
+When the visual or interaction direction is unresolved, explore meaningfully different concepts before deep implementation. For substantial visual work, read `visual-design-authority.md`: the concept phase is a blocking design gate, not optional brainstorming.
 
 Different directions should vary at least one of:
 
@@ -95,6 +95,8 @@ Do not present three recolors of the same layout as three concepts.
 When the user explicitly asks for alternatives, default to three distinct directions. If the user did not ask for a review gate and one direction is clearly supported by constraints/evidence, choose it and proceed. Ask for a decision only when the fork materially changes product semantics, scope, or irreversible design-system direction.
 
 Generated concepts are proposals until selected or adopted.
+
+When Figma, image generation, or another capable visual provider exists, materialize the competing directions visually. Text-only descriptions are insufficient for a visual-quality decision when real visual evidence can be produced.
 
 ## 4. Lock the active design contract
 
@@ -115,6 +117,8 @@ required_verification:
 This can live in working notes; do not create bureaucracy for tiny tasks.
 
 Once locked, stop silently changing the product structure during implementation. If new evidence invalidates it, update the contract explicitly.
+
+For substantial new/redesigned surfaces, the contract is not lockable until one active visual target exists and passes the anti-generic rejection test in `visual-design-authority.md`.
 
 ## 5. Implement from system primitives
 

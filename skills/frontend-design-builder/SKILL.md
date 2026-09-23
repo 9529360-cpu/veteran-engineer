@@ -24,7 +24,7 @@ When the sibling Full-Stack Engineer is present, keep one accountable engineerin
 Choose the lightest valid path:
 
 1. **Small change inside an existing system** — inspect the existing design system, reuse its components/tokens, implement, then verify.
-2. **New screen or major redesign** — establish intent and visual direction, create or extract a design system, implement from it, then visually compare and refine.
+2. **New screen or major redesign** — invoke Visual Design Authority: inspect current evidence, materialize and select a strong visual direction, lock a visual target/design contract, then implement and visually compare. Deep implementation is blocked while the design remains only a text idea.
 3. **Reference-led implementation** — treat the accepted screenshot/mockup/Figma/image concept as the visual source of truth. Preserve its information architecture and visible hierarchy unless the user requests a change.
 4. **Concept-first work** — when no strong visual reference exists and visual quality matters, create enough concept material to specify the complete requested surface before deep implementation. Use image generation when available and appropriate.
 
@@ -42,12 +42,13 @@ Use the strongest structured source available:
 - screenshots/mockups/exports as visual targets when accepted;
 - ImageGen concepts as proposals until selected.
 
-For Figma-heavy work, read `references/figma-integration.md`. For external pattern research, read `references/reference-research.md`. When the repo has Storybook or visual regression tooling, read `references/component-lab.md`. For redesigns, UX improvement, audits, research-led design, or unresolved product directions, read `references/product-design-cycle.md`. When Figma, code tokens, component APIs, and Storybook all represent the same system, read `references/design-system-sync.md` and resolve drift explicitly. For an explicitly authorized faithful recreation from a live URL, read `references/live-reference-workflow.md` before coding.
+For substantial new UI, major redesigns, or work where the current interface is explicitly judged visually weak, read `references/visual-design-authority.md` before deep implementation. For Figma-heavy work, read `references/figma-integration.md`. For external pattern research, read `references/reference-research.md`. When the repo has Storybook or visual regression tooling, read `references/component-lab.md`. For redesigns, UX improvement, audits, research-led design, or unresolved product directions, read `references/product-design-cycle.md`. When Figma, code tokens, component APIs, and Storybook all represent the same system, read `references/design-system-sync.md` and resolve drift explicitly. For an explicitly authorized faithful recreation from a live URL, read `references/live-reference-workflow.md` before coding.
 
 ## Core rules
 
 - Design the requested surface as a coherent whole; do not stop at an attractive hero when the task is a full page or app.
 - Prefer one strong visual idea over generic decoration, repetitive card grids, filler badges, fake metrics, or ornamental UI chrome.
+- For substantial unresolved UI, do not let the first plausible layout become production by default. Materialize competing directions when needed, reject generic AI-template patterns, and lock one visual target before deep code.
 - Establish or discover the design system before producing repeated components.
 - In an existing codebase, **discover before inventing**. Reuse the installed component library, local primitives, app shell, semantic tokens, icon set, and existing patterns. Inspect real props/types/exports before using unfamiliar components.
 - Bind styling to semantic tokens or existing abstractions when they exist. Avoid hardcoded one-off values that bypass theming in production work.
@@ -81,6 +82,7 @@ Determine from the prompt and available project context:
 
 Read `references/modes-and-architecture.md` when delivery mode or technology architecture matters.
 Read `references/visual-direction.md` when visual direction is underspecified.
+Read `references/visual-design-authority.md` when this is a substantial new screen, major redesign, or explicit visual-quality recovery task.
 
 ### 2. Resolve the design-system source
 
@@ -94,15 +96,15 @@ If no system exists, define a compact one before repeated implementation: color 
 
 For projects that benefit from reuse, populate `references/design-system-reference.template.md` (or equivalent project notes) and stamp important library versions so stale APIs can be rechecked later.
 
-### 3. Create or accept the visual spec
+### 3. Create, compete, and lock the visual spec
 
 If the user provides a screenshot, mockup, Figma design, accepted concept, or strong reference, use it as the active visual spec.
 
-If no adequate spec exists and the task is visually significant, read `references/concept-and-assets.md` and create enough concept material to cover the full requested surface, important states, and dense details before deep implementation when image generation/design tooling is available.
+If no adequate spec exists and the task is visually significant, use `references/visual-design-authority.md` and `references/concept-and-assets.md`. When direction is unresolved, materialize 2-3 meaningfully different concepts when capable visual tools are available; do not count recolors or rearranged card grids as distinct directions. Select the strongest product-fit direction without adding a user approval gate unless requested or the choice changes product semantics/scope.
 
-If the user explicitly requests concept review before implementation, keep concept review and implementation as separate phases. Otherwise, do not introduce unnecessary approval gates.
+Deep implementation is blocked until the active direction exists as real visual evidence when the environment can produce it. A text-only description is not a sufficient visual target when Figma, image generation, or rendered prototyping is available.
 
-Before coding, extract the visible copy, color/surface roles, typography, spacing/container rules, component families/variants, icon inventory, imagery treatment, responsive behavior, motion cues, and required interaction states.
+Before coding, extract and lock the visible copy, focal point/hierarchy, color/surface roles, typography, density and spacing/container rules, component families/variants, icon/imagery treatment, responsive behavior, motion cues, required interaction states, and design-system authority. Run the anti-generic rejection test before committing to production code.
 
 ### 4. Implement as a system
 
@@ -130,6 +132,7 @@ For non-trivial multi-source work or uncertain routing, use `scripts/frontend_co
 
 Load only what the task needs:
 - `references/visual-direction.md` — aesthetic direction, reference interpretation, typography, density, motion, accessibility baseline, anti-generic design heuristics.
+- `references/visual-design-authority.md` — blocking pre-code visual target, concept competition, anti-generic rejection test, design selection standard, and rendered handoff gate for substantial UI.
 - `references/design-system.md` — discovery/reuse, semantic tokens, component APIs, version-aware cache, Figma-sourced systems.
 - `references/concept-and-assets.md` — image-generated concept strategy, section/state coverage, approval mode, asset passes, game art separation.
 - `references/modes-and-architecture.md` — prototype/production modes and technology-specific architecture for web, Angular, MAUI, Unity, Godot, and Unreal.

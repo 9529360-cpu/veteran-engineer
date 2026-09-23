@@ -45,6 +45,14 @@ Choose the visual language that fits the product instead of repeating one house 
 
 Treat named products/games as property references, not as assets to copy. Extract palette, typography, density, material, motion, and emotional qualities and reinterpret them for the user's product.
 
+## Concept competition
+
+For visually important work without an accepted target, do not trust the first coherent composition merely because it is implementable. Explore materially different hierarchy/composition directions before committing when tools allow.
+
+A valid alternative must change product framing, hierarchy, density, navigation, interaction, or material language. Color swaps and rearranged versions of the same card system do not count.
+
+Select based on task clarity, product specificity, hierarchy, coherence, design-system fit, responsive plausibility, and distinctiveness. Do not use a numeric beauty score.
+
 ## Typography
 
 Typography is structural. Define display/heading, body, UI/control, caption/metadata, and data/mono roles as needed. Set explicit size, weight, line-height, and tracking for controls as well as content.
@@ -75,7 +83,9 @@ Match timing/easing to the aesthetic. Prefer transform/opacity for performant mo
 
 ## Anti-generic checks
 
-Before accepting a concept, remove visual filler:
+Before accepting a concept, challenge whether it could belong to almost any AI-generated SaaS product. If yes, the direction is not specific enough yet.
+
+Remove visual filler:
 - fake statistics or pseudo-system labels;
 - badges/pills that carry no meaning;
 - decorative icon rows;
@@ -83,6 +93,9 @@ Before accepting a concept, remove visual filler:
 - unnecessary cards;
 - stock-looking placeholder imagery;
 - repeated section formulas;
+- card-on-card nesting or bento composition without task-driven grouping;
+- standard sidebar/topbar/dashboard shells with no product-specific affordance;
+- uniform rhythm that makes every region feel equally important;
 - extra hero kicker/eyebrow copy not requested by the user.
 
 Avoid defaulting to the same fashionable font, white-card layout, or purple/pink gradient every time. Aim for a specific, context-fit visual point of view rather than a recognizable AI template.
