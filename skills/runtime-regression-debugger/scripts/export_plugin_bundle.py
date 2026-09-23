@@ -106,18 +106,37 @@ def build_distribution_metadata(profile: str, *, app_reference: bool) -> dict:
     }
 
 
-def bundle_skill(skill_root: pathlib.Path, plugin_root: pathlib.Path) -> None:
+def bundle_skills(skill_root: pathlib.Path, plugin_root: pathlib.Path) -> None:
     skills_dir = plugin_root / "skills"
     if skills_dir.exists():
         shutil.rmtree(skills_dir)
+
     bundled_skill = skills_dir / "runtime-regression-debugger"
     bundled_skill.mkdir(parents=True, exist_ok=True)
     copy_filtered(skill_root, bundled_skill, exclude_runtime_asset=True)
 
+    frontend_root = skill_root.parent / "frontend-design-builder"
+    if frontend_root.is_dir():
+        reject_symlink_components(skill_root.parent, frontend_root)
+        bundled_frontend = skills_dir / "frontend-design-builder"
+        bundled_frontend.mkdir(parents=True, exist_ok=True)
+        copy_filtered(frontend_root, bundled_frontend)
+
+
+def copy_portable_manifest(skill_root: pathlib.Path, plugin_root: pathlib.Path) -> None:
+    repository_root = skill_root.parent.parent
+    portable_manifest = repository_root / "plugin.json"
+    if not portable_manifest.is_file():
+        return
+    reject_symlink_components(repository_root, portable_manifest)
+    load_json(portable_manifest)
+    shutil.copyfile(portable_manifest, plugin_root / "plugin.json")
+
 
 def build_local_profile(skill_root: pathlib.Path, runtime: pathlib.Path, plugin_root: pathlib.Path, profile: str) -> None:
     copy_filtered(runtime, plugin_root)
-    bundle_skill(skill_root, plugin_root)
+    bundle_skills(skill_root, plugin_root)
+    copy_portable_manifest(skill_root, plugin_root)
     write_json(plugin_root / "veteran-distribution.json", build_distribution_metadata(profile, app_reference=False))
 
 
@@ -138,14 +157,23 @@ def build_web_profile(skill_root: pathlib.Path, runtime: pathlib.Path, plugin_ro
     else:
         manifest.pop("apps", None)
     write_json(plugin_root / ".codex-plugin" / "plugin.json", manifest)
-    bundle_skill(skill_root, plugin_root)
+    bundle_skills(skill_root, plugin_root)
+    copy_portable_manifest(skill_root, plugin_root)
     write_json(plugin_root / "veteran-distribution.json", build_distribution_metadata("web", app_reference=app_manifest is not None))
 
 
 def validate_export(root: pathlib.Path, profile: str) -> None:
     skill_root = root / "skills" / "runtime-regression-debugger"
+    frontend_root = root / "skills" / "frontend-design-builder"
     manifest_path = root / ".codex-plugin" / "plugin.json"
-    required = [skill_root / "SKILL.md", skill_root / "agents" / "openai.yaml", manifest_path, root / "veteran-distribution.json"]
+    required = [
+        skill_root / "SKILL.md",
+        skill_root / "agents" / "openai.yaml",
+        frontend_root / "SKILL.md",
+        frontend_root / "agents" / "openai.yaml",
+        manifest_path,
+        root / "veteran-distribution.json",
+    ]
     missing = [str(path.relative_to(root)) for path in required if not path.is_file()]
     if missing:
         raise RuntimeError("plugin export missing required files: " + ", ".join(missing))

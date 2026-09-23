@@ -3,6 +3,7 @@ name: Package Plugin Artifacts
 on:
   pull_request:
     paths:
+      - "plugin.json"
       - ".codex-plugin/**"
       - ".mcp.json"
       - "package.json"
@@ -10,11 +11,13 @@ on:
       - "src/**"
       - "tests/**"
       - "skills/runtime-regression-debugger/**"
+      - "skills/frontend-design-builder/**"
       - ".github/workflows/package-plugin-artifact.yml"
   push:
     branches:
       - main
     paths:
+      - "plugin.json"
       - ".codex-plugin/**"
       - ".mcp.json"
       - "package.json"
@@ -22,6 +25,7 @@ on:
       - "src/**"
       - "tests/**"
       - "skills/runtime-regression-debugger/**"
+      - "skills/frontend-design-builder/**"
       - ".github/workflows/package-plugin-artifact.yml"
   workflow_dispatch:
 
@@ -167,6 +171,8 @@ jobs:
               "veteran-engineer/veteran-distribution.json",
               "veteran-engineer/skills/runtime-regression-debugger/SKILL.md",
               "veteran-engineer/skills/runtime-regression-debugger/agents/openai.yaml",
+              "veteran-engineer/skills/frontend-design-builder/SKILL.md",
+              "veteran-engineer/skills/frontend-design-builder/agents/openai.yaml",
           }
           local_required = {
               "veteran-engineer/.mcp.json",

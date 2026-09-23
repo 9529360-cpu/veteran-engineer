@@ -28,7 +28,7 @@ A handoff carries only `artifact/revision identity -> acceptance rows/invariants
 
 ### Gate user-facing work through product/experience design
 
-For meaningful UI/UX redesign use `current rendered evidence -> experience/design contract -> implementation mapping -> implementation -> requirement/spec compliance review -> code-quality review -> rendered design QA`. For substantial UI work, production UI code is blocked until the experience/design contract exists, except a bounded uncertainty probe. If design is unresolved, use `design-synthesis-prototyping.md`; after acceptance, implementation owners code it and rendered QA closes it.
+For meaningful UI/UX redesign use `current rendered evidence -> experience/design contract -> implementation mapping -> implementation -> requirement/spec compliance review -> code-quality review -> rendered design QA`. When the sibling `frontend-design-builder` Skill is available in the same plugin, use it for substantial visual direction, design-system discovery, design-to-code, responsive polish, motion, accessibility, and rendered visual QA while this Skill retains end-to-end engineering ownership. For substantial UI work, production UI code is blocked until the experience/design contract exists, except a bounded uncertainty probe. If design is unresolved, use `design-synthesis-prototyping.md`; after acceptance, implementation owners code it and rendered QA closes it.
 
 ### Resolve authority explicitly
 

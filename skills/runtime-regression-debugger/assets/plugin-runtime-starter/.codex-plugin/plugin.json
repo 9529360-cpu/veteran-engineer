@@ -1,23 +1,26 @@
 {
   "name": "veteran-engineer",
   "version": "0.5.0",
-  "description": "Cross-host Veteran Engineer engineering control plane and policy skill.",
+  "description": "Cross-host Veteran Engineering Studio: end-to-end engineering control plane plus specialist frontend product design and rendered visual QA.",
   "author": {
     "name": "Veteran Engineer Project"
   },
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
-    "displayName": "Veteran Engineer",
-    "shortDescription": "Cross-host engineering control plane",
-    "longDescription": "Durable project missions, guarded worker execution, validation, review, evidence, and governed engineering experience across supported hosts.",
+    "displayName": "Veteran Engineering Studio",
+    "shortDescription": "Full-stack engineering with specialist frontend design and visual QA",
+    "longDescription": "Veteran Full-Stack Engineer retains end-to-end engineering ownership across repository takeover, architecture, backend, data, debugging, migrations, release and operations. Frontend Design Builder specializes in visual direction, design systems, design-to-code, responsive interaction, motion, accessibility and rendered visual fidelity. The existing Veteran runtime and MCP control plane remain available for supported local and Codex surfaces.",
     "developerName": "Veteran Engineer Project",
     "category": "Developer Tools",
-    "capabilities": ["Interactive", "Write"],
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
     "defaultPrompt": [
-      "Take over this repository and finish the requested engineering change.",
-      "Debug this regression and validate the real root cause.",
-      "Plan and execute this multi-step repository mission safely."
+      "Take over this repository and finish the requested engineering change, using the frontend design specialist when visual UI quality or design-system work is material.",
+      "Build this feature as a production-quality vertical slice, including polished frontend behavior and rendered QA when applicable.",
+      "Audit this product across engineering and UI quality, implement the highest-value fixes, and verify the real runtime result."
     ]
   }
 }
