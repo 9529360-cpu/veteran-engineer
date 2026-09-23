@@ -64,3 +64,13 @@ Before implementation, be able to answer:
 - What rendered evidence will prove completion?
 
 If those answers are materially ambiguous, resolve the ambiguity before deep implementation.
+
+
+### Live URL distinction
+
+A live URL is not automatically visual authority.
+
+- **faithful recreation explicitly requested and authorized** → the captured live surface becomes the active visual/interaction target for the agreed scope;
+- **redesign / improve / inspired by / like this** → the live product is current-state evidence and/or inspiration until a new target is accepted.
+
+Do not mix clone fidelity and redesign freedom in the same phase without an explicit contract change.

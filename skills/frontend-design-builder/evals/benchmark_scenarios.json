@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "purpose": "Regression scenarios for evidence-first product design, progressive context routing, Figma design/code/library/motion/SwiftUI/FigJam workflows, Code Connect, cross-tool design-system synchronization, component labs, reference research, fidelity, and graceful degradation.",
+  "purpose": "Regression scenarios for evidence-first product design, progressive context routing, Figma design/code/library/motion/SwiftUI/FigJam workflows, live URL reconstruction, Code Connect, cross-tool design-system synchronization, component labs, reference research, fidelity, and graceful degradation.",
   "scenarios": [
     {
       "id": "existing-system-small-change",
@@ -517,6 +517,43 @@
       "must_not": [
         "invent code props to match Figma properties",
         "replace an existing parser-based mapping blindly when a parallel supported mapping format is required"
+      ]
+    },
+    {
+      "id": "authorized-live-url-recreation",
+      "request": "Faithfully recreate our own live marketing page as a local frontend, including responsive behavior and interactions.",
+      "expected_mode": "reference-led",
+      "must_load": [
+        "references/live-reference-workflow.md",
+        "references/tool-orchestration.md",
+        "references/fidelity-protocol.md"
+      ],
+      "must_do": [
+        "capture desktop mobile DOM assets and material interactions before coding",
+        "build only from captured evidence within scope",
+        "compare the rendered implementation against the live source at matching states"
+      ],
+      "must_not": [
+        "hotlink source assets in the final app",
+        "treat build or server health as visual verification"
+      ]
+    },
+    {
+      "id": "live-url-redesign-not-clone",
+      "request": "Redesign our product page to be better, using this live URL as context.",
+      "expected_mode": "concept-first",
+      "must_load": [
+        "references/product-design-cycle.md",
+        "references/design-source-authority.md"
+      ],
+      "must_do": [
+        "treat the live page as current-state evidence rather than automatic clone authority",
+        "audit the relevant existing experience before redesigning",
+        "lock a new accepted design target before fidelity implementation"
+      ],
+      "must_not": [
+        "recreate the source pixel-for-pixel without being asked",
+        "mix clone constraints with redesign freedom implicitly"
       ]
     }
   ]

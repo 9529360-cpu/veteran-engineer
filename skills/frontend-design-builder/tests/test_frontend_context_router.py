@@ -17,6 +17,7 @@ REFS = {
     "fidelity-protocol.md",
     "figma-integration.md",
     "modes-and-architecture.md",
+    "live-reference-workflow.md",
     "product-design-cycle.md",
     "qa-checklist.md",
     "reference-research.md",
@@ -188,4 +189,15 @@ def test_code_to_figma_route_uses_existing_system_before_write(tmp_path):
         "references/figma-integration.md",
         "references/design-system.md",
         "references/tool-orchestration.md",
+    ]
+
+
+def test_live_reference_routes_capture_before_fidelity(tmp_path):
+    root = _seed_refs(tmp_path)
+    result = route_signals("url-to-code", skill_root=root)
+    assert result["primary_mode"] == "live-reference"
+    assert paths(result) == [
+        "references/live-reference-workflow.md",
+        "references/tool-orchestration.md",
+        "references/fidelity-protocol.md",
     ]

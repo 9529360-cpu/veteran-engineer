@@ -39,6 +39,9 @@ ALIASES = {
     "design-library": "figma-library",
     "figma-board": "figjam",
     "figma-diagram": "figjam",
+    "url-to-code": "live-reference",
+    "live-url": "live-reference",
+    "site-recreation": "live-reference",
 }
 
 ROUTES = {
@@ -51,6 +54,7 @@ ROUTES = {
     "motion": ["references/figma-integration.md", "references/modes-and-architecture.md", "references/qa-checklist.md"],
     "swiftui": ["references/figma-integration.md", "references/modes-and-architecture.md", "references/design-source-authority.md"],
     "figjam": ["references/figma-integration.md", "references/product-design-cycle.md", "references/design-source-authority.md"],
+    "live-reference": ["references/live-reference-workflow.md", "references/tool-orchestration.md", "references/fidelity-protocol.md"],
     "screenshot": ["references/fidelity-protocol.md", "references/design-source-authority.md"],
     "mockup": ["references/fidelity-protocol.md", "references/design-source-authority.md"],
     "reference": ["references/fidelity-protocol.md", "references/design-source-authority.md"],
@@ -85,6 +89,7 @@ MODE_PRIORITY = [
     ("figma-motion", {"motion"}),
     ("figma-swiftui", {"swiftui"}),
     ("figjam", {"figjam"}),
+    ("live-reference", {"live-reference"}),
     ("figma-design-to-code", {"figma", "code-connect"}),
     ("reference-led", {"screenshot", "mockup", "reference", "fidelity"}),
     ("component-lab", {"storybook", "component-lab", "visual-regression"}),

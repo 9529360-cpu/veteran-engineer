@@ -57,3 +57,10 @@ When Storybook or an equivalent component catalog exists in the repository, insp
 ## Other design tools
 
 For Framer, Sketch, Penpot, ProtoPie, Principle, or other design sources without a dedicated connector, use exports, screenshots, specs, tokens, or repository artifacts as available. Apply the same authority/evidence model from `references/design-source-authority.md`; do not claim structured extraction that was not performed.
+
+
+## Live URL capture
+
+When a user explicitly asks to faithfully recreate a live URL they are authorized to reproduce, read `references/live-reference-workflow.md` before coding. Use browser/rendered tools to capture desktop/mobile, DOM/layout, assets, and material interactions first. A live page that is blocked, logged out, half-rendered, or redirected is not valid fidelity evidence.
+
+When the user asks for a redesign or says "like this site," treat the URL as evidence/inspiration unless they explicitly establish it as the target. Do not silently switch into clone mode.

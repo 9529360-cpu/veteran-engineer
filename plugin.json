@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "veteran-engineering-studio",
-  "version": "1.7.0",
-  "description": "End-to-end software engineering plus a product-design specialist with progressive routing across Figma design-to-code, Code Connect, libraries, motion, SwiftUI, FigJam, design-system sync, component labs, reference research, accessibility, and rendered QA.",
+  "version": "1.8.0",
+  "description": "End-to-end software engineering plus a product-design specialist with progressive routing across Figma, Code Connect, libraries, motion, SwiftUI, FigJam, authorized live URL reconstruction, design-system sync, component labs, accessibility, and rendered QA.",
   "keywords": [
     "full-stack",
     "software-engineering",
@@ -37,14 +37,17 @@
     "figjam",
     "swiftui",
     "motion-design",
-    "code-to-design"
+    "code-to-design",
+    "url-to-code",
+    "live-reference",
+    "visual-reconstruction"
   ],
   "extensions": {
     "com.openai": {
       "interface": {
         "displayName": "Veteran Engineering Studio",
         "shortDescription": "Full-stack engineering with advanced Figma product design and visual QA",
-        "longDescription": "A two-skill engineering plugin with one accountable delivery path. Veteran Full-Stack Engineer owns repository-wide engineering. Frontend Design Builder adds context-budgeted product design with Figma design-to-code, code-to-design, Code Connect, variables/libraries, motion, SwiftUI and FigJam routing, cross-tool design-system synchronization, reference research, responsive implementation, accessibility and blocking visual QA.",
+        "longDescription": "A two-skill engineering plugin with one accountable delivery path. Veteran Full-Stack Engineer owns repository-wide engineering. Frontend Design Builder adds context-budgeted product design across Figma design/code/library/motion/SwiftUI/FigJam workflows, authorized evidence-first URL-to-code reconstruction, cross-tool design-system synchronization, reference research, responsive implementation, accessibility and blocking rendered visual QA.",
         "developerName": "Veteran Engineer Project",
         "category": "Developer Tools",
         "capabilities": [
