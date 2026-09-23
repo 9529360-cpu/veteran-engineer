@@ -103,7 +103,7 @@ def test_studio_composition_contract():
     assert (FRONTEND_ROOT / "references" / "design-action-fabric.md").is_file()
     assert (FRONTEND_ROOT / "references" / "visual-design-authority.md").is_file()
     assert "Deep implementation is blocked" in frontend_text
-    assert "anti-generic" in frontend_text.lower()
+    assert "anti-generic" in frontend_text.lower()\n    assert "generated images, Figma concepts, and standalone surrogate HTML" in frontend_text\n    visual_authority = (FRONTEND_ROOT / "references" / "visual-design-authority.md").read_text()\n    assert "First-render kill switch" in visual_authority\n    assert "Skin-vs-redesign test" in visual_authority\n    assert "operating model" in visual_authority
 
     workflow = (REPO_ROOT / ".github" / "workflows" / "skill-engineering-tools.yml").read_text()
     assert 'skills/runtime-regression-debugger/**' in workflow
