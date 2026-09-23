@@ -7,6 +7,10 @@ import { ensureWorkspaceRoots, normalizedAllowedLocalRoots } from './workspace-p
 export const REMOTE_HOST_CONFIG_VERSION = 1;
 export const DEFAULT_REMOTE_HOST_PORT = 8765;
 export const DEFAULT_REMOTE_HOST_BIND = '127.0.0.1';
+export const DEFAULT_MACHINE_ACTION_EXECUTABLES = Object.freeze([
+  'git', 'node', 'npm', 'npx', 'pnpm', 'yarn', 'python', 'python3', 'py', 'pytest'
+]);
+
 
 function sha256(value) {
   return crypto.createHash('sha256').update(value).digest('hex');
@@ -50,6 +54,33 @@ function normalizedOrigins(values) {
   }))];
 }
 
+function normalizedMachineActions(value) {
+  const raw = value && typeof value === 'object' ? value : {};
+  const enabled = raw.enabled === true;
+  const supplied = Array.isArray(raw.allowedExecutables) ? raw.allowedExecutables : [];
+  const allowedExecutables = [...new Set((supplied.length ? supplied : enabled ? DEFAULT_MACHINE_ACTION_EXECUTABLES : [])
+    .map((item) => String(item || '').trim().toLowerCase().replace(/\.(exe|cmd|bat|com)$/i, ''))
+    .filter(Boolean))];
+  const bounded = (candidate, fallback, maximum) => {
+    const number = Number(candidate ?? fallback);
+    if (!Number.isInteger(number) || number <= 0) return fallback;
+    return Math.min(number, maximum);
+  };
+  return {
+    enabled,
+    allowedExecutables,
+    maxReadBytes: bounded(raw.maxReadBytes, 256 * 1024, 4 * 1024 * 1024),
+    maxWriteBytes: bounded(raw.maxWriteBytes, 512 * 1024, 8 * 1024 * 1024),
+    maxSearchFiles: bounded(raw.maxSearchFiles, 2000, 20_000),
+    maxSearchMatches: bounded(raw.maxSearchMatches, 200, 2_000),
+    maxSessionOutputBytes: bounded(raw.maxSessionOutputBytes, 1024 * 1024, 8 * 1024 * 1024),
+    maxSessions: bounded(raw.maxSessions, 8, 32),
+    defaultTimeoutMs: bounded(raw.defaultTimeoutMs, 30_000, 10 * 60 * 1000),
+    maxTimeoutMs: bounded(raw.maxTimeoutMs, 120_000, 30 * 60 * 1000),
+    maxPersistentMs: bounded(raw.maxPersistentMs, 4 * 60 * 60 * 1000, 24 * 60 * 60 * 1000)
+  };
+}
+
 function normalizedAllowedHosts(values, bind) {
   const defaults = bind === '127.0.0.1' || bind === 'localhost' || bind === '::1'
     ? ['127.0.0.1', 'localhost', '::1']
@@ -75,6 +106,7 @@ export async function initRemoteHostConfig({
   port = DEFAULT_REMOTE_HOST_PORT,
   allowedOrigins = [],
   allowedHosts = null,
+  machineActions = null,
   force = false,
   token = generatePairingToken()
 } = {}) {
@@ -105,6 +137,7 @@ export async function initRemoteHostConfig({
     allowedLocalRoots: canonicalRoots,
     allowedOrigins: normalizedOrigins(allowedOrigins),
     allowedHosts: normalizedAllowedHosts(allowedHosts, resolvedBind),
+    machineActions: normalizedMachineActions(machineActions),
     tokenSha256: tokenDigest(token)
   };
   const temporary = `${resolvedConfigPath}.${process.pid}.${crypto.randomUUID()}.tmp`;
@@ -144,7 +177,8 @@ export async function readRemoteHostConfig(configPath = defaultRemoteHostConfigP
     port: normalizedPort(config.port),
     allowedLocalRoots: normalizedAllowedLocalRoots(config.allowedLocalRoots || []),
     allowedOrigins: normalizedOrigins(config.allowedOrigins || []),
-    allowedHosts: normalizedAllowedHosts(config.allowedHosts || [], normalizedBind(config.bind))
+    allowedHosts: normalizedAllowedHosts(config.allowedHosts || [], normalizedBind(config.bind)),
+    machineActions: normalizedMachineActions(config.machineActions)
   };
 }
 

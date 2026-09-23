@@ -34,6 +34,7 @@ function toolMeta(name) {
 const REMOTE_RUNTIME_WIDE_PROJECT_TOOLS = new Set(['runtime_integrity', 'runtime_cleanup', 'runtime_maintenance']);
 const REMOTE_OPTIONAL_GLOBAL_PROJECT_TOOLS = new Set(['evidence_query', 'experience_audit']);
 const REMOTE_UNSCOPED_SAFE_TOOLS = new Set(['runtime_health']);
+const REMOTE_MACHINE_TOOLS = new Set(['machine_inspect', 'machine_act']);
 
 function remoteScopeError(code, message, details = null) {
   const error = new Error(message);
@@ -58,6 +59,7 @@ async function assertRemoteProjectAllowed(projectId, state, config) {
 }
 
 async function authorizeStoredRemoteScope(name, args, config, app) {
+  if (REMOTE_MACHINE_TOOLS.has(name)) return args || {};
   const explicitEmptyEvidenceIds = name === 'evidence_query' && Array.isArray(args?.ids) && args.ids.length === 0;
   if (explicitEmptyEvidenceIds) return args || {};
 
@@ -165,7 +167,13 @@ export async function createRemoteVeteranApp({ config, stateRoot = null, app = n
   return createVeteranApp({
     stateRoot: stateRoot || config.stateRoot,
     protocolMode: MCP_TRANSPORT_MODES.OFFICIAL_SDK,
-    surfaceProfile: 'secure-tunnel'
+    surfaceProfile: 'secure-tunnel',
+    machineActionConfig: {
+      ...(config.machineActions || {}),
+      allowedLocalRoots: config.allowedLocalRoots || [],
+      deviceId: config.deviceId || null,
+      deviceName: config.deviceName || null
+    }
   });
 }
 

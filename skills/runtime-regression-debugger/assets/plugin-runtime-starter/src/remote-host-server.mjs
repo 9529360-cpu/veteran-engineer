@@ -160,6 +160,7 @@ export async function startRemoteHost({
           bind: resolvedBind,
           port: typeof address === 'object' && address ? address.port : resolvedPort,
           allowedLocalRoots: config.allowedLocalRoots,
+          machineActions: config.machineActions,
           surfaceProfile: 'secure-tunnel'
         });
         return;
@@ -200,6 +201,7 @@ export async function startRemoteHost({
       if (closed) return;
       closed = true;
       await handler.close?.();
+      await app.services?.machineActionService?.shutdown?.().catch(() => {});
       await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     }
   };

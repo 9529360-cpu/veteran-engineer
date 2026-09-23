@@ -26,13 +26,14 @@ import { beginRequest, completeRequest, failRequest, markRequestUnknown, replayO
 import { MCP_TRANSPORT_MODES } from './mcp-protocol-capability.mjs';
 import { randomId, sha256, stableStringify } from './util.mjs';
 import { resolveSurfaceProfile } from './surface-capabilities.mjs';
+import { MachineActionService } from './machine-action-service.mjs';
 
 const MUTATING_TOOLS = new Set([
   'project_open', 'project_snapshot', 'mission_plan', 'mission_execute', 'mission_advance',
   'mission_cancel', 'mission_resume', 'task_result_commit', 'worker_cancel', 'worker_resume',
   'worker_retry', 'validation_run', 'review_run', 'semantic_review_run', 'remediation_plan',
   'candidate_refresh', 'experience_commit', 'experience_review', 'experience_challenge',
-  'experience_compact', 'runtime_cleanup', 'runtime_maintenance', 'handoff_export'
+  'experience_compact', 'machine_act', 'runtime_cleanup', 'runtime_maintenance', 'handoff_export'
 ]);
 
 function requestOutcomeUnknown(requestId, cause) {
@@ -67,7 +68,8 @@ export async function createVeteranApp({
   stateBackendEnv = process.env,
   protocolMode = MCP_TRANSPORT_MODES.STANDALONE_FALLBACK,
   surfaceProfile = process.env.VETERAN_ENGINEER_SURFACE_PROFILE || 'local-stdio',
-  configPath
+  configPath,
+  machineActionConfig = null
 } = {}) {
   if (!stateRoot) throw new Error('stateRoot is required');
   const resolvedSurfaceProfile = resolveSurfaceProfile(surfaceProfile);
@@ -100,6 +102,7 @@ export async function createVeteranApp({
   const reviewService = new ReviewService({ store, projectService, missionService, worktreeManager, evidenceService, experienceService });
   const candidateService = new CandidateService({ store, projectService, missionService, worktreeManager, evidenceService });
   const runtimeService = new RuntimeService({ store, experienceService, protocolMode, surfaceProfile: resolvedSurfaceProfile });
+  const machineActionService = new MachineActionService(machineActionConfig || {});
   const handoffService = new HandoffService({ store, missionService });
   const missionAdvanceService = new MissionAdvanceService({ store, projectService, missionService, worktreeManager, workerOrchestrator, validationService, reviewService, candidateService, evidenceService });
   const activeMissionExecutions = new Map();
@@ -240,6 +243,8 @@ export async function createVeteranApp({
     experience_challenge: (a) => experienceService.challenge(a),
     experience_audit: (a) => experienceService.audit(a),
     experience_compact: (a) => experienceService.compact(a),
+    machine_inspect: (a) => machineActionService.inspect(a),
+    machine_act: (a) => machineActionService.act(a),
     runtime_health: () => runtimeService.health(),
     runtime_integrity: () => runtimeService.integrity(),
     runtime_cleanup: (a) => cleanupRuntime(a),
@@ -342,7 +347,7 @@ export async function createVeteranApp({
 
   return {
     store,
-    services: { projectService, missionService, missionExecutionLeaseManager, evidenceService, experienceService, worktreeManager, workerAdapter, liveSessionManager, coreWorkerOrchestrator, feedbackWorkerOrchestrator, workerOrchestrator, validationService, runtimeFeedbackService, reviewService, candidateService, runtimeService, handoffService, missionAdvanceService },
+    services: { projectService, missionService, missionExecutionLeaseManager, evidenceService, experienceService, worktreeManager, workerAdapter, liveSessionManager, coreWorkerOrchestrator, feedbackWorkerOrchestrator, workerOrchestrator, validationService, runtimeFeedbackService, reviewService, candidateService, runtimeService, machineActionService, handoffService, missionAdvanceService },
     handlers,
     callTool,
     toolContent,
