@@ -57,7 +57,8 @@ Tests can be wrong even when the product is right. Before trusting a newly writt
 For string-heavy assertions, explicitly distinguish **source-code escape syntax** from the **runtime value**:
 - `"\\n"` means a backslash followed by `n`;
 - `"\n"` represents an actual newline at runtime;
-- apply the same check to `\t`, `\r`, `\\`, quotes, regex escapes, shell quoting, JSON escaping, and nested language/tool layers.
+- apply the same check to `\t`, `\r`, `\\`, quotes, regex escapes, shell quoting, JSON escaping, and nested language/tool layers;
+- when one language/tool is generating source for another, reason layer-by-layer: producer source -> emitted source text -> parser interpretation -> runtime value. Verify each boundary instead of mentally collapsing all escape layers.
 
 Before finishing test code, self-check:
 - escape characters: confirm each `\n`, `\t`, `\r`, `\\`, quote, regex, or shell escape is intended as a literal sequence or an actual control character;
