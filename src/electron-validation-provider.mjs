@@ -391,7 +391,7 @@ export async function runElectronValidation(electron, {
         failureCode = error?.code || 'ELECTRON_STEP_FAILED';
         failureMessage = String(error?.message || error).slice(0, 1000);
         failureStep = index;
-        await captureFailure(session, step, index, attachments, Math.max(1, deadline - Date.now()));
+        if (electron.captureFailureScreenshots) await captureFailure(session, step, index, attachments, Math.max(1, deadline - Date.now()));
         break;
       }
     }

@@ -86,6 +86,7 @@ test('electron validation config is bounded and rejects repository-escaping scen
   assert.deepEqual(normalized.args, ['main.cjs']);
   assert.equal(normalized.stepTimeoutMs, 1000);
   assert.equal(normalized.captureFinalScreenshot, true);
+  assert.equal(normalized.captureFailureScreenshots, true);
   assert.equal(normalized.chromiumSandbox, true);
   assert.equal(normalizeElectronValidation({
     executablePath: '/opt/electron/electron',
@@ -111,6 +112,10 @@ test('electron validation config is bounded and rejects repository-escaping scen
     () => normalizeElectronValidation({ executablePath: '/opt/electron/electron', scenarioFile: 'smoke.json', captureFinalScreenshot: 'no' }),
     (error) => error.code === 'ELECTRON_VALIDATION_CONFIG_INVALID'
   );
+  assert.throws(
+    () => normalizeElectronValidation({ executablePath: '/opt/electron/electron', scenarioFile: 'smoke.json', captureFailureScreenshots: 'no' }),
+    (error) => error.code === 'ELECTRON_VALIDATION_CONFIG_INVALID'
+  );
 });
 
 test('electron validation can suppress automatic success screenshots for privacy-sensitive authenticated surfaces', async () => {
@@ -126,7 +131,8 @@ test('electron validation can suppress automatic success screenshots for privacy
       scenarioFile: 'scenario.json',
       timeoutMs: 5000,
       stepTimeoutMs: 1000,
-      captureFinalScreenshot: false
+      captureFinalScreenshot: false,
+      captureFailureScreenshots: false
     });
     const result = await runElectronValidation(config, {
       cwd: root,
@@ -134,6 +140,34 @@ test('electron validation can suppress automatic success screenshots for privacy
       environment: { PATH: process.env.PATH || '' }
     });
     assert.equal(result.passed, true, result.summary);
+    assert.deepEqual(result.attachments, []);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('electron validation can suppress automatic failure screenshots for privacy-sensitive authenticated surfaces', async () => {
+  const root = await fixture();
+  const state = {};
+  try {
+    await fs.writeFile(path.join(root, 'scenario.json'), JSON.stringify({
+      contract: ELECTRON_SCENARIO_CONTRACT,
+      steps: [{ action: 'assertText', selector: '#status', text: 'never-matches', match: 'equals', timeoutMs: 250 }]
+    }) + '\n');
+    const config = normalizeElectronValidation({
+      executablePath: 'electron-bin',
+      scenarioFile: 'scenario.json',
+      timeoutMs: 1000,
+      stepTimeoutMs: 250,
+      captureFinalScreenshot: false,
+      captureFailureScreenshots: false
+    });
+    const result = await runElectronValidation(config, {
+      cwd: root,
+      automation: fakeAutomation(state),
+      environment: { PATH: process.env.PATH || '' }
+    });
+    assert.equal(result.passed, false);
     assert.deepEqual(result.attachments, []);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
