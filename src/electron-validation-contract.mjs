@@ -109,6 +109,10 @@ export function normalizeElectronValidation(raw) {
     timeoutMs,
     stepTimeoutMs: Math.min(stepTimeoutMs, timeoutMs),
     envAllowlist: Object.freeze(normalizeEnvAllowlist(raw.envAllowlist)),
+    captureFinalScreenshot: raw.captureFinalScreenshot === undefined ? true : (() => {
+      if (typeof raw.captureFinalScreenshot !== 'boolean') throw electronError('Electron captureFinalScreenshot must be boolean', 'ELECTRON_VALIDATION_CONFIG_INVALID');
+      return raw.captureFinalScreenshot;
+    })(),
     chromiumSandbox: raw.chromiumSandbox === undefined ? true : (() => {
       if (typeof raw.chromiumSandbox !== 'boolean') throw electronError('Electron chromiumSandbox must be boolean', 'ELECTRON_VALIDATION_CONFIG_INVALID');
       return raw.chromiumSandbox;

@@ -85,7 +85,13 @@ test('electron validation config is bounded and rejects repository-escaping scen
   assert.equal(normalized.contract, ELECTRON_VALIDATION_CONTRACT);
   assert.deepEqual(normalized.args, ['main.cjs']);
   assert.equal(normalized.stepTimeoutMs, 1000);
+  assert.equal(normalized.captureFinalScreenshot, true);
   assert.equal(normalized.chromiumSandbox, true);
+  assert.equal(normalizeElectronValidation({
+    executablePath: '/opt/electron/electron',
+    scenarioFile: 'tests/electron/smoke.json',
+    captureFinalScreenshot: false
+  }).captureFinalScreenshot, false);
   assert.throws(
     () => normalizeElectronValidation({ executablePath: '/opt/electron/electron', scenarioFile: '../secret.json' }),
     (error) => error.code === 'ELECTRON_SCENARIO_PATH_ESCAPE'
@@ -101,6 +107,37 @@ test('electron validation config is bounded and rejects repository-escaping scen
     () => normalizeElectronValidation({ executablePath: '/opt/electron/electron', scenarioFile: 'smoke.json', chromiumSandbox: 'yes' }),
     (error) => error.code === 'ELECTRON_VALIDATION_CONFIG_INVALID'
   );
+  assert.throws(
+    () => normalizeElectronValidation({ executablePath: '/opt/electron/electron', scenarioFile: 'smoke.json', captureFinalScreenshot: 'no' }),
+    (error) => error.code === 'ELECTRON_VALIDATION_CONFIG_INVALID'
+  );
+});
+
+test('electron validation can suppress automatic success screenshots for privacy-sensitive authenticated surfaces', async () => {
+  const root = await fixture();
+  const state = {};
+  try {
+    await fs.writeFile(path.join(root, 'scenario.json'), JSON.stringify({
+      contract: ELECTRON_SCENARIO_CONTRACT,
+      steps: [{ action: 'waitForSurface', target: { type: 'window', index: 0 } }]
+    }) + '\n');
+    const config = normalizeElectronValidation({
+      executablePath: 'electron-bin',
+      scenarioFile: 'scenario.json',
+      timeoutMs: 5000,
+      stepTimeoutMs: 1000,
+      captureFinalScreenshot: false
+    });
+    const result = await runElectronValidation(config, {
+      cwd: root,
+      automation: fakeAutomation(state),
+      environment: { PATH: process.env.PATH || '' }
+    });
+    assert.equal(result.passed, true, result.summary);
+    assert.deepEqual(result.attachments, []);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
 });
 
 test('electron scenario exposes bounded BrowserWindow and webview lifecycle assertions without arbitrary JavaScript', () => {

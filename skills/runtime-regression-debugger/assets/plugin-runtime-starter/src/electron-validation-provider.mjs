@@ -411,7 +411,7 @@ export async function runElectronValidation(electron, {
       failureMessage = `Electron ended validation with ${diagnostics.activeUnresponsive} unresponsive renderer surface(s).`;
     }
 
-    if (!failureCode && attachments.length === 0 && finalSurfaces.windows.length > 0) {
+    if (!failureCode && electron.captureFinalScreenshot && attachments.length === 0 && finalSurfaces.windows.length > 0) {
       try {
         const result = await session.command({ type: 'window', index: 0 }, 'screenshot', {}, Math.min(1000, Math.max(1, deadline - Date.now())));
         if (result?.ok && result.pngBase64) {
