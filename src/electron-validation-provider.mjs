@@ -391,7 +391,7 @@ export async function runElectronValidation(electron, {
         failureCode = error?.code || 'ELECTRON_STEP_FAILED';
         failureMessage = String(error?.message || error).slice(0, 1000);
         failureStep = index;
-        await captureFailure(session, step, index, attachments, Math.max(1, deadline - Date.now()));
+        if (electron.captureFailureScreenshots) await captureFailure(session, step, index, attachments, Math.max(1, deadline - Date.now()));
         break;
       }
     }
@@ -411,7 +411,7 @@ export async function runElectronValidation(electron, {
       failureMessage = `Electron ended validation with ${diagnostics.activeUnresponsive} unresponsive renderer surface(s).`;
     }
 
-    if (!failureCode && attachments.length === 0 && finalSurfaces.windows.length > 0) {
+    if (!failureCode && electron.captureFinalScreenshot && attachments.length === 0 && finalSurfaces.windows.length > 0) {
       try {
         const result = await session.command({ type: 'window', index: 0 }, 'screenshot', {}, Math.min(1000, Math.max(1, deadline - Date.now())));
         if (result?.ok && result.pngBase64) {
