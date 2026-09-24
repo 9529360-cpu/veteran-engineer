@@ -278,6 +278,15 @@ export async function prepareElectronValidation(electron, cwd, environment) {
     APPDATA: path.join(home, 'AppData', 'Roaming'),
     LOCALAPPDATA: path.join(home, 'AppData', 'Local')
   });
+  if (process.platform === 'win32') {
+    // Electron/Chromium resolve parts of the Windows profile through
+    // HOMEDRIVE/HOMEPATH even when USERPROFILE and AppData are isolated.
+    // Keep the complete profile inside Veteran's private temporary home.
+    env.HOMEDRIVE = path.parse(home).root.replace(/[\\/]$/, '');
+    env.HOMEPATH = home.slice(env.HOMEDRIVE.length);
+    await fs.mkdir(env.APPDATA, { recursive: true });
+    await fs.mkdir(env.LOCALAPPDATA, { recursive: true });
+  }
   for (const key of electron.envAllowlist) if (typeof environment?.[key] === 'string') env[key] = environment[key];
   return { scenario: normalizeElectronScenario(parsed, { stepTimeoutMs: electron.stepTimeoutMs }), executablePath, env, home };
 }
