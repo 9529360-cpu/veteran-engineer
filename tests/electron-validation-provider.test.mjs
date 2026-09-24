@@ -63,6 +63,7 @@ function fakeAutomation(state = {}) {
   return {
     async launch(options) {
       state.launchOptions = options;
+      if (typeof state.onLaunch === 'function') await state.onLaunch(options);
       return {
         async listSurfaces() { return surfaces; },
         command,
@@ -89,10 +90,13 @@ test('electron validation config is bounded and rejects repository-escaping scen
     () => normalizeElectronValidation({ executablePath: '/opt/electron/electron', scenarioFile: '../secret.json' }),
     (error) => error.code === 'ELECTRON_SCENARIO_PATH_ESCAPE'
   );
-  assert.throws(
-    () => normalizeElectronValidation({ executablePath: '/opt/electron/electron', scenarioFile: 'smoke.json', envAllowlist: ['HOME'] }),
-    (error) => error.code === 'ELECTRON_ENV_INVALID'
-  );
+  for (const variable of ['HOME', 'UserProfile', 'APPDATA', 'localappdata', 'HomeDrive', 'HomePath']) {
+    assert.throws(
+      () => normalizeElectronValidation({ executablePath: '/opt/electron/electron', scenarioFile: 'smoke.json', envAllowlist: [variable] }),
+      (error) => error.code === 'ELECTRON_ENV_INVALID',
+      variable
+    );
+  }
   assert.throws(
     () => normalizeElectronValidation({ executablePath: '/opt/electron/electron', scenarioFile: 'smoke.json', chromiumSandbox: 'yes' }),
     (error) => error.code === 'ELECTRON_VALIDATION_CONFIG_INVALID'
@@ -122,6 +126,56 @@ test('electron scenario exposes bounded BrowserWindow and webview lifecycle asse
     () => normalizeElectronScenario({ contract: ELECTRON_SCENARIO_CONTRACT, steps: [{ action: 'evaluate', script: 'process.exit()' }] }),
     (error) => error.code === 'ELECTRON_SCENARIO_INVALID'
   );
+});
+
+test('electron validation owns a complete private Windows profile before launch', async () => {
+  const root = await fixture();
+  const state = {
+    async onLaunch(options) {
+      assert.notEqual(options.env.HOME, 'caller-home-secret');
+      assert.equal(options.env.USERPROFILE, options.env.HOME);
+      assert.equal(options.env.VETERAN_DESKTOP_TEST, 'explicitly-allowed');
+      assert.equal(options.env.VETERAN_PRIVATE_SECRET, undefined);
+      if (process.platform === 'win32') {
+        assert.equal(options.env.HOMEDRIVE + options.env.HOMEPATH, options.env.HOME);
+        assert.equal(options.env.APPDATA, path.join(options.env.HOME, 'AppData', 'Roaming'));
+        assert.equal(options.env.LOCALAPPDATA, path.join(options.env.HOME, 'AppData', 'Local'));
+        assert.equal((await fs.stat(options.env.APPDATA)).isDirectory(), true);
+        assert.equal((await fs.stat(options.env.LOCALAPPDATA)).isDirectory(), true);
+      }
+    }
+  };
+  try {
+    await fs.writeFile(path.join(root, 'scenario.json'), `${JSON.stringify({
+      contract: ELECTRON_SCENARIO_CONTRACT,
+      steps: [{ action: 'waitForSurface', target: { type: 'window', index: 0 } }]
+    })}\n`);
+    const config = normalizeElectronValidation({
+      executablePath: 'electron-bin',
+      scenarioFile: 'scenario.json',
+      timeoutMs: 5000,
+      stepTimeoutMs: 1000,
+      envAllowlist: ['VETERAN_DESKTOP_TEST']
+    });
+    const result = await runElectronValidation(config, {
+      cwd: root,
+      automation: fakeAutomation(state),
+      environment: {
+        PATH: process.env.PATH || '',
+        HOME: 'caller-home-secret',
+        USERPROFILE: 'caller-profile-secret',
+        HOMEDRIVE: 'Z:',
+        HOMEPATH: '\\caller-profile-secret',
+        APPDATA: 'caller-roaming-secret',
+        LOCALAPPDATA: 'caller-local-secret',
+        VETERAN_DESKTOP_TEST: 'explicitly-allowed',
+        VETERAN_PRIVATE_SECRET: 'must-not-leak'
+      }
+    });
+    assert.equal(result.passed, true, result.summary);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
 });
 
 test('electron validation drives windows and webview guests, asserts surface counts, captures evidence, sanitizes URLs, and closes the app', async () => {
