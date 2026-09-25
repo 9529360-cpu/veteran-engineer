@@ -58,7 +58,7 @@ def test_studio_composition_contract():
     frontend_text = (FRONTEND_ROOT / "SKILL.md").read_text()
     runtime_fields = _frontmatter(runtime_text)
     frontend_fields = _frontmatter(frontend_text)
-    assert "Primary Veteran Engineering Studio owner" in runtime_fields["description"]
+    assert "primary full-stack owner" in runtime_fields["description"]
     assert "whole-product or cross-layer outcomes" in runtime_fields["description"]
     assert "delegate a bounded UI/frontend phase" in runtime_fields["description"]
     assert "UI/frontend specialist for Veteran Engineering Studio" in frontend_fields["description"]
