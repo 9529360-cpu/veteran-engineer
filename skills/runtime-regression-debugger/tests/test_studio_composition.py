@@ -181,6 +181,8 @@ def test_studio_composition_contract():
         "&& github.event_name != 'pull_request'"
     )
     assert package_workflow.count(main_only_install) == 2
+    assert "ref: ${{ github.event.pull_request.head.sha || github.sha }}" in package_workflow
+    assert 'declares unsupported invocation policy metadata' in package_workflow
     assert "design-action-recovery.md" in package_workflow
     assert "design-session-ledger.md" in package_workflow
 
