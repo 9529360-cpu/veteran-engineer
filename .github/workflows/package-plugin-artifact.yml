@@ -306,7 +306,7 @@ jobs:
           PY
 
       - name: Stage workspace install artifact
-        if: matrix.profile == 'workspace' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        if: matrix.profile == 'workspace'
         shell: bash
         run: |
           set -euo pipefail
