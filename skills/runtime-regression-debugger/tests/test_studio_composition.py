@@ -167,37 +167,42 @@ def test_studio_composition_contract():
     benchmark_text = (SKILL_ROOT / "references" / "veteran-engineer-benchmark.md").read_text()
     assert "88. **Web and remote machine both mutate one repository**" in benchmark_text
 
-    workflow = (REPO_ROOT / ".github" / "workflows" / "skill-engineering-tools.yml").read_text()
-    assert 'skills/runtime-regression-debugger/**' in workflow
-    assert 'skills/frontend-design-builder/**' in workflow
-    assert 'plugin.json' in workflow
-    assert "Require Studio version bump for packaged Skill changes" in workflow
-    assert "Studio package changed without a strict version increase" in workflow
-    assert "github.event.pull_request.base.sha || github.event.before" in workflow
-
-    package_workflow = (REPO_ROOT / ".github" / "workflows" / "package-plugin-artifact.yml").read_text()
-    main_only_install = (
-        "matrix.profile == 'workspace' && github.ref == 'refs/heads/main' "
-        "&& github.event_name != 'pull_request'"
-    )
-    assert package_workflow.count(main_only_install) == 2
-    assert "ref: ${{ github.event.pull_request.head.sha || github.sha }}" in package_workflow
-    assert 'declares unsupported invocation policy metadata' in package_workflow
-    assert "design-action-recovery.md" in package_workflow
-    assert "design-session-ledger.md" in package_workflow
-
-    release_workflow = (REPO_ROOT / ".github" / "workflows" / "release.yml").read_text()
-    assert '- "plugin.json"' in release_workflow
-    assert '- "skills/frontend-design-builder/**"' in release_workflow
-
     assert "refs/heads/main" in exporter
     assert "never publish pull-request artifacts" in exporter
 
-    readme = (REPO_ROOT / "README.md").read_text()
-    assert "implicit-invocation policy" not in readme
-    assert "exact **34-tool** surface" not in readme
-    assert "public MCP surface remains 34 tools" not in readme
-    assert "exact **36-tool** surface" in readme
+    # Repository-only release/CI documentation is intentionally excluded from
+    # Workspace Skill bundles. Validate those contracts when running from the
+    # source repository, but keep the packaged Skill test suite self-contained.
+    workflow_path = REPO_ROOT / ".github" / "workflows" / "skill-engineering-tools.yml"
+    if workflow_path.is_file():
+        workflow = workflow_path.read_text()
+        assert 'skills/runtime-regression-debugger/**' in workflow
+        assert 'skills/frontend-design-builder/**' in workflow
+        assert 'plugin.json' in workflow
+        assert "Require Studio version bump for packaged Skill changes" in workflow
+        assert "Studio package changed without a strict version increase" in workflow
+        assert "github.event.pull_request.base.sha || github.event.before" in workflow
+
+        package_workflow = (REPO_ROOT / ".github" / "workflows" / "package-plugin-artifact.yml").read_text()
+        main_only_install = (
+            "matrix.profile == 'workspace' && github.ref == 'refs/heads/main' "
+            "&& github.event_name != 'pull_request'"
+        )
+        assert package_workflow.count(main_only_install) == 2
+        assert "ref: ${{ github.event.pull_request.head.sha || github.sha }}" in package_workflow
+        assert 'declares unsupported invocation policy metadata' in package_workflow
+        assert "design-action-recovery.md" in package_workflow
+        assert "design-session-ledger.md" in package_workflow
+
+        release_workflow = (REPO_ROOT / ".github" / "workflows" / "release.yml").read_text()
+        assert '- "plugin.json"' in release_workflow
+        assert '- "skills/frontend-design-builder/**"' in release_workflow
+
+        readme = (REPO_ROOT / "README.md").read_text()
+        assert "implicit-invocation policy" not in readme
+        assert "exact **34-tool** surface" not in readme
+        assert "public MCP surface remains 34 tools" not in readme
+        assert "exact **36-tool** surface" in readme
 
     router = FRONTEND_ROOT / "scripts" / "frontend_context_router.py"
     router_tests = FRONTEND_ROOT / "tests" / "test_frontend_context_router.py"
