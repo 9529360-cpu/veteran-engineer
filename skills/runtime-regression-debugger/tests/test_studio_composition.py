@@ -177,6 +177,13 @@ def test_studio_composition_contract():
     assert 'skills/frontend-design-builder/**' in workflow
     assert 'plugin.json' in workflow
 
+    package_workflow = (REPO_ROOT / ".github" / "workflows" / "package-plugin-artifact.yml").read_text()
+    main_install_guard = "matrix.profile == 'workspace' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'"
+    assert package_workflow.count(main_install_guard) == 2
+    assert "veteran-engineering-studio-workspace-install-${{ github.event.pull_request.head.sha || github.sha }}" in package_workflow
+    assert "references/design-action-recovery.md" in package_workflow
+    assert "references/design-session-ledger.md" in package_workflow
+
     router = FRONTEND_ROOT / "scripts" / "frontend_context_router.py"
     router_tests = FRONTEND_ROOT / "tests" / "test_frontend_context_router.py"
     assert router.is_file()
@@ -203,3 +210,20 @@ def test_studio_version_domains_are_separate():
     assert package["name"] == "veteran-engineer"
     assert codex["version"] == package["version"]
     assert re.fullmatch(r"\d+\.\d+\.\d+", portable["version"])
+
+
+def test_studio_docs_do_not_reintroduce_retired_invocation_policy_or_tool_count():
+    readme = (REPO_ROOT / "README.md").read_text()
+    starter_readme = (SKILL_ROOT / "assets" / "plugin-runtime-starter" / "README.md").read_text()
+    handoff = (REPO_ROOT / "NEXT_CHAT_HANDOFF.md").read_text()
+    starter_handoff = (SKILL_ROOT / "assets" / "plugin-runtime-starter" / "NEXT_CHAT_HANDOFF.md").read_text()
+
+    assert readme == starter_readme
+    assert handoff == starter_handoff
+    for text in (readme, handoff):
+        assert "34-tool" not in text
+        assert "remains 34 tools" not in text
+        assert "implicit-invocation policy" not in text
+    assert "exact **36-tool** surface" in readme
+    assert "exactly **36 tools**" in handoff
+    assert "Do not reintroduce unsupported ChatGPT/Codex/API/Atlas product-policy values" in readme
