@@ -23,6 +23,8 @@ import re
 from collections import defaultdict, deque
 from pathlib import Path
 
+RETIRED_WORKSPACE_TOMBSTONE_MARKER = "# Retired Workspace compatibility tombstone"
+
 INTENTIONAL_ROUTE_BUNDLES = {
     frozenset({
         "dogfood-skill-evolution.md",
@@ -76,7 +78,13 @@ def mentioned_references(text: str, names: set[str]) -> set[str]:
 def audit(root: Path) -> dict:
     refs_dir = root / "references"
     refs = sorted(refs_dir.glob("*.md"))
-    names = {p.name for p in refs}
+    retired = {
+        ref.name
+        for ref in refs
+        if ref.read_text(encoding="utf-8").startswith(RETIRED_WORKSPACE_TOMBSTONE_MARKER)
+    }
+    active_refs = [ref for ref in refs if ref.name not in retired]
+    names = {p.name for p in active_refs}
 
     routes = literal_mapping(root / "scripts" / "engineering_context_router.py", "ROUTES")
     stack_rules = literal_mapping(root / "scripts" / "stack_fingerprint.py", "REFERENCE_RULES")
@@ -98,7 +106,7 @@ def audit(root: Path) -> dict:
 
     edges: dict[str, set[str]] = {}
     inbound: dict[str, set[str]] = defaultdict(set)
-    for ref in refs:
+    for ref in active_refs:
         linked = mentioned_references(ref.read_text(encoding="utf-8"), names) - {ref.name}
         edges[ref.name] = linked
         for target in linked:
@@ -136,6 +144,18 @@ def audit(root: Path) -> dict:
     entries = []
     for ref in refs:
         name = ref.name
+        if name in retired:
+            entries.append({
+                "reference": name,
+                "lines": len(ref.read_text(encoding="utf-8").splitlines()),
+                "entry_modes": ["workspace-overlay-tombstone"],
+                "route_signals": [],
+                "stack_selectors": [],
+                "inbound_references": [],
+                "reachable": False,
+                "retired": True,
+            })
+            continue
         modes = []
         if name in skill_direct:
             modes.append("skill-control")
@@ -153,10 +173,13 @@ def audit(root: Path) -> dict:
             "stack_selectors": sorted(stack_selectors.get(name, set())),
             "inbound_references": sorted(inbound.get(name, set())),
             "reachable": name in reachable,
+            "retired": False,
         })
 
     return {
         "reference_count": len(refs),
+        "active_reference_count": len(active_refs),
+        "retired_references": sorted(retired),
         "root_reference_count": len(roots),
         "reachable_reference_count": len(reachable),
         "unreachable_references": unreachable,
@@ -179,6 +202,11 @@ def main() -> int:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
         print(f"references: {payload['reference_count']}")
+        print(f"active references: {payload['active_reference_count']}")
+        if payload["retired_references"]:
+            print("retired workspace overlay tombstones:")
+            for name in payload["retired_references"]:
+                print(f"- {name}")
         print(f"root references: {payload['root_reference_count']}")
         print(f"reachable references: {payload['reachable_reference_count']}")
         if payload["unreachable_references"]:
