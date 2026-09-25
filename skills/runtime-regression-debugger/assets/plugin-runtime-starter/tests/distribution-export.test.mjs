@@ -142,6 +142,8 @@ test('workspace exporter normalizes Studio identity and remains skill-only', asy
     assert.equal(report.distribution.surfaceProfile, 'workspace-skill');
     assert.equal(report.distribution.releaseProvenance.sourceRevision, workspaceRevision);
     assert.equal(report.distribution.releaseProvenance.sourceOfTruth, 'https://github.com/9529360-cpu/veteran-engineer');
+    assert.match(report.distribution.releaseProvenance.policy, /default branch/);
+    assert.match(report.distribution.releaseProvenance.policy, /pull-request artifacts are validation candidates only/);
     assert.ok(report.names.includes('veteran-engineer/plugin.json'));
     assert.ok(report.names.includes('veteran-engineer/skills/runtime-regression-debugger/SKILL.md'));
     assert.ok(report.names.includes('veteran-engineer/skills/frontend-design-builder/SKILL.md'));
