@@ -100,6 +100,8 @@ Separate handwritten authority from generated/vendor/artifact/fixture/snapshot/d
 
 When multiple mutation-capable hosts can touch the same repository, keep one active write authority per integration wave. Before switching between GitHub/connector, local/Codex, or remote-machine mutation, reconcile repository identity, remote/ref, exact HEAD, dirty/untracked state, and outstanding remote effects. Treat host-local uncommitted or unpushed work as provisional: do not publish, release, or claim repository synchronization from it until it is integrated into the chosen authority and re-read from the authoritative remote.
 
+State change proves that state changed; it does **not** prove which human, model, chat session, or host caused it. Before attributing an unexpected commit, branch, workflow, release, or file delta to "another person", "another AI", "another session", or "another host", first reconcile this execution's own mutation receipts and the automation causally triggered by them. GitHub actor, commit author/committer, workflow triggering actor, workspace account, or plugin editor identity may identify an account/principal without identifying the initiating ChatGPT session. If positive executor/session provenance is absent, report the neutral fact ("state changed since the last read") and keep actor identity unknown.
+
 Universal invariants:
 
 - one authoritative mutation owner per important fact, or explicit reconciliation; projections/caches remain projections;
