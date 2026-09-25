@@ -32,6 +32,42 @@ LOCAL_PROFILES = {"desktop", "codex"}
 ALL_PROFILES = LOCAL_PROFILES | {"web", "workspace"}
 ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 
+# Plugin Creator workspace updates overlay files and cannot delete paths from prior
+# releases. Keep known retired live paths as generated tombstones so old content
+# is actively neutralized instead of surviving invisibly in the installed plugin.
+WORKSPACE_OVERLAY_TOMBSTONES = {
+    "skills/runtime-regression-debugger/evals/benchmark_scenarios.json": json.dumps(
+        {
+            "schema": "veteran-engineer-benchmark-v1",
+            "retired": True,
+            "scenarios": [],
+            "replacement": "skills/runtime-regression-debugger/references/veteran-engineer-benchmark.md",
+        },
+        indent=2,
+    ) + "\n",
+    "skills/runtime-regression-debugger/references/host-capability-adaptation.md": (
+        "# Retired Workspace compatibility tombstone\n\n"
+        "This path is retained only to neutralize an older Workspace overlay file. "
+        "It is not current Veteran Engineering Studio guidance. Use the active SKILL.md "
+        "routing and current referenced owners instead.\n"
+    ),
+    "skills/runtime-regression-debugger/references/long-running-engineering-execution.md": (
+        "# Retired Workspace compatibility tombstone\n\n"
+        "This path is retained only to neutralize an older Workspace overlay file. "
+        "It is not current Veteran Engineering Studio guidance. Use the active SKILL.md "
+        "foreground-mission and host-execution contracts instead.\n"
+    ),
+    "skills/runtime-regression-debugger/references/repository-engineering-execution.md": (
+        "# Retired Workspace compatibility tombstone\n\n"
+        "This path is retained only to neutralize an older Workspace overlay file. "
+        "It is not current Veteran Engineering Studio guidance. Use the active SKILL.md "
+        "and references/autonomous-repository-engineering.md instead.\n"
+    ),
+    "skills/runtime-regression-debugger/tests/test_skill_workflow.py": (
+        '"""Retired Workspace overlay compatibility tombstone; no tests live here."""\n'
+    ),
+}
+
 
 def reject_symlink_components(root: pathlib.Path, candidate: pathlib.Path) -> None:
     root = root.resolve()
@@ -81,6 +117,13 @@ def write_json(path: pathlib.Path, value: dict) -> None:
     path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
+def write_workspace_overlay_tombstones(plugin_root: pathlib.Path) -> None:
+    for relative_path, content in WORKSPACE_OVERLAY_TOMBSTONES.items():
+        target = plugin_root / relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+
+
 def build_distribution_metadata(profile: str, *, app_reference: bool, source_revision: str | None = None) -> dict:
     if profile in LOCAL_PROFILES:
         return {
@@ -105,6 +148,9 @@ def build_distribution_metadata(profile: str, *, app_reference: bool, source_rev
                 "sourceOfTruth": "https://github.com/9529360-cpu/veteran-engineer",
                 "sourceRevision": source_revision,
                 "policy": "Publish only the GitHub Actions Workspace install artifact produced from the default branch for this exact revision; pull-request artifacts are validation candidates only, and Workspace releases must not be hand-built or directly edited."
+            },
+            "overlayCompatibility": {
+                "retiredPaths": sorted(WORKSPACE_OVERLAY_TOMBSTONES)
             },
             "platformNotes": {
                 "webCompatible": True,
@@ -204,6 +250,7 @@ def build_workspace_profile(skill_root: pathlib.Path, plugin_root: pathlib.Path,
     }
     write_json(plugin_root / ".codex-plugin" / "plugin.json", manifest)
     bundle_skills(skill_root, plugin_root)
+    write_workspace_overlay_tombstones(plugin_root)
     copy_portable_manifest(skill_root, plugin_root)
     write_json(
         plugin_root / "veteran-distribution.json",
@@ -248,6 +295,12 @@ def validate_export(root: pathlib.Path, profile: str) -> None:
             raise RuntimeError("workspace manifest interface must mirror the portable Studio interface")
         if manifest.get("author") != portable_manifest.get("author"):
             raise RuntimeError("workspace manifest author must mirror the portable Studio author")
+        for relative_path, expected_content in WORKSPACE_OVERLAY_TOMBSTONES.items():
+            tombstone_path = root / relative_path
+            if not tombstone_path.is_file():
+                raise RuntimeError(f"workspace overlay tombstone is missing: {relative_path}")
+            if tombstone_path.read_text(encoding="utf-8") != expected_content:
+                raise RuntimeError(f"workspace overlay tombstone drifted: {relative_path}")
     else:
         if manifest.get("name") != "veteran-engineer":
             raise RuntimeError("plugin manifest name must remain veteran-engineer")
@@ -268,6 +321,9 @@ def validate_export(root: pathlib.Path, profile: str) -> None:
             or any(character not in "0123456789abcdefABCDEF" for character in source_revision)
         ):
             raise RuntimeError("workspace release provenance requires a Git commit revision")
+        overlay = metadata.get("overlayCompatibility")
+        if not isinstance(overlay, dict) or overlay.get("retiredPaths") != sorted(WORKSPACE_OVERLAY_TOMBSTONES):
+            raise RuntimeError("workspace overlay compatibility metadata is missing or stale")
 
     if profile in LOCAL_PROFILES:
         local_required = [
