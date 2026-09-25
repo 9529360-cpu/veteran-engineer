@@ -35,13 +35,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
-      - name: Reject Studio version regression
+      - name: Require Studio version bump for packaged Skill changes
         shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           python - <<'PY'
           import json
+          import os
           import re
           import subprocess
 
@@ -50,24 +53,48 @@ jobs:
                   raise SystemExit(f"invalid Studio semver: {value!r}")
               return tuple(int(part) for part in value.split("."))
 
-          current = json.load(open("plugin.json", encoding="utf-8"))
-          current_version = parse(current.get("version"))
-          try:
-              previous_text = subprocess.check_output(
-                  ["git", "show", "HEAD^:plugin.json"],
-                  text=True,
-                  stderr=subprocess.DEVNULL,
-              )
-          except subprocess.CalledProcessError:
+          base = os.environ.get("BASE_SHA", "").strip()
+          if not base or set(base) == {"0"}:
+              print("studio_version_gate=skipped_no_base")
               raise SystemExit(0)
 
-          previous = json.loads(previous_text)
+          subprocess.run(["git", "cat-file", "-e", f"{base}^{{commit}}"], check=True)
+          current = json.load(open("plugin.json", encoding="utf-8"))
+          previous = json.loads(
+              subprocess.check_output(["git", "show", f"{base}:plugin.json"], text=True)
+          )
+          current_version = parse(current.get("version"))
           previous_version = parse(previous.get("version"))
+          changed = subprocess.check_output(
+              ["git", "diff", "--name-only", base, "HEAD"],
+              text=True,
+          ).splitlines()
+          packaged_skill_changes = [
+              path for path in changed
+              if path == "plugin.json"
+              or path.startswith("skills/frontend-design-builder/")
+              or (
+                  path.startswith("skills/runtime-regression-debugger/")
+                  and not path.startswith(
+                      "skills/runtime-regression-debugger/assets/plugin-runtime-starter/"
+                  )
+              )
+          ]
+
           if current_version < previous_version:
               raise SystemExit(
                   f"Studio version regressed: {previous['version']} -> {current['version']}"
               )
-          print(f"studio_version={current['version']} previous={previous['version']}")
+          if packaged_skill_changes and current_version <= previous_version:
+              raise SystemExit(
+                  "Studio package changed without a strict version increase: "
+                  f"{previous['version']} -> {current['version']}\n"
+                  + "\n".join(packaged_skill_changes[:50])
+              )
+          print(
+              f"studio_version={current['version']} previous={previous['version']} "
+              f"packaged_changes={len(packaged_skill_changes)}"
+          )
           PY
 
       - name: Setup Python
