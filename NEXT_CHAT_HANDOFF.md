@@ -63,7 +63,7 @@ The resulting mainline includes:
 - outcome-clause preservation, evidence-bearing semantic review, and bounded remediation re-entry;
 - Veteran Remote Host control plane, Windows supervised service, clean-machine bootstrap, and Secure MCP Tunnel stdio transport;
 - live pairing-token invalidation, real Windows service restart lifecycle proof, native Windows Chromium screenshot validation, and a Unicode-safe PowerShell launcher for non-ASCII Windows service paths;
-- bounded verified screenshot image delivery through the existing `evidence_query` tool without increasing the 34-tool public surface;
+- bounded verified screenshot image delivery through the existing `evidence_query` tool without increasing the 36-tool public surface;
 - Remote Host workspace authorization for pre-existing shared-state project/Mission/candidate/evidence/experience identities, plus fail-closed handling of future unclassified unscoped tools;
 - the V16 Optimized Skill brain replayed cleanly on the merged desktop runtime authority, including current routing/evidence/frontier/journal/decision machinery, eval fixtures, and specialist references without replacing runtime ownership.
 
@@ -243,7 +243,7 @@ Install/repair/upgrade synchronizes one shared distribution. Host adapters stay 
 1. Refresh `main`, open PR/issue state, and CI truth before editing.
 2. Prefer owner fixes over new abstractions or duplicate control planes.
 3. Treat root runtime as source owner and keep the bundled starter mirror synchronized.
-4. Preserve the exact 34-tool public MCP surface unless a real product requirement proves a new tool is necessary.
+4. Preserve the exact 36-tool public MCP surface unless a real product requirement proves a new tool is necessary.
 5. Keep Local JSON as default and PostgreSQL explicit unless a separate migration decision changes that contract.
 6. Keep merge/push/release/deploy authority outside Mission finalize.
 7. Use real engine/product validation at the strongest practical boundary before claiming closure.
