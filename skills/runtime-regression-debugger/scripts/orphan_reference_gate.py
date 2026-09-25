@@ -29,7 +29,13 @@ def main() -> int:
         if OVERLAY_TOMBSTONE_MARKER in ref.read_text(encoding='utf-8', errors='ignore')
     ]
     refs = [ref for ref in all_refs if ref not in tombstones]
-    files = [p for p in root.rglob('*') if p.is_file() and p.suffix in TEXT_SUFFIXES and not any(part in IGNORE_PARTS for part in p.parts)]
+    files = [
+        p for p in root.rglob('*')
+        if p.is_file()
+        and p.suffix in TEXT_SUFFIXES
+        and p not in tombstones
+        and not any(part in IGNORE_PARTS for part in p.parts)
+    ]
     texts = {}
     for path in files:
         try:
