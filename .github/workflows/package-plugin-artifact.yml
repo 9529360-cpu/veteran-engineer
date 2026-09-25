@@ -242,7 +242,15 @@ jobs:
                       raise SystemExit("Workspace manifest and portable Studio versions differ")
                   if manifest.get("interface") != portable_manifest.get("extensions", {}).get("com.openai", {}).get("interface"):
                       raise SystemExit("Workspace manifest interface drifted from portable Studio metadata")
+                  runtime_agent = archive.read("veteran-engineer/skills/runtime-regression-debugger/agents/openai.yaml").decode("utf-8")
                   frontend_agent = archive.read("veteran-engineer/skills/frontend-design-builder/agents/openai.yaml").decode("utf-8")
+                  for skill_name, agent_text in {
+                      "runtime-regression-debugger": runtime_agent,
+                      "frontend-design-builder": frontend_agent,
+                  }.items():
+                      for unsupported_product in ("chatgpt", "codex", "api", "atlas"):
+                          if f"- {unsupported_product}" in agent_text:
+                              raise SystemExit(f"{skill_name} declares unsupported product policy metadata")
                   if "policy:" in frontend_agent or "allow_implicit_invocation" in frontend_agent:
                       raise SystemExit("Frontend specialist must not declare a second invocation policy")
               elif manifest.get("name") != "veteran-engineer" or manifest.get("skills") != "./skills/":
