@@ -7,6 +7,8 @@ on:
       - "skills/frontend-design-builder/**"
       - "plugin.json"
       - ".codex-plugin/plugin.json"
+      - "README.md"
+      - "NEXT_CHAT_HANDOFF.md"
       - ".github/workflows/skill-engineering-tools.yml"
   push:
     branches:
@@ -16,6 +18,8 @@ on:
       - "skills/frontend-design-builder/**"
       - "plugin.json"
       - ".codex-plugin/plugin.json"
+      - "README.md"
+      - "NEXT_CHAT_HANDOFF.md"
       - ".github/workflows/skill-engineering-tools.yml"
   workflow_dispatch:
 
