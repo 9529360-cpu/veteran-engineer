@@ -267,7 +267,7 @@ Use this table before editing the Skill itself.
 | Durable owner-state + decision-ledger checkpoint / resume | plugin runtime `owner-state-service.mjs` | atomic CAS, receipt chain/hash audit, mission binding, handoff-export regressions |
 | Machine-checkable invariant | focused `scripts/*.py` gate | deterministic unit/regression test |
 | Reusable proof freshness | `scripts/proof_bundle_gate.py` current/freshness bindings | exact-identity reuse + selective stale/unverifiable regressions |
-| Long-investigation compact resume + frontier/stall + dogfood telemetry | `scripts/engineering_journal.py` | keyed-decision, frontier lease, compact-resume, route/tool/host stats, and stalled-frontier regressions |
+| Long-investigation compact resume + frontier/stall + mutation provenance + dogfood telemetry | `scripts/engineering_journal.py` | keyed-decision, frontier lease, mutation-receipt replay, compact-resume, route/tool/host stats, and stalled-frontier regressions |
 | Repository navigation/calculation aid | focused `scripts/*.py` helper | smoke/unit test; never promote helper output to authority |
 | Capability/evidence execution envelope | `scripts/execution_envelope_gate.py` + `autonomous-repository-engineering.md` | unavailable-capability, honest-fallback, dynamic-refresh regressions; never confuse capability with authorization |
 | Plugin/MCP execution behavior | materialized `assets/plugin-runtime-starter/` runtime source | Node/runtime integration tests, archive byte-preservation, and identity proof |
