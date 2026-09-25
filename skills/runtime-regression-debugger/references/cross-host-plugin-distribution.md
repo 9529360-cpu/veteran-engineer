@@ -60,6 +60,8 @@ If a host configuration format cannot be changed safely without a real parser or
 
 If the host supports Agent Skills, install or reference the same `runtime-regression-debugger` Skill that ships inside the distribution. Do not maintain a host-specific rewritten copy. Detect drift when a host requires a copied Skill directory and let `repair` restore the packaged version.
 
+Treat Workspace Skill paths as persistent release identities. Plugin updates overlay files and omission does not delete previously installed paths. Do not rename or remove a published `skills/<name>/SKILL.md` in place and assume the old Skill disappears; that can leave an orphan Skill registered beside the replacement. A Skill identity migration requires an explicit clean-replacement/deletion-capable platform path or a compatibility plan that proves the old entry can no longer be discovered before publishing the new identity.
+
 ## MCP delivery
 
 Prefer stdio for local host bindings and keep the public MCP surface intention-level. A host adapter should register the existing Veteran Engineer MCP server, not reimplement its tools. Generic MCP support should emit a portable descriptor when the target host's exact config contract is unknown.
