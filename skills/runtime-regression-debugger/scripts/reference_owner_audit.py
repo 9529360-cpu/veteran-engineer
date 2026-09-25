@@ -23,6 +23,8 @@ import re
 from collections import defaultdict, deque
 from pathlib import Path
 
+OVERLAY_TOMBSTONE_MARKER = "<!-- veteran-overlay-tombstone -->"
+
 INTENTIONAL_ROUTE_BUNDLES = {
     frozenset({
         "dogfood-skill-evolution.md",
@@ -75,7 +77,12 @@ def mentioned_references(text: str, names: set[str]) -> set[str]:
 
 def audit(root: Path) -> dict:
     refs_dir = root / "references"
-    refs = sorted(refs_dir.glob("*.md"))
+    all_refs = sorted(refs_dir.glob("*.md"))
+    overlay_tombstones = sorted(
+        ref for ref in all_refs
+        if OVERLAY_TOMBSTONE_MARKER in ref.read_text(encoding="utf-8", errors="ignore")
+    )
+    refs = [ref for ref in all_refs if ref not in overlay_tombstones]
     names = {p.name for p in refs}
 
     routes = literal_mapping(root / "scripts" / "engineering_context_router.py", "ROUTES")
@@ -156,7 +163,9 @@ def audit(root: Path) -> dict:
         })
 
     return {
-        "reference_count": len(refs),
+        "reference_count": len(all_refs),
+        "active_reference_count": len(refs),
+        "overlay_tombstones": [ref.name for ref in overlay_tombstones],
         "root_reference_count": len(roots),
         "reachable_reference_count": len(reachable),
         "unreachable_references": unreachable,
