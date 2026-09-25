@@ -176,6 +176,8 @@ def test_studio_composition_contract():
     assert 'skills/runtime-regression-debugger/**' in workflow
     assert 'skills/frontend-design-builder/**' in workflow
     assert 'plugin.json' in workflow
+    assert 'README.md' in workflow
+    assert 'NEXT_CHAT_HANDOFF.md' in workflow
 
     package_workflow = (REPO_ROOT / ".github" / "workflows" / "package-plugin-artifact.yml").read_text()
     main_install_guard = "matrix.profile == 'workspace' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'"
