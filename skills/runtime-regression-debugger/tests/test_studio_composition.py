@@ -156,6 +156,14 @@ def test_studio_composition_contract():
     assert r'`"\\n"` means a backslash followed by `n`' in testing_quality
     assert r'`"\n"` represents an actual newline at runtime' in testing_quality
 
+    autonomous = (SKILL_ROOT / "references" / "autonomous-repository-engineering.md").read_text()
+    assert "### Keep one mutation authority across hosts" in autonomous
+    assert "active write authority" in autonomous
+    assert "host-local uncommitted or unpushed work as provisional" in runtime_text
+    assert "Do not publish a plugin, package, release, deployment, or completion claim from an unpushed/unreconciled machine tree" in autonomous
+    benchmark_text = (SKILL_ROOT / "references" / "veteran-engineer-benchmark.md").read_text()
+    assert "88. **Web and remote machine both mutate one repository**" in benchmark_text
+
     workflow = (REPO_ROOT / ".github" / "workflows" / "skill-engineering-tools.yml").read_text()
     assert 'skills/runtime-regression-debugger/**' in workflow
     assert 'skills/frontend-design-builder/**' in workflow
