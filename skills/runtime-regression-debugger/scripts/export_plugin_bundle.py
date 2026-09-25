@@ -198,7 +198,7 @@ def build_workspace_profile(skill_root: pathlib.Path, plugin_root: pathlib.Path,
         "name": portable["name"],
         "version": portable.get("version"),
         "description": portable.get("description"),
-        "author": {"name": "Workspace upload"},
+        "author": portable.get("author"),
         "keywords": portable.get("keywords", []),
         "skills": "./skills",
     }
@@ -246,6 +246,8 @@ def validate_export(root: pathlib.Path, profile: str) -> None:
             raise RuntimeError("workspace manifest and portable Studio versions must match")
         if manifest.get("interface") != portable_manifest.get("extensions", {}).get("com.openai", {}).get("interface"):
             raise RuntimeError("workspace manifest interface must mirror the portable Studio interface")
+        if manifest.get("author") != portable_manifest.get("author"):
+            raise RuntimeError("workspace manifest author must mirror the portable Studio author")
     else:
         if manifest.get("name") != "veteran-engineer":
             raise RuntimeError("plugin manifest name must remain veteran-engineer")
