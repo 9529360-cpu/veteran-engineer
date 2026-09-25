@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "veteran-engineering-studio",
-  "version": "1.14.4",
+  "version": "1.14.5",
   "description": "End-to-end software engineering with web-first machine execution, implementation-first Visual Design Authority, a reusable product UI pattern library, test-code semantic self-checks, and a provider-neutral Design Action Fabric for high-quality product UI, real-runtime visual proof, Figma workflows, design systems, Python Agent engineering, debugging, release/operations, accessibility, and rendered QA.",
   "keywords": [
     "full-stack",
@@ -66,7 +66,7 @@
       "interface": {
         "displayName": "Veteran Engineering Studio",
         "shortDescription": "End-to-end full-stack engineering with a dedicated UI specialist",
-        "longDescription": "Veteran Full-Stack Engineer is the primary owner for substantial repository, architecture, backend, data, runtime, debugging, release, operations, and mixed product work. Frontend Design Builder is a bounded UI/frontend specialist for visual direction, design systems, design-to-code, responsive polish, accessibility, and rendered QA. The full-stack owner retains cross-layer integration and final delivery authority. Runtime proof, progressive specialist loading, and semantic test self-checks keep completion evidence grounded in the real product.",
+        "longDescription": "Veteran Full-Stack Engineer is the primary owner for substantial repository, architecture, backend, data, runtime, debugging, release, operations, and mixed product work. Frontend Design Builder is a bounded UI/frontend specialist with evidence-first design-system reuse, Code Connect and existing-screen discovery, resumable multi-tool design state, visual direction, design-to-code, responsive polish, accessibility, and rendered QA. The full-stack owner retains cross-layer integration and final delivery authority.",
         "developerName": "Veteran Engineer Project",
         "category": "Developer Tools",
         "capabilities": [
