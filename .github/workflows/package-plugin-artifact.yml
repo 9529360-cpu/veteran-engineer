@@ -247,6 +247,8 @@ jobs:
                       raise SystemExit("Workspace manifest and portable Studio versions differ")
                   if manifest.get("interface") != portable_manifest.get("extensions", {}).get("com.openai", {}).get("interface"):
                       raise SystemExit("Workspace manifest interface drifted from portable Studio metadata")
+                  if manifest.get("author") != portable_manifest.get("author"):
+                      raise SystemExit("Workspace manifest author drifted from portable Studio metadata")
                   runtime_agent = archive.read("veteran-engineer/skills/runtime-regression-debugger/agents/openai.yaml").decode("utf-8")
                   frontend_agent = archive.read("veteran-engineer/skills/frontend-design-builder/agents/openai.yaml").decode("utf-8")
                   for skill_name, agent_text in {
