@@ -188,6 +188,7 @@ jobs:
               "veteran-engineer/skills/runtime-regression-debugger/SKILL.md",
               "veteran-engineer/skills/runtime-regression-debugger/agents/openai.yaml",
               "veteran-engineer/skills/runtime-regression-debugger/evals/studio_routing_scenarios.json",
+              "veteran-engineer/skills/runtime-regression-debugger/references/action-attribution-and-state-change.md",
               "veteran-engineer/skills/frontend-design-builder/SKILL.md",
               "veteran-engineer/skills/frontend-design-builder/agents/openai.yaml",
               "veteran-engineer/skills/frontend-design-builder/evals/benchmark_scenarios.json",
