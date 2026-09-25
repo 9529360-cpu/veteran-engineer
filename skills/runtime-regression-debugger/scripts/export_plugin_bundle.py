@@ -104,7 +104,7 @@ def build_distribution_metadata(profile: str, *, app_reference: bool, source_rev
             "releaseProvenance": {
                 "sourceOfTruth": "https://github.com/9529360-cpu/veteran-engineer",
                 "sourceRevision": source_revision,
-                "policy": "Install the GitHub Actions workspace artifact for this exact revision; do not hand-build or directly edit Workspace releases."
+                "policy": "Publish only the GitHub Actions Workspace install artifact produced from the default branch for this exact revision; pull-request artifacts are validation candidates only, and Workspace releases must not be hand-built or directly edited."
             },
             "platformNotes": {
                 "webCompatible": True,
