@@ -198,6 +198,8 @@ jobs:
               "veteran-engineer/skills/frontend-design-builder/scripts/design_action_router.py",
               "veteran-engineer/skills/frontend-design-builder/tests/test_design_action_router.py",
               "veteran-engineer/skills/frontend-design-builder/references/design-action-fabric.md",
+              "veteran-engineer/skills/frontend-design-builder/references/design-action-recovery.md",
+              "veteran-engineer/skills/frontend-design-builder/references/design-session-ledger.md",
               "veteran-engineer/skills/frontend-design-builder/references/visual-design-authority.md",
           }
           local_required = {
@@ -302,7 +304,7 @@ jobs:
           PY
 
       - name: Stage workspace install artifact
-        if: matrix.profile == 'workspace'
+        if: matrix.profile == 'workspace' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
@@ -342,7 +344,7 @@ jobs:
           PY
 
       - name: Upload workspace install artifact
-        if: matrix.profile == 'workspace'
+        if: matrix.profile == 'workspace' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: veteran-engineering-studio-workspace-install-${{ github.event.pull_request.head.sha || github.sha }}
