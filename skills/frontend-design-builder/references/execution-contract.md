@@ -14,6 +14,8 @@ Apply this contract to substantial frontend work.
 
 ## During implementation
 
+For any external design-tool mutation, load `design-action-recovery.md`. Do not blindly replay a failed write when partial success is possible; read back the smallest affected scope and resume from the first unmet postcondition.
+
 - Preserve working architecture unless a change is necessary for the requested result.
 - Make changes in coherent slices and keep the app runnable.
 - Treat the first representative render as a go/no-go design checkpoint. If hierarchy or structure is wrong, revise the direction before expanding implementation.
@@ -35,6 +37,7 @@ Prefer this order:
 5. responsive viewport renders correctly;
 6. reference-led work has a direct visual comparison;
 7. substantial existing-product redesigns were inspected in the actual runtime/component path rather than only a surrogate mock;
-8. remaining deviations are documented.
+8. mutating design-tool phases have their required structural/read-back evidence;
+9. remaining deviations are documented.
 
 Never convert an unverified assumption into a completion claim.
