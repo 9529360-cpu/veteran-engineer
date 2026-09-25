@@ -51,6 +51,8 @@ Supported modes include:
 
 The router is an execution-planning aid, not authority over the design. It must never invent a provider that the host does not expose.
 
+For mutating plans, consume the router's `mutates_design`, `preflight_capabilities`, `success_evidence`, and `retry_policy` before the first write. Read `design-action-recovery.md` for any mutating provider phase or provider error.
+
 ## Provider rules
 
 ### Figma provider
@@ -61,7 +63,7 @@ When Figma tools exist:
 2. Keep file/node identity stable through the active phase.
 3. Prefer structured context over eyeballing when exact data exists.
 4. Preserve one screenshot/render as the visual target for design-to-code.
-5. For writes, return/record affected node IDs and validate the changed phase.
+5. For writes, return/record affected node IDs, follow the routed preflight, and validate the changed phase against the routed success evidence.
 6. For design-system work, inspect libraries/variables/components before creating new primitives.
 7. For Code Connect, map real Figma properties to real production component props; never invent an API to make the mapping convenient.
 8. For live URL capture, treat capture output as reference/layout evidence and reconcile it with the real design system.
@@ -96,6 +98,18 @@ Prefer:
 `production evidence -> repository design system -> provider library discovery -> canvas write -> screenshot/structure verification`
 
 For web apps with a live page capture provider, use the capture as a layout reference and reconcile it with actual library components/tokens rather than preserving a flattened capture as the final system.
+
+## Mutation safety
+
+Treat provider writes as external state mutations, not stateless function calls.
+
+- Prefer check-before-create and exact IDs/keys for operations that may be retried.
+- On an uncertain error, assume partial success is possible until read-back proves otherwise.
+- Honor provider retry metadata when available; otherwise inspect before replaying a write.
+- Never clean up design state from fuzzy names or broad prefixes.
+- Resume from the first unmet postcondition rather than restarting a successful phase.
+
+Use `design-action-recovery.md` for the full recovery contract.
 
 ## Evidence ledger
 

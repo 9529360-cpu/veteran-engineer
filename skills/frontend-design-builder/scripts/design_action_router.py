@@ -53,6 +53,10 @@ class IntentSpec:
     required: tuple[str, ...]
     preferred: tuple[str, ...] = ()
     prerequisites: tuple[str, ...] = ()
+    mutates_design: bool = False
+    preflight: tuple[str, ...] = ()
+    success_evidence: tuple[str, ...] = ()
+    retry_policy: str = "read-only-or-idempotent"
     fallback: str = "Use repository/browser/image references and state which structured design actions were unavailable."
 
 
@@ -67,34 +71,56 @@ INTENTS: dict[str, IntentSpec] = {
         required=("design.canvas.write",),
         preferred=("design.inspect.structure", "design.inspect.visual", "design.inspect.variables"),
         prerequisites=("figma-use",),
+        mutates_design=True,
+        preflight=("design.inspect.structure",),
+        success_evidence=("design.inspect.structure", "design.inspect.visual"),
+        retry_policy="inspect-before-retry-when-partial-write-is-possible",
     ),
     "design-system": IntentSpec(
         required=("design.canvas.write", "design.system.libraries"),
         preferred=("design.inspect.variables", "design.codeconnect.read", "design.codeconnect.write"),
         prerequisites=("figma-use", "figma-generate-library"),
+        mutates_design=True,
+        preflight=("design.inspect.structure", "design.system.libraries", "design.inspect.variables"),
+        success_evidence=("design.inspect.structure", "design.inspect.visual"),
+        retry_policy="ledger-idempotent-inspect-before-retry",
         fallback="Treat code tokens/components as authority and document that design-library mutation is unavailable.",
     ),
     "code-to-design": IntentSpec(
         required=("design.canvas.write",),
         preferred=("design.capture.url", "design.system.libraries", "design.codeconnect.read", "design.inspect.visual"),
         prerequisites=("figma-use", "figma-generate-design"),
+        mutates_design=True,
+        preflight=("design.inspect.structure",),
+        success_evidence=("design.inspect.structure", "design.inspect.visual"),
+        retry_policy="inspect-before-retry-when-partial-write-is-possible",
         fallback="Generate a code-native reference/render and keep design write-back explicitly pending.",
     ),
     "live-url-to-design": IntentSpec(
         required=("design.capture.url",),
-        preferred=("design.file.create", "design.canvas.write", "design.system.libraries"),
+        preferred=("design.file.create", "design.canvas.write", "design.system.libraries", "design.inspect.visual"),
         prerequisites=("figma-generate-design",),
+        mutates_design=True,
+        success_evidence=("design.inspect.visual",),
+        retry_policy="inspect-target-before-recapture-on-uncertain-write",
         fallback="Capture browser evidence and reconstruct from code without claiming a design-file write.",
     ),
     "asset-roundtrip": IntentSpec(
         required=("design.asset.import", "design.asset.export"),
         preferred=("design.inspect.visual",),
+        mutates_design=True,
+        success_evidence=("asset-integrity", "design.inspect.visual"),
+        retry_policy="verify-transfer-result-before-retry",
         fallback="Use repository-managed assets and record that design-file asset round-trip is unavailable.",
     ),
     "code-connect": IntentSpec(
         required=("design.codeconnect.read", "design.codeconnect.write"),
         preferred=("design.system.libraries", "design.inspect.context"),
         prerequisites=("figma-code-connect",),
+        mutates_design=True,
+        preflight=("design.codeconnect.read",),
+        success_evidence=("design.codeconnect.read",),
+        retry_policy="readback-before-retry",
         fallback="Document the intended production-component mapping without claiming it was published to Figma.",
     ),
     "motion": IntentSpec(
@@ -107,23 +133,37 @@ INTENTS: dict[str, IntentSpec] = {
         required=("design.diagram.create",),
         preferred=("design.figjam.inspect",),
         prerequisites=("figma-generate-diagram",),
+        mutates_design=True,
+        success_evidence=("design.figjam.inspect",),
+        retry_policy="inspect-target-before-retry",
         fallback="Produce a text/Mermaid specification without claiming an editable FigJam artifact was created.",
     ),
     "slides": IntentSpec(
         required=("design.deck.generate",),
         preferred=("design.canvas.write", "design.inspect.visual"),
+        mutates_design=True,
+        success_evidence=("design.inspect.visual",),
+        retry_policy="inspect-target-before-regeneration",
         fallback="Produce a slide/deck specification without claiming a Figma Slides file was created.",
     ),
     "shader": IntentSpec(
         required=("design.shader.write",),
         preferred=("design.shader.inspect",),
         prerequisites=("figma-shaders",),
+        mutates_design=True,
+        preflight=("design.shader.inspect",),
+        success_evidence=("design.shader.inspect",),
+        retry_policy="readback-before-retry",
         fallback="Keep the visual effect code-native; do not claim a Figma shader resource was created.",
     ),
     "generative-plugin": IntentSpec(
         required=("design.plugin.write",),
         preferred=("design.plugin.inspect",),
         prerequisites=("figma-generative-plugins",),
+        mutates_design=True,
+        preflight=("design.plugin.inspect",),
+        success_evidence=("design.plugin.inspect",),
+        retry_policy="readback-before-retry",
         fallback="Keep automation in the repository/host workflow; do not claim a Figma generative plugin was published.",
     ),
 }
@@ -220,6 +260,10 @@ def route_design_action(intent: str, tools: Iterable[str]) -> dict:
         "usable_preferred": usable_preferred,
         "recommended_tools": sorted(recommended_tools),
         "prerequisite_skills": list(spec.prerequisites) if provider == "figma" else [],
+        "mutates_design": spec.mutates_design and provider == "figma",
+        "preflight_capabilities": list(spec.preflight) if provider == "figma" else [],
+        "success_evidence": list(spec.success_evidence) if provider == "figma" else [],
+        "retry_policy": spec.retry_policy if provider == "figma" else "fallback-no-provider-mutation",
         "fallback": None if provider == "figma" else spec.fallback,
     }
 

@@ -102,3 +102,44 @@ def test_advanced_resources_do_not_activate_from_basic_canvas_tools():
     plugin = route_design_action("generative-plugin", ["use_figma"])
     assert shader["provider"] == "fallback"
     assert plugin["provider"] == "fallback"
+
+
+def test_canvas_write_plan_requires_preflight_and_postwrite_evidence():
+    result = route_design_action(
+        "canvas-edit",
+        ["use_figma", "get_screenshot", "get_metadata"],
+    )
+    assert result["provider"] == "figma"
+    assert result["mutates_design"] is True
+    assert result["preflight_capabilities"] == ["design.inspect.structure"]
+    assert result["success_evidence"] == [
+        "design.inspect.structure",
+        "design.inspect.visual",
+    ]
+    assert "inspect-before-retry" in result["retry_policy"]
+
+
+def test_read_only_design_to_code_does_not_claim_design_mutation():
+    result = route_design_action("design-to-code", FULL_FIGMA_TOOLS)
+    assert result["mutates_design"] is False
+    assert result["preflight_capabilities"] == []
+    assert result["retry_policy"] == "read-only-or-idempotent"
+
+
+def test_design_system_plan_uses_ledger_idempotent_recovery():
+    result = route_design_action(
+        "design-system",
+        ["use_figma", "get_libraries", "search_design_system", "get_screenshot"],
+    )
+    assert result["mutates_design"] is True
+    assert "design.system.libraries" in result["preflight_capabilities"]
+    assert result["retry_policy"] == "ledger-idempotent-inspect-before-retry"
+
+
+def test_fallback_never_claims_provider_mutation_or_retry_safety():
+    result = route_design_action("canvas-edit", [])
+    assert result["provider"] == "fallback"
+    assert result["mutates_design"] is False
+    assert result["preflight_capabilities"] == []
+    assert result["success_evidence"] == []
+    assert result["retry_policy"] == "fallback-no-provider-mutation"
