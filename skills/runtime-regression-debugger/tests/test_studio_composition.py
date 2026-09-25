@@ -1,5 +1,7 @@
 import json
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -195,6 +197,14 @@ def test_studio_composition_contract():
         assert 'declares unsupported invocation policy metadata' in package_workflow
         assert "design-action-recovery.md" in package_workflow
         assert "design-session-ledger.md" in package_workflow
+        for tombstone_path in (
+            "evals/benchmark_scenarios.json",
+            "references/host-capability-adaptation.md",
+            "references/long-running-engineering-execution.md",
+            "references/repository-engineering-execution.md",
+            "tests/test_skill_workflow.py",
+        ):
+            assert tombstone_path in package_workflow
 
         release_workflow = (REPO_ROOT / ".github" / "workflows" / "release.yml").read_text()
         assert '- "plugin.json"' in release_workflow
@@ -205,6 +215,45 @@ def test_studio_composition_contract():
         assert "exact **34-tool** surface" not in readme
         assert "public MCP surface remains 34 tools" not in readme
         assert "exact **36-tool** surface" in readme
+
+    tombstone_marker = "<!-- veteran-overlay-tombstone -->"
+    tombstone_refs = {
+        "host-capability-adaptation.md",
+        "long-running-engineering-execution.md",
+        "repository-engineering-execution.md",
+    }
+    for name in tombstone_refs:
+        text = (SKILL_ROOT / "references" / name).read_text()
+        assert tombstone_marker in text
+        assert "Do not route to or load" in text
+
+    retired_eval = json.loads((SKILL_ROOT / "evals" / "benchmark_scenarios.json").read_text())
+    assert retired_eval["retired"] is True
+    assert retired_eval["scenarios"] == []
+
+    retired_test = (SKILL_ROOT / "tests" / "test_skill_workflow.py").read_text()
+    assert "contains no tests" in retired_test
+    assert "def test_" not in retired_test
+
+    owner_audit = subprocess.run(
+        [sys.executable, str(SKILL_ROOT / "scripts" / "reference_owner_audit.py"), str(SKILL_ROOT), "--json", "--strict"],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    owner_payload = json.loads(owner_audit.stdout)
+    assert set(owner_payload["overlay_tombstones"]) == tombstone_refs
+    assert owner_payload["active_reference_count"] + len(tombstone_refs) == owner_payload["reference_count"]
+
+    orphan_audit = subprocess.run(
+        [sys.executable, str(SKILL_ROOT / "scripts" / "orphan_reference_gate.py"), str(SKILL_ROOT), "--json"],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    orphan_payload = json.loads(orphan_audit.stdout)
+    assert set(orphan_payload["overlay_tombstones"]) == tombstone_refs
+    assert orphan_payload["orphaned"] == []
 
     router = FRONTEND_ROOT / "scripts" / "frontend_context_router.py"
     router_tests = FRONTEND_ROOT / "tests" / "test_frontend_context_router.py"
