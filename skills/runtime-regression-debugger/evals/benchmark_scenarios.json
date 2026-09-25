@@ -1,0 +1,6 @@
+{
+  "schema": "veteran-engineer-benchmark-v1",
+  "retired": true,
+  "reason": "Overlay compatibility tombstone. The active benchmark/evaluation surfaces moved to evals/evals.json and references/veteran-engineer-benchmark.md.",
+  "scenarios": []
+}

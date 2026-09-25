@@ -49,7 +49,7 @@ Also test an official client in `auto` mode against the forced standalone fallba
 
 ## Public tools
 
-Keep the public surface intention-level. The current `0.4.0` runtime locks an exact **34-tool** surface grouped around project/mission execution, workers, evidence/validation/review, immutable candidates, experience governance, runtime maintenance, and handoff export. `tests/mcp-handshake.test.mjs` is the exact-surface regression boundary.
+Keep the public surface intention-level. The current `0.4.0` runtime locks an exact **36-tool** surface grouped around project/mission execution, workers, evidence/validation/review, immutable candidates, experience governance, runtime maintenance, and handoff export. `tests/mcp-handshake.test.mjs` is the exact-surface regression boundary.
 
 Do not expose generic Git, shell, or arbitrary-filesystem tools merely because the runtime executes workers internally. A new public tool must represent an operator intent with bounded authority and evidence, not a thin wrapper around a primitive.
 

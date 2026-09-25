@@ -49,6 +49,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Export profile
         shell: bash
@@ -188,6 +190,11 @@ jobs:
               "veteran-engineer/skills/runtime-regression-debugger/SKILL.md",
               "veteran-engineer/skills/runtime-regression-debugger/agents/openai.yaml",
               "veteran-engineer/skills/runtime-regression-debugger/evals/studio_routing_scenarios.json",
+              "veteran-engineer/skills/runtime-regression-debugger/evals/benchmark_scenarios.json",
+              "veteran-engineer/skills/runtime-regression-debugger/references/host-capability-adaptation.md",
+              "veteran-engineer/skills/runtime-regression-debugger/references/long-running-engineering-execution.md",
+              "veteran-engineer/skills/runtime-regression-debugger/references/repository-engineering-execution.md",
+              "veteran-engineer/skills/runtime-regression-debugger/tests/test_skill_workflow.py",
               "veteran-engineer/skills/frontend-design-builder/SKILL.md",
               "veteran-engineer/skills/frontend-design-builder/agents/openai.yaml",
               "veteran-engineer/skills/frontend-design-builder/evals/benchmark_scenarios.json",
@@ -198,6 +205,8 @@ jobs:
               "veteran-engineer/skills/frontend-design-builder/scripts/design_action_router.py",
               "veteran-engineer/skills/frontend-design-builder/tests/test_design_action_router.py",
               "veteran-engineer/skills/frontend-design-builder/references/design-action-fabric.md",
+              "veteran-engineer/skills/frontend-design-builder/references/design-action-recovery.md",
+              "veteran-engineer/skills/frontend-design-builder/references/design-session-ledger.md",
               "veteran-engineer/skills/frontend-design-builder/references/visual-design-authority.md",
           }
           local_required = {
@@ -252,8 +261,8 @@ jobs:
                       for unsupported_product in ("chatgpt", "codex", "api", "atlas"):
                           if f"- {unsupported_product}" in agent_text:
                               raise SystemExit(f"{skill_name} declares unsupported product policy metadata")
-                  if "policy:" in frontend_agent or "allow_implicit_invocation" in frontend_agent:
-                      raise SystemExit("Frontend specialist must not declare a second invocation policy")
+                      if "policy:" in agent_text or "allow_implicit_invocation" in agent_text:
+                          raise SystemExit(f"{skill_name} declares unsupported invocation policy metadata")
               elif manifest.get("name") != "veteran-engineer" or manifest.get("skills") != "./skills/":
                   raise SystemExit("Codex compatibility manifest identity/Skill binding is invalid")
 
@@ -266,9 +275,9 @@ jobs:
               else:
                   present_local = sorted(local_required.intersection(names))
                   if present_local:
-                      raise SystemExit("web profile contains local runtime surfaces: " + ", ".join(present_local))
+                      raise SystemExit("non-local profile contains local runtime surfaces: " + ", ".join(present_local))
                   if "mcpServers" in manifest:
-                      raise SystemExit("web profile declares mcpServers")
+                      raise SystemExit("non-local profile declares mcpServers")
 
               for info in infos:
                   if info.is_dir():
@@ -301,8 +310,20 @@ jobs:
           print(f"plugin_bytes={bundle.stat().st_size}")
           PY
 
-      - name: Stage workspace install artifact
+      - name: Run packaged Workspace Skill regressions
         if: matrix.profile == 'workspace'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check pytest
+          rm -rf dist/workspace-package-test
+          mkdir -p dist/workspace-package-test
+          unzip -q dist/veteran-engineer-workspace.zip -d dist/workspace-package-test
+          python3 -m compileall -q             dist/workspace-package-test/veteran-engineer/skills/runtime-regression-debugger/scripts             dist/workspace-package-test/veteran-engineer/skills/runtime-regression-debugger/tests             dist/workspace-package-test/veteran-engineer/skills/frontend-design-builder/scripts             dist/workspace-package-test/veteran-engineer/skills/frontend-design-builder/tests
+          python3 -m pytest -q             dist/workspace-package-test/veteran-engineer/skills/runtime-regression-debugger/tests             dist/workspace-package-test/veteran-engineer/skills/frontend-design-builder/tests
+
+      - name: Stage workspace install artifact
+        if: matrix.profile == 'workspace' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
@@ -342,7 +363,7 @@ jobs:
           PY
 
       - name: Upload workspace install artifact
-        if: matrix.profile == 'workspace'
+        if: matrix.profile == 'workspace' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: veteran-engineering-studio-workspace-install-${{ github.event.pull_request.head.sha || github.sha }}
