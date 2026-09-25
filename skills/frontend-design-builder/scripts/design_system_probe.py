@@ -68,6 +68,9 @@ THEME_DIRS = ["styles", "src/styles", "theme", "src/theme", "tokens", "src/token
 
 INTERESTING_NAME_PARTS = ("token", "theme", "variable", "palette", "typography")
 INTERESTING_SUFFIXES = {".css", ".scss", ".sass", ".less", ".json", ".js", ".mjs", ".cjs", ".ts", ".tsx"}
+COMPONENT_SOURCE_SUFFIXES = {".js", ".jsx", ".ts", ".tsx", ".vue", ".svelte"}
+STORY_MARKERS = (".stories.", ".story.")
+CODE_CONNECT_MARKERS = (".figma.",)
 
 
 def _relative(root: Path, path: Path) -> str:
@@ -149,6 +152,51 @@ def _css_variable_sources(paths: list[Path], root: Path) -> list[str]:
     return sorted(set(out))[:50]
 
 
+def _code_connect_files(paths: list[Path], root: Path) -> list[str]:
+    out: list[str] = []
+    for path in paths:
+        lower_name = path.name.lower()
+        if any(marker in lower_name for marker in CODE_CONNECT_MARKERS) and path.suffix.lower() in COMPONENT_SOURCE_SUFFIXES:
+            out.append(_relative(root, path))
+            continue
+        if path.suffix.lower() not in {".kt", ".swift"}:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")[:200_000]
+        except OSError:
+            continue
+        if "FigmaConnect" in text or "@FigmaConnect" in text:
+            out.append(_relative(root, path))
+    return sorted(set(out))[:100]
+
+
+def _story_files(paths: list[Path], root: Path) -> list[str]:
+    out = []
+    for path in paths:
+        lower_name = path.name.lower()
+        if any(marker in lower_name for marker in STORY_MARKERS):
+            out.append(_relative(root, path))
+    return sorted(set(out))[:100]
+
+
+def _component_source_files(paths: list[Path], root: Path, component_dirs: list[str]) -> list[str]:
+    prefixes = tuple(f"{directory.rstrip('/')}/" for directory in component_dirs)
+    if not prefixes:
+        return []
+    out = []
+    for path in paths:
+        rel = _relative(root, path)
+        if not rel.startswith(prefixes):
+            continue
+        if path.suffix.lower() not in COMPONENT_SOURCE_SUFFIXES:
+            continue
+        lower_name = path.name.lower()
+        if any(marker in lower_name for marker in STORY_MARKERS + CODE_CONNECT_MARKERS):
+            continue
+        out.append(rel)
+    return sorted(set(out))[:100]
+
+
 def probe(root: Path, *, max_files: int = 2000) -> dict:
     root = root.expanduser().resolve()
     if not root.is_dir():
@@ -176,17 +224,22 @@ def probe(root: Path, *, max_files: int = 2000) -> dict:
     if (root / "components.json").is_file() and not any(x["name"] == "shadcn/ui" for x in packages["ui_libraries"]):
         packages["ui_libraries"].append({"name": "shadcn/ui", "package": None, "version": None, "evidence": "components.json"})
 
+    code_connect_files = _code_connect_files(files, root)
+    story_files = _story_files(files, root)
+    component_source_files = _component_source_files(files, root, component_dirs)
     figma_evidence = [path for path in known_files if "figma" in path.lower()]
     storybook_evidence = [path for path in known_files if path.startswith(".storybook/")]
 
     signals: list[str] = []
     if component_dirs or token_theme_files or theme_dirs or packages["ui_libraries"]:
         signals.extend(["existing-system", "design-system"])
-    if packages["design_tools"] or figma_evidence:
+    if packages["design_tools"] or figma_evidence or code_connect_files:
         signals.extend(["figma", "code-connect"])
-    if packages["component_lab"] or storybook_evidence:
+    if packages["component_lab"] or storybook_evidence or story_files:
         signals.extend(["storybook", "component-lab"])
-    if packages["design_tools"] and (packages["component_lab"] or token_theme_files):
+    if (packages["design_tools"] or code_connect_files) and (
+        packages["component_lab"] or storybook_evidence or story_files or token_theme_files
+    ):
         signals.append("design-system-sync")
     signals = list(dict.fromkeys(signals))
 
@@ -200,6 +253,9 @@ def probe(root: Path, *, max_files: int = 2000) -> dict:
         "known_config_files": known_files,
         "token_theme_files": token_theme_files,
         "css_variable_sources": _css_variable_sources(files, root),
+        "code_connect_files": code_connect_files,
+        "story_files": story_files,
+        "component_source_files": component_source_files,
         "routing_signals": signals,
         "files_scanned": len(files),
         "scan_truncated": truncated,
