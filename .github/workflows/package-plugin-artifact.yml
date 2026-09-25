@@ -31,6 +31,7 @@ on:
 
 permissions:
   contents: read
+  statuses: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -345,6 +346,7 @@ jobs:
           PY
 
       - name: Upload workspace install artifact
+        id: workspace_install
         if: matrix.profile == 'workspace' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
@@ -353,6 +355,23 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
+
+      - name: Publish workspace install artifact pointer
+        if: matrix.profile == 'workspace' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.workspace_install.outputs.artifact-id }}
+          ARTIFACT_URL: ${{ steps.workspace_install.outputs.artifact-url }}
+        run: |
+          set -euo pipefail
+          test -n "$ARTIFACT_ID"
+          test -n "$ARTIFACT_URL"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f state=success \
+            -f context='veteran/workspace-install' \
+            -f description="artifact_id=$ARTIFACT_ID" \
+            -f target_url="$ARTIFACT_URL"
 
       - name: Upload profile artifact
         uses: actions/upload-artifact@v4
