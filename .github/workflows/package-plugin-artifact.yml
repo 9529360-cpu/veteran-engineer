@@ -305,6 +305,18 @@ jobs:
           print(f"plugin_bytes={bundle.stat().st_size}")
           PY
 
+      - name: Run packaged Workspace Skill regressions
+        if: matrix.profile == 'workspace'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check pytest
+          rm -rf dist/workspace-package-test
+          mkdir -p dist/workspace-package-test
+          unzip -q dist/veteran-engineer-workspace.zip -d dist/workspace-package-test
+          python3 -m compileall -q             dist/workspace-package-test/veteran-engineer/skills/runtime-regression-debugger/scripts             dist/workspace-package-test/veteran-engineer/skills/runtime-regression-debugger/tests             dist/workspace-package-test/veteran-engineer/skills/frontend-design-builder/scripts             dist/workspace-package-test/veteran-engineer/skills/frontend-design-builder/tests
+          python3 -m pytest -q             dist/workspace-package-test/veteran-engineer/skills/runtime-regression-debugger/tests             dist/workspace-package-test/veteran-engineer/skills/frontend-design-builder/tests
+
       - name: Stage workspace install artifact
         if: matrix.profile == 'workspace' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         shell: bash
