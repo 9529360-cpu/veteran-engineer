@@ -171,6 +171,7 @@ def test_studio_composition_contract():
     assert "PR-head artifact is a validation candidate, not a publishable release artifact" in release_patterns
     cross_host = (SKILL_ROOT / "references" / "cross-host-plugin-distribution.md").read_text()
     assert "Plugin updates overlay files and omission does not delete previously installed paths" in cross_host
+    assert "scripts/workspace_overlay_deletion_gate.py" in cross_host
     assert "Do not rename or remove a published `skills/<name>/SKILL.md` in place" in cross_host
     benchmark_text = (SKILL_ROOT / "references" / "veteran-engineer-benchmark.md").read_text()
     assert "88. **Web and remote machine both mutate one repository**" in benchmark_text
