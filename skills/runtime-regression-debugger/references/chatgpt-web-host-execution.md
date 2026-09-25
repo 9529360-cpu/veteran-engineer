@@ -71,6 +71,8 @@ Do not restart takeover, reload reference families, rescan the repository, or re
 
 If a write may have succeeded but the host lost its response, classify it as **unknown outcome**, not failure. Before retrying a consequential or non-idempotent action, inspect the authoritative state that proves whether it happened: diff/tree state, remote SHA/PR/workflow, release/tag, deployed artifact, database version, provider operation ID, or visible runtime result.
 
+Reconcile that state against the current mission's initiated-action ledger before narrating causality. A changed remote state or stale-write conflict does not prove that another session/agent performed the change. Preserve self-initiated downstream automation as a plausible cause until actor-specific evidence excludes it.
+
 Retry only after proving the effect did not occur or when the operation is safely idempotent under the same identity.
 
 ## Keep a replaceable working set
