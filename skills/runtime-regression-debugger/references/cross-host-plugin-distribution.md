@@ -62,6 +62,8 @@ If the host supports Agent Skills, install or reference the same `runtime-regres
 
 Treat Workspace Skill paths as persistent release identities. Plugin updates overlay files and omission does not delete previously installed paths. Do not rename or remove a published `skills/<name>/SKILL.md` in place and assume the old Skill disappears; that can leave an orphan Skill registered beside the replacement. A Skill identity migration requires an explicit clean-replacement/deletion-capable platform path or a compatibility plan that proves the old entry can no longer be discovered before publishing the new identity.
 
+When deleting any other file that ships in the Workspace Skill bundle, register an explicit generated overlay tombstone before merge so the next release overwrites the old installed bytes. Run `scripts/workspace_overlay_deletion_gate.py` across the proposed base/head change; it must reject Workspace-shipped deletions that have neither a safe tombstone nor a supported clean-removal path.
+
 ## MCP delivery
 
 Prefer stdio for local host bindings and keep the public MCP surface intention-level. A host adapter should register the existing Veteran Engineer MCP server, not reimplement its tools. Generic MCP support should emit a portable descriptor when the target host's exact config contract is unknown.
