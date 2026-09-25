@@ -176,24 +176,27 @@ def test_studio_composition_contract():
     assert "88. **Web and remote machine both mutate one repository**" in benchmark_text
     assert "89. **Self-initiated release is misattributed as another developer**" in benchmark_text
 
-    workflow = (REPO_ROOT / ".github" / "workflows" / "skill-engineering-tools.yml").read_text()
-    assert 'skills/runtime-regression-debugger/**' in workflow
-    assert 'skills/frontend-design-builder/**' in workflow
-    assert 'plugin.json' in workflow
-    assert 'README.md' in workflow
-    assert 'NEXT_CHAT_HANDOFF.md' in workflow
+    skill_workflow_path = REPO_ROOT / ".github" / "workflows" / "skill-engineering-tools.yml"
+    package_workflow_path = REPO_ROOT / ".github" / "workflows" / "package-plugin-artifact.yml"
+    if skill_workflow_path.is_file() and package_workflow_path.is_file():
+        workflow = skill_workflow_path.read_text()
+        assert 'skills/runtime-regression-debugger/**' in workflow
+        assert 'skills/frontend-design-builder/**' in workflow
+        assert 'plugin.json' in workflow
+        assert 'README.md' in workflow
+        assert 'NEXT_CHAT_HANDOFF.md' in workflow
 
-    package_workflow = (REPO_ROOT / ".github" / "workflows" / "package-plugin-artifact.yml").read_text()
-    main_install_guard = "matrix.profile == 'workspace' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'"
-    assert package_workflow.count(main_install_guard) == 2
-    assert "Stage workspace install artifact\n        if: matrix.profile == 'workspace'" in package_workflow
-    assert "veteran-engineering-studio-workspace-install-${{ github.event.pull_request.head.sha || github.sha }}" in package_workflow
-    assert "statuses: write" in package_workflow
-    assert "veteran/workspace-install" in package_workflow
-    assert 'description="artifact_id=$ARTIFACT_ID"' in package_workflow
-    assert "references/action-attribution-and-state-change.md" in package_workflow
-    assert "references/design-action-recovery.md" in package_workflow
-    assert "references/design-session-ledger.md" in package_workflow
+        package_workflow = package_workflow_path.read_text()
+        main_install_guard = "matrix.profile == 'workspace' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'"
+        assert package_workflow.count(main_install_guard) == 2
+        assert "Stage workspace install artifact\n        if: matrix.profile == 'workspace'" in package_workflow
+        assert "veteran-engineering-studio-workspace-install-${{ github.event.pull_request.head.sha || github.sha }}" in package_workflow
+        assert "statuses: write" in package_workflow
+        assert "veteran/workspace-install" in package_workflow
+        assert 'description="artifact_id=$ARTIFACT_ID"' in package_workflow
+        assert "references/action-attribution-and-state-change.md" in package_workflow
+        assert "references/design-action-recovery.md" in package_workflow
+        assert "references/design-session-ledger.md" in package_workflow
 
     router = FRONTEND_ROOT / "scripts" / "frontend_context_router.py"
     router_tests = FRONTEND_ROOT / "tests" / "test_frontend_context_router.py"
@@ -224,10 +227,17 @@ def test_studio_version_domains_are_separate():
 
 
 def test_studio_docs_do_not_reintroduce_retired_invocation_policy_or_tool_count():
-    readme = (REPO_ROOT / "README.md").read_text()
-    starter_readme = (SKILL_ROOT / "assets" / "plugin-runtime-starter" / "README.md").read_text()
-    handoff = (REPO_ROOT / "NEXT_CHAT_HANDOFF.md").read_text()
-    starter_handoff = (SKILL_ROOT / "assets" / "plugin-runtime-starter" / "NEXT_CHAT_HANDOFF.md").read_text()
+    readme_path = REPO_ROOT / "README.md"
+    starter_readme_path = SKILL_ROOT / "assets" / "plugin-runtime-starter" / "README.md"
+    handoff_path = REPO_ROOT / "NEXT_CHAT_HANDOFF.md"
+    starter_handoff_path = SKILL_ROOT / "assets" / "plugin-runtime-starter" / "NEXT_CHAT_HANDOFF.md"
+    if not all(path.is_file() for path in (readme_path, starter_readme_path, handoff_path, starter_handoff_path)):
+        pytest.skip("repository-only documentation parity gate is unavailable in exported Skill packages")
+
+    readme = readme_path.read_text()
+    starter_readme = starter_readme_path.read_text()
+    handoff = handoff_path.read_text()
+    starter_handoff = starter_handoff_path.read_text()
 
     assert readme == starter_readme
     assert handoff == starter_handoff
