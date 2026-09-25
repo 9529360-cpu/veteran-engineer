@@ -98,6 +98,8 @@ Trace live behavior, not the repository wholesale:
 
 Separate handwritten authority from generated/vendor/artifact/fixture/snapshot/dead paths; patch source/generator/schema for derived output. Preserve pre-existing changes and project conventions. For monorepos recover only the affected workspace/build/codegen/deploy/runtime graph; use archaeology/hotspot scripts only when they can change the decision.
 
+When multiple mutation-capable hosts can touch the same repository, keep one active write authority per integration wave. Before switching between GitHub/connector, local/Codex, or remote-machine mutation, reconcile repository identity, remote/ref, exact HEAD, dirty/untracked state, and outstanding remote effects. Treat host-local uncommitted or unpushed work as provisional: do not publish, release, or claim repository synchronization from it until it is integrated into the chosen authority and re-read from the authoritative remote.
+
 Universal invariants:
 
 - one authoritative mutation owner per important fact, or explicit reconciliation; projections/caches remain projections;
