@@ -356,6 +356,16 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Upload profile artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: veteran-engineer-${{ matrix.profile }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            dist/veteran-engineer-${{ matrix.profile }}.zip
+            dist/veteran-engineer-${{ matrix.profile }}.sha256
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Publish workspace install artifact pointer
         if: matrix.profile == 'workspace' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         shell: bash
@@ -372,13 +382,3 @@ jobs:
             -f context='veteran/workspace-install' \
             -f description="artifact_id=$ARTIFACT_ID" \
             -f target_url="$ARTIFACT_URL"
-
-      - name: Upload profile artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: veteran-engineer-${{ matrix.profile }}-${{ github.event.pull_request.head.sha || github.sha }}
-          path: |
-            dist/veteran-engineer-${{ matrix.profile }}.zip
-            dist/veteran-engineer-${{ matrix.profile }}.sha256
-          if-no-files-found: error
-          retention-days: 7
