@@ -65,7 +65,7 @@ For substantial new UI, major redesigns, or work where the current interface is 
 
 Read `references/tool-orchestration.md` whenever the task depends on repositories, Figma, image generation, browser/rendered inspection, or external research. Use the strongest available tools, but degrade gracefully when optional tools are unavailable. Never claim an action or verification step that was not actually performed.
 
-When the task requires real design-tool reads/writes, also read `references/design-action-fabric.md`. If host tool availability is non-trivial, run `scripts/design_action_router.py` against the current tool inventory and active design intent before choosing a provider path. Route by capability first; do not hard-wire the Skill to one design vendor.
+When the task requires real design-tool reads/writes, also read `references/design-action-fabric.md`. If host tool availability is non-trivial, run `scripts/design_action_router.py` against the current tool inventory and active design intent before choosing a provider path. Route by capability first; do not hard-wire the Skill to one design vendor. For any routed mutation or provider failure, read `references/design-action-recovery.md` before retrying or cleaning up.
 
 For substantial implementation, also read `references/execution-contract.md` and use its evidence standard for completion.
 
@@ -147,6 +147,7 @@ Load only what the task needs:
 - `references/design-system-reference.template.md` — optional living cache for a specific project's discovered system.
 - `references/tool-orchestration.md` — repository, Figma, image generation, browser/preview, research, and graceful-degradation tool policy.
 - `references/design-action-fabric.md` — provider-neutral design capability model, Figma tool binding, fallbacks, design-action evidence ledger, and stop conditions.
+- `references/design-action-recovery.md` — preflight, idempotency, exact-ID cleanup, partial-success handling, retry safety, and post-write evidence for mutating design actions.
 - `references/execution-contract.md` — implementation discipline and evidence-bound completion criteria.
 - `references/design-source-authority.md` — authority/evidence/inspiration classification and conflict resolution across code, Figma, Storybook, live product, screenshots, reference libraries, and generated concepts.
 - `references/figma-integration.md` — structured Figma workflow, variables/components, Code Connect, design-to-code, write-back, and evidence loop.
