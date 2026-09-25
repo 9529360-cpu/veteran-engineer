@@ -58,7 +58,9 @@ For substantial work repeat:
 
 For an authorized long-running foreground mission, keep one compact control state:
 
-`goal -> done definition -> authority identities -> settled decisions -> active frontier -> strongest evidence -> blockers/risks -> next action`
+`goal -> done definition -> authority identities -> settled decisions -> initiated remote effects -> active frontier -> strongest evidence -> blockers/risks -> next action`
+
+For consequential remote mutations, preserve the initiated action and expected downstream effect until authoritative read-back closes it. A later version/SHA/release change does not identify a different actor by itself.
 
 While the current host execution remains active, a completed patch, green focused test, commit, PR, checkpoint, stage change, or convenient summary point is a continuation signal, not a stop condition. After each evidence-producing slice, continue directly when the done definition is still open and another safe, authorized, material action exists. Stop only when completion is proven, no material evidence-backed work remains in scope, required semantics/capability/authorization cannot be recovered safely, the next action crosses an ungranted consequential boundary, or the host ends execution. Never claim background continuation after the active host boundary ends.
 
@@ -99,6 +101,8 @@ Trace live behavior, not the repository wholesale:
 Separate handwritten authority from generated/vendor/artifact/fixture/snapshot/dead paths; patch source/generator/schema for derived output. Preserve pre-existing changes and project conventions. For monorepos recover only the affected workspace/build/codegen/deploy/runtime graph; use archaeology/hotspot scripts only when they can change the decision.
 
 When multiple mutation-capable hosts can touch the same repository, keep one active write authority per integration wave. Before switching between GitHub/connector, local/Codex, or remote-machine mutation, reconcile repository identity, remote/ref, exact HEAD, dirty/untracked state, and outstanding remote effects. Treat host-local uncommitted or unpushed work as provisional: do not publish, release, or claim repository synchronization from it until it is integrated into the chosen authority and re-read from the authoritative remote.
+
+When remote state changes between observations and actor identity matters, read `references/action-attribution-and-state-change.md`. **A state change alone does not identify the actor.** Reconcile the change against this mission's initiated actions and their downstream automation before claiming another agent, host, workflow, or person caused it. If independent actor evidence is absent, attribution remains unknown/ambiguous even when the new state is valid.
 
 Universal invariants:
 
