@@ -150,6 +150,8 @@ test('workspace exporter normalizes Studio identity and remains skill-only', asy
     const portable = JSON.parse(zipText(workspace, 'veteran-engineer/plugin.json'));
     assert.equal(report.manifest.version, portable.version);
     assert.deepEqual(report.manifest.interface, portable.extensions['com.openai'].interface);
+    assert.deepEqual(report.manifest.author, portable.author);
+    assert.equal(report.manifest.author.name, 'Veteran Engineer Project');
   } finally {
     await cleanup(temp);
   }
