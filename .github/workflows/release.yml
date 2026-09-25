@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/release.yml"
       - ".github/release-intent.json"
+      - "plugin.json"
       - ".codex-plugin/plugin.json"
       - "package.json"
       - "package-lock.json"
@@ -15,6 +16,7 @@ on:
       - "tests/release-contract.test.mjs"
       - "tests/release-bootstrap.test.mjs"
       - "skills/runtime-regression-debugger/**"
+      - "skills/frontend-design-builder/**"
   push:
     branches:
       - main
