@@ -62,13 +62,13 @@ Before the next consequential action, reacquire only the authoritative state tha
 - package registry, update channel, or public release metadata when publication participates;
 - deployed revision/version when deployment participates.
 
-Compare the new state with the pre-action snapshot. If another actor or automation advanced it, discard the stale plan and continue from the new truth. Never assume a local checkout, cached connector response, or previously listed tags/releases became current automatically after a remote mutation.
+Compare the new state with the pre-action snapshot. If the state advanced, discard the stale plan and continue from the new truth. Do not attribute that advance to another actor, agent, host, or automation unless independent actor/provenance evidence distinguishes it from the current mission's own initiated actions and their downstream effects. A changed version, SHA, release ID, or stale-write conflict proves freshness drift, not actor identity. Read `action-attribution-and-state-change.md` when attribution matters. Never assume a local checkout, cached connector response, or previously listed tags/releases became current automatically after a remote mutation.
 
 Do not chain two consequential release mutations using only the state observed before the first one.
 
 ## Exact source and build provenance
 
-Record the exact commit/head that produced the candidate. The release package must be attributable to that source identity.
+Record the exact commit/head that produced the candidate. The release package must be attributable to that source identity. When the repository declares the default branch as publication authority, a PR-head artifact is a validation candidate, not a publishable release artifact, even when its tree is byte-equivalent to the eventual merge commit.
 
 Where practical, preserve:
 
