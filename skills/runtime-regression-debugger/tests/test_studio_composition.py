@@ -96,6 +96,7 @@ def test_studio_composition_contract():
 
     runtime_agent = (SKILL_ROOT / "agents" / "openai.yaml").read_text()
     frontend_agent = (FRONTEND_ROOT / "agents" / "openai.yaml").read_text()
+    assert 'display_name: "Veteran Frontend Design Builder"' in frontend_agent
     for agent_text in (runtime_agent, frontend_agent):
         for unsupported_product in ("chatgpt", "codex", "api", "atlas"):
             assert f"- {unsupported_product}" not in agent_text
@@ -161,8 +162,15 @@ def test_studio_composition_contract():
     assert "active write authority" in autonomous
     assert "host-local uncommitted or unpushed work as provisional" in runtime_text
     assert "Do not publish a plugin, package, release, deployment, or completion claim from an unpushed/unreconciled machine tree" in autonomous
+    assert "A state change alone does not identify the actor." in runtime_text
+    attribution = (SKILL_ROOT / "references" / "action-attribution-and-state-change.md").read_text()
+    assert "A changed state proves only that the state changed." in attribution
+    assert "Never use \"I do not remember doing this\" as evidence that another actor did it." in attribution
+    release_patterns = (SKILL_ROOT / "references" / "release-promotion-patterns.md").read_text()
+    assert "PR-head artifact is a validation candidate, not a publishable release artifact" in release_patterns
     benchmark_text = (SKILL_ROOT / "references" / "veteran-engineer-benchmark.md").read_text()
     assert "88. **Web and remote machine both mutate one repository**" in benchmark_text
+    assert "89. **Self-initiated release is misattributed as another developer**" in benchmark_text
 
     workflow = (REPO_ROOT / ".github" / "workflows" / "skill-engineering-tools.yml").read_text()
     assert 'skills/runtime-regression-debugger/**' in workflow
