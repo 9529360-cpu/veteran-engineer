@@ -49,6 +49,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Export profile
         shell: bash
@@ -254,8 +256,8 @@ jobs:
                       for unsupported_product in ("chatgpt", "codex", "api", "atlas"):
                           if f"- {unsupported_product}" in agent_text:
                               raise SystemExit(f"{skill_name} declares unsupported product policy metadata")
-                  if "policy:" in frontend_agent or "allow_implicit_invocation" in frontend_agent:
-                      raise SystemExit("Frontend specialist must not declare a second invocation policy")
+                      if "policy:" in agent_text or "allow_implicit_invocation" in agent_text:
+                          raise SystemExit(f"{skill_name} declares unsupported invocation policy metadata")
               elif manifest.get("name") != "veteran-engineer" or manifest.get("skills") != "./skills/":
                   raise SystemExit("Codex compatibility manifest identity/Skill binding is invalid")
 
