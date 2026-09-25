@@ -189,12 +189,7 @@ jobs:
               "veteran-engineer/skills/runtime-regression-debugger/SKILL.md",
               "veteran-engineer/skills/runtime-regression-debugger/agents/openai.yaml",
               "veteran-engineer/skills/runtime-regression-debugger/evals/studio_routing_scenarios.json",
-              "veteran-engineer/skills/runtime-regression-debugger/evals/benchmark_scenarios.json",
               "veteran-engineer/skills/runtime-regression-debugger/references/action-attribution-and-state-change.md",
-              "veteran-engineer/skills/runtime-regression-debugger/references/host-capability-adaptation.md",
-              "veteran-engineer/skills/runtime-regression-debugger/references/long-running-engineering-execution.md",
-              "veteran-engineer/skills/runtime-regression-debugger/references/repository-engineering-execution.md",
-              "veteran-engineer/skills/runtime-regression-debugger/tests/test_skill_workflow.py",
               "veteran-engineer/skills/frontend-design-builder/SKILL.md",
               "veteran-engineer/skills/frontend-design-builder/agents/openai.yaml",
               "veteran-engineer/skills/frontend-design-builder/evals/benchmark_scenarios.json",
@@ -239,6 +234,20 @@ jobs:
 
               manifest = json.loads(archive.read("veteran-engineer/.codex-plugin/plugin.json"))
               if profile == "workspace":
+                  workspace_tombstones = {
+                      "veteran-engineer/skills/runtime-regression-debugger/evals/benchmark_scenarios.json",
+                      "veteran-engineer/skills/runtime-regression-debugger/references/host-capability-adaptation.md",
+                      "veteran-engineer/skills/runtime-regression-debugger/references/long-running-engineering-execution.md",
+                      "veteran-engineer/skills/runtime-regression-debugger/references/repository-engineering-execution.md",
+                      "veteran-engineer/skills/runtime-regression-debugger/tests/test_skill_workflow.py",
+                  }
+                  missing_tombstones = sorted(workspace_tombstones.difference(names))
+                  if missing_tombstones:
+                      raise SystemExit("Workspace overlay tombstones are missing: " + ", ".join(missing_tombstones))
+                  for tombstone in workspace_tombstones:
+                      retired_text = archive.read(tombstone).decode("utf-8")
+                      if "retired" not in retired_text.lower():
+                          raise SystemExit(f"Workspace overlay tombstone is not retired: {tombstone}")
                   provenance = metadata.get("releaseProvenance")
                   if not isinstance(provenance, dict):
                       raise SystemExit("Workspace release provenance metadata is missing")
