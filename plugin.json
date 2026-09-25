@@ -3,6 +3,9 @@
   "name": "veteran-engineering-studio",
   "version": "1.14.7",
   "description": "End-to-end software engineering with web-first machine execution, implementation-first Visual Design Authority, a reusable product UI pattern library, test-code semantic self-checks, and a provider-neutral Design Action Fabric for high-quality product UI, real-runtime visual proof, Figma workflows, design systems, Python Agent engineering, debugging, release/operations, accessibility, and rendered QA.",
+  "author": {
+    "name": "Veteran Engineer Project"
+  },
   "keywords": [
     "full-stack",
     "software-engineering",
