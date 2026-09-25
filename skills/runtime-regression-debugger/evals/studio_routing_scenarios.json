@@ -1,0 +1,93 @@
+{
+  "schema": "veteran-studio-routing-v1",
+  "scenarios": [
+    {
+      "id": "repo-takeover",
+      "request": "Take over this unfamiliar repository, recover the active architecture, fix the highest-value issue, validate it, and carry the change through CI and delivery.",
+      "primary": "runtime-regression-debugger",
+      "specialist": [],
+      "rationale": "Whole-repository takeover and delivery require one end-to-end engineering owner."
+    },
+    {
+      "id": "backend-auth-feature",
+      "request": "Add organization-scoped API keys with persistence, authorization checks, tests, migration safety, and release verification.",
+      "primary": "runtime-regression-debugger",
+      "specialist": [],
+      "rationale": "Backend, data, auth, migration, and release are material."
+    },
+    {
+      "id": "mixed-product-slice",
+      "request": "Build the billing settings feature end to end: API, database changes, permissions, React UI, tests, and deployment verification.",
+      "primary": "runtime-regression-debugger",
+      "specialist": [
+        "frontend-design-builder"
+      ],
+      "rationale": "Cross-layer outcome stays with full-stack owner while UI work may be delegated."
+    },
+    {
+      "id": "desktop-redesign-with-runtime",
+      "request": "Redesign the Electron workspace and also update IPC/state wiring so the new interaction model works in the real desktop runtime.",
+      "primary": "runtime-regression-debugger",
+      "specialist": [
+        "frontend-design-builder"
+      ],
+      "rationale": "Visual work is material, but host/runtime behavior keeps full-stack ownership primary."
+    },
+    {
+      "id": "pure-dashboard-redesign",
+      "request": "Redesign this existing analytics dashboard using the current design system, implement the responsive UI, and perform rendered visual QA.",
+      "primary": "frontend-design-builder",
+      "specialist": [],
+      "rationale": "The requested outcome is primarily UI/frontend design and rendered implementation."
+    },
+    {
+      "id": "figma-to-code",
+      "request": "Implement this accepted Figma screen in the existing frontend with responsive behavior and pixel-faithful visual QA.",
+      "primary": "frontend-design-builder",
+      "specialist": [],
+      "rationale": "Design-to-code is a bounded frontend specialist task when no broader system change is requested."
+    },
+    {
+      "id": "visual-concept-only",
+      "request": "Explore three visual directions for this landing page and critique the hierarchy; do not modify the repository yet.",
+      "primary": "frontend-design-builder",
+      "specialist": [],
+      "rationale": "Pure visual exploration belongs to the design specialist."
+    },
+    {
+      "id": "database-migration",
+      "request": "Migrate the account schema without downtime, preserve backward compatibility, update readers and writers, and verify rollout and rollback.",
+      "primary": "runtime-regression-debugger",
+      "specialist": [],
+      "rationale": "Migration and compatibility are full-stack/runtime ownership."
+    },
+    {
+      "id": "production-incident",
+      "request": "Investigate this production regression, contain impact, identify the causal change, patch it, and verify recovery.",
+      "primary": "runtime-regression-debugger",
+      "specialist": [],
+      "rationale": "Incident response and recovery require the primary engineering owner."
+    },
+    {
+      "id": "performance",
+      "request": "Find why p99 latency doubled, establish a comparable baseline, fix the bottleneck, and prove the improvement under the same workload.",
+      "primary": "runtime-regression-debugger",
+      "specialist": [],
+      "rationale": "Performance work is not a frontend-design routing problem."
+    },
+    {
+      "id": "release-operations",
+      "request": "Prepare and execute the release, validate the exact artifact, monitor health, and handle rollback if the rollout degrades.",
+      "primary": "runtime-regression-debugger",
+      "specialist": [],
+      "rationale": "Release and operations remain with the full-stack owner."
+    },
+    {
+      "id": "tiny-syntax-question",
+      "request": "What does Array.prototype.map do in JavaScript?",
+      "primary": null,
+      "specialist": [],
+      "rationale": "General software explanation should not force either Studio Skill."
+    }
+  ]
+}
