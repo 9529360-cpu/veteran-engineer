@@ -168,11 +168,48 @@ def test_studio_composition_contract():
 
     autonomous = (SKILL_ROOT / "references" / "autonomous-repository-engineering.md").read_text()
     assert "### Keep one mutation authority across hosts" in autonomous
+    assert "### Separate mutation provenance from executor attribution" in autonomous
     assert "active write authority" in autonomous
+    assert "State change proves that state changed" in runtime_text
+    assert "does **not** prove which human, model, chat session, or host caused it" in runtime_text
+    assert "GitHub actor, commit author/committer, workflow triggering actor" in runtime_text
     assert "host-local uncommitted or unpushed work as provisional" in runtime_text
     assert "Do not publish a plugin, package, release, deployment, or completion claim from an unpushed/unreconciled machine tree" in autonomous
+    assert "Current-execution receipt" in autonomous
+    assert "Causal descendant" in autonomous
+    assert "Account/principal evidence" in autonomous
+    assert "mutation-receipt" in autonomous
+
+    batch = (SKILL_ROOT / "references" / "batch-mission-orchestration.md").read_text()
+    assert "If another actor entered the planned write set" not in batch
+    assert "Attribute that change to another actor only when positive executor provenance supports the claim" in batch
+
+    distribution_contract = (SKILL_ROOT / "references" / "cross-host-plugin-distribution.md").read_text()
+    assert "A conflict proves only that the release state changed since the bound read" in distribution_contract
+    assert "it does not prove a different human, model, session, or host performed the change" in distribution_contract
+
+    release_patterns = (SKILL_ROOT / "references" / "release-promotion-patterns.md").read_text()
+    assert "Treat the initiator as unknown until current-execution receipts" in release_patterns
+    assert "the changed state, account-level actor, or timing alone does not prove another actor/session caused it" in release_patterns
+
+    journal = (SKILL_ROOT / "scripts" / "engineering_journal.py").read_text()
+    assert 'sub.add_parser("mutation-receipt")' in journal
+    assert '"mutation_receipts"' in journal
+
+    eval_rows = json.loads((SKILL_ROOT / "evals" / "evals.json").read_text())
+    eval_names = {row["name"] for row in eval_rows}
+    assert {
+        "same-execution-delayed-release-is-not-another-ai",
+        "release-conflict-does-not-prove-foreign-executor",
+        "account-identity-is-not-session-identity",
+        "positive-session-provenance-allows-attribution",
+    }.issubset(eval_names)
+
     benchmark_text = (SKILL_ROOT / "references" / "veteran-engineer-benchmark.md").read_text()
     assert "88. **Web and remote machine both mutate one repository**" in benchmark_text
+    assert "89. **Own delayed side effect looks foreign**" in benchmark_text
+    assert "90. **Release conflict with ambiguous initiator**" in benchmark_text
+    assert "91. **Explicit executor provenance resolves attribution**" in benchmark_text
 
     assert "refs/heads/main" in exporter
     assert "never publish pull-request artifacts" in exporter
