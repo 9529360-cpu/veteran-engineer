@@ -21,6 +21,7 @@ Examples:
   engineering_journal.py /tmp/work.json resume
   engineering_journal.py /tmp/work.json route-event --router-json /tmp/route.json
   engineering_journal.py /tmp/work.json tool-event --class github --outcome success --decision-impact changed --note "resolved exact PR head"
+  engineering_journal.py /tmp/work.json mutation-receipt --surface github --action merge-pr --target acme/repo#42 --result-id commit:abc123 --expected-descendant workflow:package
   engineering_journal.py /tmp/work.json host-event --kind tool-call-ceiling --note "reduce fan-out for this session"
   engineering_journal.py /tmp/work.json stats
   engineering_journal.py /tmp/work.json summary
@@ -62,6 +63,7 @@ def fresh() -> dict:
             "resume_count": 0,
             "route_events": [],
             "tool_events": [],
+            "mutation_receipts": [],
             "host_events": [],
         },
         "closed": False,
@@ -92,6 +94,7 @@ def load(path: pathlib.Path) -> dict:
     telemetry.setdefault("resume_count", 0)
     telemetry.setdefault("route_events", [])
     telemetry.setdefault("tool_events", [])
+    telemetry.setdefault("mutation_receipts", [])
     telemetry.setdefault("host_events", [])
     for item in data.setdefault("attempts", []):
         item.setdefault("equivalence_class", None)
@@ -306,6 +309,15 @@ def main() -> int:
     p.add_argument("--outcome", choices=["success", "failure", "partial", "blocked"], required=True)
     p.add_argument("--decision-impact", choices=["changed", "confirmed", "none", "unknown"], default="unknown")
     p.add_argument("--signature", default="")
+    p.add_argument("--note", default="")
+
+    p = sub.add_parser("mutation-receipt")
+    p.add_argument("--surface", required=True)
+    p.add_argument("--action", required=True)
+    p.add_argument("--target", required=True)
+    p.add_argument("--result-id", action="append", default=[])
+    p.add_argument("--caused-by", default="")
+    p.add_argument("--expected-descendant", action="append", default=[])
     p.add_argument("--note", default="")
 
     p = sub.add_parser("host-event")
@@ -685,6 +697,34 @@ def main() -> int:
         data["telemetry"]["tool_events"].append(event)
         data["updated_at"] = event["at"]
         save(path, data)
+    elif args.command == "mutation-receipt":
+        require_open(data)
+        surface = args.surface.strip()
+        action = args.action.strip()
+        target = args.target.strip()
+        result_ids = list(dict.fromkeys(item.strip() for item in args.result_id if item.strip()))
+        expected = list(dict.fromkeys(item.strip() for item in args.expected_descendant if item.strip()))
+        if not surface:
+            raise RuntimeError("--surface must not be empty")
+        if not action:
+            raise RuntimeError("--action must not be empty")
+        if not target:
+            raise RuntimeError("--target must not be empty")
+        if not result_ids:
+            raise RuntimeError("mutation receipt requires at least one --result-id")
+        receipt = {
+            "at": now(),
+            "surface": surface,
+            "action": action,
+            "target": target,
+            "result_ids": result_ids,
+            "caused_by": args.caused_by.strip() or None,
+            "expected_descendants": expected,
+            "note": args.note.strip() or None,
+        }
+        data["telemetry"]["mutation_receipts"].append(receipt)
+        data["updated_at"] = receipt["at"]
+        save(path, data)
     elif args.command == "host-event":
         require_open(data)
         kind = args.kind.strip()
@@ -791,6 +831,19 @@ def main() -> int:
             "active_frontier": compact_active,
             "ready_frontiers": compact_frontiers,
             "latest_checkpoint": (data.get("checkpoints") or [None])[-1],
+            "mutation_receipts": [
+                {
+                    "surface": item.get("surface"),
+                    "action": item.get("action"),
+                    "target": item.get("target"),
+                    "result_ids": item.get("result_ids", []),
+                    "caused_by": item.get("caused_by"),
+                    "expected_descendants": item.get("expected_descendants", []),
+                    "at": item.get("at"),
+                }
+                for item in data.get("telemetry", {}).get("mutation_receipts", [])[-8:]
+                if isinstance(item, dict)
+            ],
             "counts": {
                 "evidence": len(data.get("evidence", [])),
                 "attempts": len(data.get("attempts", [])),
@@ -800,6 +853,7 @@ def main() -> int:
                 "resume_invocations": int(data.get("telemetry", {}).get("resume_count", 0)),
                 "journaled_route_events": len(data.get("telemetry", {}).get("route_events", [])),
                 "journaled_tool_events": len(data.get("telemetry", {}).get("tool_events", [])),
+                "mutation_receipts": len(data.get("telemetry", {}).get("mutation_receipts", [])),
                 "journaled_host_events": len(data.get("telemetry", {}).get("host_events", [])),
             },
             "closed": bool(data.get("closed")),
@@ -812,6 +866,7 @@ def main() -> int:
         telemetry = data.get("telemetry", {})
         route_events = [item for item in telemetry.get("route_events", []) if isinstance(item, dict)]
         tool_events = [item for item in telemetry.get("tool_events", []) if isinstance(item, dict)]
+        mutation_receipts = [item for item in telemetry.get("mutation_receipts", []) if isinstance(item, dict)]
         host_events = [item for item in telemetry.get("host_events", []) if isinstance(item, dict)]
         frontier_states: dict[str, int] = {}
         for item in data.get("frontiers", []):
@@ -864,6 +919,7 @@ def main() -> int:
                 "resume_invocations": int(telemetry.get("resume_count", 0)),
                 "journaled_route_events": len(route_events),
                 "journaled_tool_events": len(tool_events),
+                "mutation_receipts": len(mutation_receipts),
                 "journaled_host_events": len(host_events),
             },
             "frontier_states": frontier_states,
@@ -900,6 +956,7 @@ def main() -> int:
         print("decisions:", len(data["decisions"]))
         print("blockers:", len(data.get("blockers", [])))
         print("checkpoints:", len(data.get("checkpoints", [])))
+        print("mutation receipts:", len(data.get("telemetry", {}).get("mutation_receipts", [])))
         frontier_states: dict[str, int] = {}
         for item in data.get("frontiers", []):
             if isinstance(item, dict):
