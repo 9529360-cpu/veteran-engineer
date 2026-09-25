@@ -78,9 +78,11 @@ def test_studio_composition_contract():
 
     runtime_agent = (SKILL_ROOT / "agents" / "openai.yaml").read_text()
     frontend_agent = (FRONTEND_ROOT / "agents" / "openai.yaml").read_text()
-    assert "allow_implicit_invocation: true" in runtime_agent
-    for product in ("chatgpt", "codex", "api", "atlas"):
-        assert f"- {product}" in runtime_agent
+    for agent_text in (runtime_agent, frontend_agent):
+        for unsupported_product in ("chatgpt", "codex", "api", "atlas"):
+            assert f"- {unsupported_product}" not in agent_text
+    assert "policy:" not in runtime_agent
+    assert "allow_implicit_invocation" not in runtime_agent
     assert "policy:" not in frontend_agent
     assert "allow_implicit_invocation" not in frontend_agent
 

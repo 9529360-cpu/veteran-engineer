@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "veteran-engineering-studio",
-  "version": "1.14.0",
+  "version": "1.14.2",
   "description": "End-to-end software engineering with web-first machine execution, implementation-first Visual Design Authority, a reusable product UI pattern library, test-code semantic self-checks, and a provider-neutral Design Action Fabric for high-quality product UI, real-runtime visual proof, Figma workflows, design systems, Python Agent engineering, debugging, release/operations, accessibility, and rendered QA.",
   "keywords": [
     "full-stack",
