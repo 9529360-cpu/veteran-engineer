@@ -113,6 +113,8 @@ For long/tool-heavy work, keep compact mutation receipts alongside mission state
 
 `action -> tool/surface -> target -> returned identity -> expected causal descendants -> last verified state`
 
+When a durable working journal helps, record consequential remote mutations with `scripts/engineering_journal.py <journal> mutation-receipt ...`; `resume` returns the latest receipts so an interrupted or compacted session can reconcile its own prior effects before assigning them to a foreign executor.
+
 This ledger is for reconciliation, not ownership theater. It should prevent the model from misclassifying its own delayed side effects as foreign work.
 
 Also discover the execution environment actually available now: source/search/history access, mutation access, shell/compiler/test/browser/runtime, public network, external systems such as CI/cloud/observability, and the authorization boundary. Do not infer web, desktop, Codex, IDE, connector, or CI capabilities from product names or prior sessions. Prefer the least consequential tool that can produce the needed evidence: read/search -> local inspect/test -> local edit -> isolated branch/commit -> remote PR -> staging mutation -> production mutation.
