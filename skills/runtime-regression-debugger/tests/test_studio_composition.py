@@ -96,6 +96,7 @@ def test_studio_composition_contract():
 
     runtime_agent = (SKILL_ROOT / "agents" / "openai.yaml").read_text()
     frontend_agent = (FRONTEND_ROOT / "agents" / "openai.yaml").read_text()
+    assert 'display_name: "Veteran Frontend Design Builder"' in frontend_agent
     for agent_text in (runtime_agent, frontend_agent):
         for unsupported_product in ("chatgpt", "codex", "api", "atlas"):
             assert f"- {unsupported_product}" not in agent_text
@@ -141,6 +142,8 @@ def test_studio_composition_contract():
     assert (FRONTEND_ROOT / "scripts" / "design_action_router.py").is_file()
     assert (FRONTEND_ROOT / "tests" / "test_design_action_router.py").is_file()
     assert (FRONTEND_ROOT / "references" / "design-action-fabric.md").is_file()
+    assert (FRONTEND_ROOT / "references" / "design-action-recovery.md").is_file()
+    assert (FRONTEND_ROOT / "references" / "design-session-ledger.md").is_file()
     assert (FRONTEND_ROOT / "references" / "visual-design-authority.md").is_file()
     assert (FRONTEND_ROOT / "references" / "product-ui-pattern-library.md").is_file()
     assert "Deep implementation is blocked" in frontend_text
@@ -168,6 +171,31 @@ def test_studio_composition_contract():
     assert 'skills/runtime-regression-debugger/**' in workflow
     assert 'skills/frontend-design-builder/**' in workflow
     assert 'plugin.json' in workflow
+    assert "Require Studio version bump for packaged Skill changes" in workflow
+    assert "Studio package changed without a strict version increase" in workflow
+    assert "github.event.pull_request.base.sha || github.event.before" in workflow
+
+    package_workflow = (REPO_ROOT / ".github" / "workflows" / "package-plugin-artifact.yml").read_text()
+    main_only_install = (
+        "matrix.profile == 'workspace' && github.ref == 'refs/heads/main' "
+        "&& github.event_name != 'pull_request'"
+    )
+    assert package_workflow.count(main_only_install) == 2
+    assert "design-action-recovery.md" in package_workflow
+    assert "design-session-ledger.md" in package_workflow
+
+    release_workflow = (REPO_ROOT / ".github" / "workflows" / "release.yml").read_text()
+    assert '- "plugin.json"' in release_workflow
+    assert '- "skills/frontend-design-builder/**"' in release_workflow
+
+    assert "refs/heads/main" in exporter
+    assert "never publish pull-request artifacts" in exporter
+
+    readme = (REPO_ROOT / "README.md").read_text()
+    assert "implicit-invocation policy" not in readme
+    assert "exact **34-tool** surface" not in readme
+    assert "public MCP surface remains 34 tools" not in readme
+    assert "exact **36-tool** surface" in readme
 
     router = FRONTEND_ROOT / "scripts" / "frontend_context_router.py"
     router_tests = FRONTEND_ROOT / "tests" / "test_frontend_context_router.py"
