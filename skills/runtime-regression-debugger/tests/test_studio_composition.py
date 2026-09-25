@@ -181,7 +181,8 @@ def test_studio_composition_contract():
 
     package_workflow = (REPO_ROOT / ".github" / "workflows" / "package-plugin-artifact.yml").read_text()
     main_install_guard = "matrix.profile == 'workspace' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'"
-    assert package_workflow.count(main_install_guard) == 3
+    assert package_workflow.count(main_install_guard) == 2
+    assert "Stage workspace install artifact\n        if: matrix.profile == 'workspace'" in package_workflow
     assert "veteran-engineering-studio-workspace-install-${{ github.event.pull_request.head.sha || github.sha }}" in package_workflow
     assert "statuses: write" in package_workflow
     assert "veteran/workspace-install" in package_workflow
