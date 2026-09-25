@@ -42,6 +42,7 @@ def test_studio_composition_contract():
     interface = plugin["extensions"]["com.openai"]["interface"]
     assert interface["displayName"] == "Veteran Engineering Studio"
     assert interface["developerName"] == "Veteran Engineer Project"
+    assert plugin["author"]["name"] == interface["developerName"]
     assert "End-to-end full-stack engineering" in interface["shortDescription"]
     assert "primary owner" in interface["longDescription"]
     assert "bounded UI/frontend specialist" in interface["longDescription"]
