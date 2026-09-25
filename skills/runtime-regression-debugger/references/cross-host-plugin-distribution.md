@@ -66,6 +66,8 @@ Prefer stdio for local host bindings and keep the public MCP surface intention-l
 
 Do not use one local-MCP plugin archive as the universal Web/Desktop artifact. Current ChatGPT web distribution treats imported plugins that declare `.mcp.json`/`mcp.json` as Desktop-only. Export local Desktop/Codex profiles with the runtime and MCP manifest, and export the Web profile without them. If Web actions are backed by an existing app, reference only caller/workspace-supplied app metadata; never fabricate app IDs, OAuth configuration, or tunnel setup.
 
+For the Workspace Skill plugin, separate **validation artifacts** from **publishable install artifacts**. Pull-request builds may prove packaging/reproducibility, but they are not publication authority. Emit the installable Workspace artifact only from the default branch (or another explicitly authorized publication ref), bind `releaseProvenance.sourceRevision` to that exact source revision, and publish those bytes without rewriting provenance after CI. Byte-equivalence between a PR head and a squash-merge commit does not make the PR-head artifact the default-branch artifact.
+
 ## Lifecycle semantics
 
 ### Install
