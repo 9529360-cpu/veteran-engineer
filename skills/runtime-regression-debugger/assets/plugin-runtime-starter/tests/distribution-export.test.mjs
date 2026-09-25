@@ -10,6 +10,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
 const skillRoot = path.join(root, 'skills', 'runtime-regression-debugger');
 const exporter = path.join(skillRoot, 'scripts', 'export_plugin_bundle.py');
+const workspaceRevision = '0123456789abcdef0123456789abcdef01234567';
 
 function pythonAvailable() {
   return spawnSync('python3', ['--version'], { encoding: 'utf8' }).status === 0;
@@ -101,12 +102,37 @@ test('web exporter references only a caller-supplied app manifest instead of inv
 });
 
 
+test('workspace exporter refuses releases without Git provenance', async (t) => {
+  if (!pythonAvailable()) return t.skip('python3 unavailable; exporter is validated by packaging CI instead');
+  const temp = await tempDir('veteran-export-workspace-provenance-');
+  try {
+    const workspace = path.join(temp, 'workspace.zip');
+    const result = spawnSync('python3', [exporter, skillRoot, '--profile', 'workspace', '--output', workspace], {
+      cwd: root,
+      encoding: 'utf8'
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr || result.stdout, /--source-revision is required with --profile workspace/);
+  } finally {
+    await cleanup(temp);
+  }
+});
+
 test('workspace exporter normalizes Studio identity and remains skill-only', async (t) => {
   if (!pythonAvailable()) return t.skip('python3 unavailable; exporter is validated by packaging CI instead');
   const temp = await tempDir('veteran-export-workspace-');
   try {
     const workspace = path.join(temp, 'workspace.zip');
-    runPython([exporter, skillRoot, '--profile', 'workspace', '--output', workspace]);
+    runPython([
+      exporter,
+      skillRoot,
+      '--profile',
+      'workspace',
+      '--source-revision',
+      workspaceRevision,
+      '--output',
+      workspace
+    ]);
     const report = zipReport(workspace);
     assert.equal(report.manifest.name, 'veteran-engineering-studio');
     assert.equal(report.manifest.skills, './skills');
@@ -114,6 +140,8 @@ test('workspace exporter normalizes Studio identity and remains skill-only', asy
     assert.equal(report.manifest.apps, undefined);
     assert.equal(report.distribution.profile, 'workspace');
     assert.equal(report.distribution.surfaceProfile, 'workspace-skill');
+    assert.equal(report.distribution.releaseProvenance.sourceRevision, workspaceRevision);
+    assert.equal(report.distribution.releaseProvenance.sourceOfTruth, 'https://github.com/9529360-cpu/veteran-engineer');
     assert.ok(report.names.includes('veteran-engineer/plugin.json'));
     assert.ok(report.names.includes('veteran-engineer/skills/runtime-regression-debugger/SKILL.md'));
     assert.ok(report.names.includes('veteran-engineer/skills/frontend-design-builder/SKILL.md'));
