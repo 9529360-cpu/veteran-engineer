@@ -54,20 +54,31 @@ jobs:
         shell: bash
         env:
           PROFILE: ${{ matrix.profile }}
+          SOURCE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           mkdir -p dist
+          SOURCE_ARGS=()
+          if [ "$PROFILE" = "workspace" ]; then
+            SOURCE_ARGS+=(--source-revision "$SOURCE_REVISION")
+          fi
           python3 skills/runtime-regression-debugger/scripts/export_plugin_bundle.py \
             skills/runtime-regression-debugger \
             --profile "$PROFILE" \
+            "${SOURCE_ARGS[@]}" \
             --output "dist/veteran-engineer-${PROFILE}.zip"
 
       - name: Prove reproducibility and fail-closed packaging boundaries
         shell: bash
         env:
           PROFILE: ${{ matrix.profile }}
+          SOURCE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
+          SOURCE_ARGS=()
+          if [ "$PROFILE" = "workspace" ]; then
+            SOURCE_ARGS+=(--source-revision "$SOURCE_REVISION")
+          fi
           ARCHIVE="dist/veteran-engineer-${PROFILE}.zip"
           REBUILT="dist/veteran-engineer-${PROFILE}-rebuilt.zip"
           FIRST_SHA="$(sha256sum "$ARCHIVE" | awk '{print $1}')"
@@ -75,6 +86,7 @@ jobs:
           python3 skills/runtime-regression-debugger/scripts/export_plugin_bundle.py \
             skills/runtime-regression-debugger \
             --profile "$PROFILE" \
+            "${SOURCE_ARGS[@]}" \
             --output "$REBUILT"
           SECOND_SHA="$(sha256sum "$REBUILT" | awk '{print $1}')"
           test "$FIRST_SHA" = "$SECOND_SHA"
@@ -85,6 +97,7 @@ jobs:
           if python3 skills/runtime-regression-debugger/scripts/export_plugin_bundle.py \
             skills/runtime-regression-debugger \
             --profile "$PROFILE" \
+            "${SOURCE_ARGS[@]}" \
             --output dist/should-not-exist.zip \
             >dist/symlink-test.stdout 2>dist/symlink-test.stderr; then
             echo "Exporter unexpectedly followed a symbolic link" >&2
@@ -96,6 +109,7 @@ jobs:
           if python3 skills/runtime-regression-debugger/scripts/export_plugin_bundle.py \
             skills/runtime-regression-debugger \
             --profile "$PROFILE" \
+            "${SOURCE_ARGS[@]}" \
             --output skills/runtime-regression-debugger/should-not-exist.zip \
             >dist/self-output.stdout 2>dist/self-output.stderr; then
             echo "Exporter unexpectedly allowed output inside the Skill root" >&2
@@ -154,6 +168,7 @@ jobs:
         shell: bash
         env:
           PROFILE: ${{ matrix.profile }}
+          SOURCE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -214,6 +229,13 @@ jobs:
 
               manifest = json.loads(archive.read("veteran-engineer/.codex-plugin/plugin.json"))
               if profile == "workspace":
+                  provenance = metadata.get("releaseProvenance")
+                  if not isinstance(provenance, dict):
+                      raise SystemExit("Workspace release provenance metadata is missing")
+                  if provenance.get("sourceRevision") != os.environ["SOURCE_REVISION"]:
+                      raise SystemExit("Workspace release provenance does not match the GitHub source revision")
+                  if provenance.get("sourceOfTruth") != "https://github.com/9529360-cpu/veteran-engineer":
+                      raise SystemExit("Workspace release provenance source-of-truth is invalid")
                   if manifest.get("name") != "veteran-engineering-studio" or manifest.get("skills") != "./skills":
                       raise SystemExit("Workspace manifest identity/Skill binding is invalid")
                   if manifest.get("version") != portable_manifest.get("version"):
