@@ -14,6 +14,7 @@ from pathlib import Path
 
 TEXT_SUFFIXES = {'.md', '.py', '.js', '.mjs', '.cjs', '.json', '.yaml', '.yml'}
 IGNORE_PARTS = {'.git', '__pycache__', '.pytest_cache', 'tests', 'evals'}
+OVERLAY_TOMBSTONE_MARKER = '<!-- veteran-overlay-tombstone -->'
 
 
 def main() -> int:
@@ -22,7 +23,12 @@ def main() -> int:
     ap.add_argument('--json', action='store_true')
     args = ap.parse_args()
     root = Path(args.skill_root).resolve()
-    refs = sorted((root / 'references').glob('*.md'))
+    all_refs = sorted((root / 'references').glob('*.md'))
+    tombstones = [
+        ref for ref in all_refs
+        if OVERLAY_TOMBSTONE_MARKER in ref.read_text(encoding='utf-8', errors='ignore')
+    ]
+    refs = [ref for ref in all_refs if ref not in tombstones]
     files = [p for p in root.rglob('*') if p.is_file() and p.suffix in TEXT_SUFFIXES and not any(part in IGNORE_PARTS for part in p.parts)]
     texts = {}
     for path in files:
@@ -46,14 +52,16 @@ def main() -> int:
             orphaned.append(ref.name)
 
     payload = {
-        'reference_count': len(refs),
+        'reference_count': len(all_refs),
+        'active_reference_count': len(refs),
+        'overlay_tombstones': [ref.name for ref in tombstones],
         'orphaned': orphaned,
         'status': 'PASS' if not orphaned else 'FAIL',
     }
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
-        print(f"references: {len(refs)}")
+        print(f"references: {len(all_refs)} active: {len(refs)}")
         if orphaned:
             print('orphaned references:')
             for name in orphaned:
