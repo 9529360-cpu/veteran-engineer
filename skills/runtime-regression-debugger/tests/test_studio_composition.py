@@ -42,10 +42,28 @@ def test_studio_composition_contract():
     interface = plugin["extensions"]["com.openai"]["interface"]
     assert interface["displayName"] == "Veteran Engineering Studio"
     assert interface["developerName"] == "Veteran Engineer Project"
+    assert "End-to-end full-stack engineering" in interface["shortDescription"]
+    assert "primary owner" in interface["longDescription"]
+    assert "bounded UI/frontend specialist" in interface["longDescription"]
     assert {"Read", "Write"}.issubset(set(interface["capabilities"]))
+
+    skill_dirs = {
+        child.name
+        for child in SKILL_ROOT.parent.iterdir()
+        if child.is_dir() and (child / "SKILL.md").is_file()
+    }
+    assert skill_dirs == {"runtime-regression-debugger", "frontend-design-builder"}
 
     runtime_text = (SKILL_ROOT / "SKILL.md").read_text()
     frontend_text = (FRONTEND_ROOT / "SKILL.md").read_text()
+    runtime_fields = _frontmatter(runtime_text)
+    frontend_fields = _frontmatter(frontend_text)
+    assert "primary full-stack owner" in runtime_fields["description"]
+    assert "whole-product or cross-layer outcomes" in runtime_fields["description"]
+    assert "delegate a bounded UI/frontend phase" in runtime_fields["description"]
+    assert "UI/frontend specialist for Veteran Engineering Studio" in frontend_fields["description"]
+    assert "Do not take sole ownership of whole-repository outcomes" in frontend_fields["description"]
+
     assert "sibling `frontend-design-builder` Skill" in runtime_text
     assert "retains end-to-end engineering ownership" in runtime_text
     assert "Do not bounce the task between sibling Skills" in runtime_text
@@ -85,6 +103,26 @@ def test_studio_composition_contract():
     assert "allow_implicit_invocation" not in runtime_agent
     assert "policy:" not in frontend_agent
     assert "allow_implicit_invocation" not in frontend_agent
+
+    routing = json.loads((SKILL_ROOT / "evals" / "studio_routing_scenarios.json").read_text())
+    assert routing["schema"] == "veteran-studio-routing-v1"
+    routing_rows = routing["scenarios"]
+    routing_ids = [row["id"] for row in routing_rows]
+    assert len(routing_ids) == len(set(routing_ids)) >= 12
+    assert {row["primary"] for row in routing_rows} == {
+        None,
+        "runtime-regression-debugger",
+        "frontend-design-builder",
+    }
+    assert any(
+        row["primary"] == "runtime-regression-debugger" and row["specialist"] == ["frontend-design-builder"]
+        for row in routing_rows
+    )
+    for row in routing_rows:
+        assert row["request"] and row["rationale"]
+        assert row["specialist"] in ([], ["frontend-design-builder"])
+        if row["primary"] == "frontend-design-builder":
+            assert row["specialist"] == []
 
     benchmark = json.loads((FRONTEND_ROOT / "evals" / "benchmark_scenarios.json").read_text())
     scenarios = benchmark["scenarios"]
