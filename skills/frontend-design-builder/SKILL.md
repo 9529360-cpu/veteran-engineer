@@ -1,6 +1,6 @@
 ---
 name: frontend-design-builder
-description: Design and implement polished frontend UI for websites, web apps, dashboards, editors, landing pages, games, and redesigns. Use when the task involves frontend visual design, UI/UX direction, building or restyling a screen, translating a visual concept into code, implementing inside an existing design system, or performing high-fidelity design-to-code work. Combine concept-first visual design, design-system discovery and reuse, prototype/production modes, technology-aware frontend architecture, responsive and accessible interaction design, generated visual assets when appropriate, and rigorous rendered visual QA.
+description: UI/frontend specialist for Veteran Engineering Studio. Use when the active task or delegated phase is primarily frontend visual design, UI/UX direction, screen construction/restyling, design-system implementation, high-fidelity design-to-code, responsive interaction, motion, accessibility, or rendered visual QA for websites, web apps, dashboards, editors, landing pages, games, and redesigns. Do not take sole ownership of whole-repository outcomes whose material scope includes backend, data, auth, jobs, infrastructure, migrations, incidents, release, or operations when the sibling full-stack owner is available; finish the UI phase and return control.
 ---
 
 # Frontend Design Builder
