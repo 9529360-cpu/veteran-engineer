@@ -69,7 +69,7 @@
       "interface": {
         "displayName": "Veteran Engineering Studio",
         "shortDescription": "End-to-end full-stack engineering with a dedicated UI specialist",
-        "longDescription": "Veteran Full-Stack Engineer is the primary owner for substantial repository, architecture, backend, data, runtime, debugging, release, operations, and mixed product work. Frontend Design Builder is a bounded UI/frontend specialist with evidence-first design-system reuse, Code Connect and existing-screen discovery, resumable multi-tool design state, mutation-safe design actions, visual direction, design-to-code, responsive polish, accessibility, and rendered QA. The full-stack owner retains cross-layer integration and final delivery authority.",
+        "longDescription": "Veteran Full-Stack Engineer is the primary owner for substantial repository, architecture, backend, data, runtime, debugging, release, operations, and mixed product work. Veteran Frontend Design Builder is a bounded UI/frontend specialist with evidence-first design-system reuse, Code Connect and existing-screen discovery, resumable multi-tool design state, mutation-safe design actions, visual direction, design-to-code, responsive polish, accessibility, and rendered QA. The full-stack owner retains cross-layer integration and final delivery authority.",
         "developerName": "Veteran Engineer Project",
         "category": "Developer Tools",
         "capabilities": [
