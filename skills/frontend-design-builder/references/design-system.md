@@ -14,14 +14,22 @@ Inspect only what the task needs, progressively:
 
 If the system source is ambiguous, surface the ambiguity rather than fabricating a rule.
 
-## Reuse hierarchy
+## Evidence-first reuse ladder
+
+Do not jump from "I need a component" to "create a component." Prove the strongest reusable owner first.
 
 Prefer, in order:
-1. existing app-level pattern or shell;
-2. existing library/local component with the correct variant/prop;
-3. composition of existing primitives;
-4. a new local component using existing tokens;
-5. a new token/variant only when the system genuinely lacks one.
+1. existing app-level pattern or shell that already solves the same product job;
+2. exact design-to-code mapping such as Code Connect/equivalent, when present;
+3. existing product screen/story/example that proves the intended composition and states;
+4. existing local or library component with the correct public API/variant;
+5. composition of existing primitives;
+6. a new local component using existing semantic tokens;
+7. a new token/variant only when the system genuinely lacks one.
+
+Use `reuse`, `wrap`, `compose`, or `new` explicitly for material decisions. A close visual match with an incompatible API is not exact reuse; prefer a wrapper or composition over forking internals.
+
+Absence must be established across the relevant authority surfaces. An empty local token list does not prove no library variables exist; a missing Storybook story does not prove the code component lacks the state; a failed Figma lookup does not prove the repository has no matching component.
 
 Do not copy a library component and alter its internals when its public API can express the needed result.
 
@@ -53,7 +61,7 @@ Record useful non-obvious details: variant axes, slot behavior, required provide
 
 ## Version-aware project cache
 
-When repeated work in the same project is likely, create/update a project-local design-system reference using `design-system-reference.template.md` or an equivalent project note.
+When repeated work in the same project is likely, create/update a project-local design-system reference using `design-system-reference.template.md` or an equivalent project note. For long multi-tool design work, also use `design-session-ledger.md` to bind the current visual target, mappings, evidence identities, and open design frontier across turns.
 
 Record:
 - package/library name and installed version;
