@@ -68,6 +68,8 @@ Do not use one local-MCP plugin archive as the universal Web/Desktop artifact. C
 
 For the Workspace Skill plugin, separate **validation artifacts** from **publishable install artifacts**. Pull-request builds may prove packaging/reproducibility, but they are not publication authority. Emit the installable Workspace artifact only from the default branch (or another explicitly authorized publication ref), bind `releaseProvenance.sourceRevision` to that exact source revision, and publish those bytes without rewriting provenance after CI. Byte-equivalence between a PR head and a squash-merge commit does not make the PR-head artifact the default-branch artifact.
 
+Make the main-branch install artifact discoverable without weakening provenance. The packaging workflow should bind an exact artifact identity back to the source commit through an authoritative machine-readable status/check or equivalent pointer. A publisher must resolve `main commit -> artifact identity -> artifact bytes -> embedded sourceRevision`, not search by filename or reuse the latest PR artifact.
+
 ## Lifecycle semantics
 
 ### Install
