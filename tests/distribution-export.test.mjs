@@ -144,6 +144,19 @@ test('workspace exporter normalizes Studio identity and remains skill-only', asy
     assert.equal(report.distribution.releaseProvenance.sourceOfTruth, 'https://github.com/9529360-cpu/veteran-engineer');
     assert.match(report.distribution.releaseProvenance.policy, /default branch/);
     assert.match(report.distribution.releaseProvenance.policy, /pull-request artifacts are validation candidates only/);
+    assert.deepEqual(report.distribution.overlayCompatibility.retiredPaths, [
+      'skills/runtime-regression-debugger/evals/benchmark_scenarios.json',
+      'skills/runtime-regression-debugger/references/host-capability-adaptation.md',
+      'skills/runtime-regression-debugger/references/long-running-engineering-execution.md',
+      'skills/runtime-regression-debugger/references/repository-engineering-execution.md',
+      'skills/runtime-regression-debugger/tests/test_skill_workflow.py'
+    ]);
+    for (const retiredPath of report.distribution.overlayCompatibility.retiredPaths) {
+      const archivePath = `veteran-engineer/${retiredPath}`;
+      assert.ok(report.names.includes(archivePath), `missing Workspace overlay tombstone: ${archivePath}`);
+      const retiredText = zipText(workspace, archivePath);
+      assert.match(retiredText, /retired/i);
+    }
     assert.ok(report.names.includes('veteran-engineer/plugin.json'));
     assert.ok(report.names.includes('veteran-engineer/skills/runtime-regression-debugger/SKILL.md'));
     assert.ok(report.names.includes('veteran-engineer/skills/frontend-design-builder/SKILL.md'));
