@@ -59,9 +59,15 @@ For an existing file:
 
 1. Identify the target frame/component/page.
 2. Inspect the file structure and current design-system conventions.
-3. Discover local and subscribed libraries before creating new primitives.
-4. Inspect variables, styles, component properties, variants, and descriptions relevant to the task.
-5. Only then mutate the canvas.
+3. Resolve exact Code Connect/equivalent mappings for needed components when available.
+4. Inspect existing screens that already use the same system and recover their component/variable/style bindings.
+5. Discover local and subscribed libraries for anything still unresolved.
+6. Inspect variables, styles, component properties, variants, and descriptions relevant to the task.
+7. Only then mutate the canvas.
+
+Use the component discovery ladder `mapped component -> existing-screen instance -> library/local search -> compose/wrap -> create new`. Do not search broadly first when a repository mapping or existing screen can answer the question more authoritatively.
+
+Do not conclude that a design-system asset does not exist from one empty surface. Local variables can be empty while published library variables exist; the target file can be empty while Code Connect points to the correct component in another library.
 
 Do not create a parallel token taxonomy or duplicate component family before proving the existing system cannot express the requirement.
 
@@ -106,6 +112,8 @@ For implementation from Figma:
 Do not use the screenshot itself as the UI implementation asset. Exact visual reference and code-native implementation are separate requirements.
 
 ## Writing back to Figma
+
+For long or multi-step Figma work, read `design-session-ledger.md` and keep exact design/source identities outside the canvas so interruption or context compaction does not force rediscovery or guessed node IDs.
 
 When generating or updating Figma designs:
 

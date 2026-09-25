@@ -42,7 +42,7 @@ Use the strongest structured source available:
 - screenshots/mockups/exports as visual targets when accepted;
 - ImageGen concepts as proposals until selected.
 
-For substantial new UI, major redesigns, or work where the current interface is explicitly judged visually weak, read `references/visual-design-authority.md` before deep implementation. For Figma-heavy work, read `references/figma-integration.md`. For external pattern research, read `references/reference-research.md`. When the repo has Storybook or visual regression tooling, read `references/component-lab.md`. For redesigns, UX improvement, audits, research-led design, or unresolved product directions, read `references/product-design-cycle.md`. When Figma, code tokens, component APIs, and Storybook all represent the same system, read `references/design-system-sync.md` and resolve drift explicitly. For an explicitly authorized faithful recreation from a live URL, read `references/live-reference-workflow.md` before coding.
+For substantial new UI, major redesigns, or work where the current interface is explicitly judged visually weak, read `references/visual-design-authority.md` before deep implementation. For Figma-heavy work, read `references/figma-integration.md`. For long, interrupted, or multi-tool design work, read `references/design-session-ledger.md`. For external pattern research, read `references/reference-research.md`. When the repo has Storybook or visual regression tooling, read `references/component-lab.md`. For redesigns, UX improvement, audits, research-led design, or unresolved product directions, read `references/product-design-cycle.md`. When Figma, code tokens, component APIs, and Storybook all represent the same system, read `references/design-system-sync.md` and resolve drift explicitly. For an explicitly authorized faithful recreation from a live URL, read `references/live-reference-workflow.md` before coding.
 
 ## Core rules
 
@@ -154,6 +154,7 @@ Load only what the task needs:
 - `references/component-lab.md` — Storybook/component state coverage, interaction/a11y checks, and visual regression evidence.
 - `references/product-design-cycle.md` — evidence-first audit, research, concept exploration, design-contract lock, implementation, and blocking design QA.
 - `references/design-system-sync.md` — cross-tool authority, token/component drift resolution, Figma ↔ code ↔ Storybook synchronization, and mapping evidence.
+- `references/design-session-ledger.md` — provider-neutral continuation ledger for exact design/source identities, component/token mappings, evidence freshness, and safe resume across long or multi-tool design work.
 - `references/live-reference-workflow.md` — evidence-first live URL capture, assets/interactions, clone-vs-redesign boundary, and rendered URL-to-code fidelity validation.
 
 ## Handoff

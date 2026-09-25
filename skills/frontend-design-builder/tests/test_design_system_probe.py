@@ -26,6 +26,9 @@ def test_probe_discovers_design_system_stack_and_emits_routing_signals(tmp_path:
     (tmp_path / "src" / "components").mkdir(parents=True)
     (tmp_path / "src" / "styles").mkdir(parents=True)
     (tmp_path / "src" / "styles" / "tokens.css").write_text(":root { --space-1: 4px; }\n", encoding="utf-8")
+    (tmp_path / "src" / "components" / "Button.tsx").write_text("export const Button = () => null\n", encoding="utf-8")
+    (tmp_path / "src" / "components" / "Button.figma.tsx").write_text("export default {}\n", encoding="utf-8")
+    (tmp_path / "src" / "components" / "Button.stories.tsx").write_text("export default {}\n", encoding="utf-8")
 
     result = probe(tmp_path)
     assert result["package_manager"] == "pnpm"
@@ -36,6 +39,9 @@ def test_probe_discovers_design_system_stack_and_emits_routing_signals(tmp_path:
     assert "src/components" in result["component_dirs"]
     assert "src/styles/tokens.css" in result["token_theme_files"]
     assert "src/styles/tokens.css" in result["css_variable_sources"]
+    assert result["code_connect_files"] == ["src/components/Button.figma.tsx"]
+    assert result["story_files"] == ["src/components/Button.stories.tsx"]
+    assert result["component_source_files"] == ["src/components/Button.tsx"]
     assert result["routing_signals"] == [
         "existing-system", "design-system", "figma", "code-connect", "storybook", "component-lab", "design-system-sync"
     ]
@@ -67,3 +73,35 @@ def test_probe_caps_walk(tmp_path: Path):
     result = probe(tmp_path, max_files=3)
     assert result["files_scanned"] == 3
     assert result["scan_truncated"] is True
+
+
+def test_probe_detects_native_mobile_code_connect_markers(tmp_path: Path):
+    (tmp_path / "components").mkdir()
+    (tmp_path / "components" / "Card.swift").write_text(
+        "struct Card {}\n// FigmaConnect mapping\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "components" / "Chip.kt").write_text(
+        "@FigmaConnect(url = \"https://figma.com/design/x\")\nclass Chip\n",
+        encoding="utf-8",
+    )
+
+    result = probe(tmp_path)
+
+    assert result["code_connect_files"] == [
+        "components/Card.swift",
+        "components/Chip.kt",
+    ]
+    assert "figma" in result["routing_signals"]
+    assert "code-connect" in result["routing_signals"]
+
+
+def test_probe_does_not_treat_story_or_figma_mapping_as_component_source(tmp_path: Path):
+    (tmp_path / "src" / "components").mkdir(parents=True)
+    (tmp_path / "src" / "components" / "Panel.tsx").write_text("export const Panel = () => null\n", encoding="utf-8")
+    (tmp_path / "src" / "components" / "Panel.stories.tsx").write_text("export default {}\n", encoding="utf-8")
+    (tmp_path / "src" / "components" / "Panel.figma.tsx").write_text("export default {}\n", encoding="utf-8")
+
+    result = probe(tmp_path)
+
+    assert result["component_source_files"] == ["src/components/Panel.tsx"]

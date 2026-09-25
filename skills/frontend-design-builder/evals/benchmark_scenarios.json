@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "purpose": "Regression scenarios for evidence-first product design, blocking Visual Design Authority, implementation-first runtime visual proof, progressive context routing, provider-neutral Design Action Fabric execution, Figma design/code/library/motion/assets/Code Connect workflows, live URL reconstruction, cross-tool design-system synchronization, component labs, reference research, fidelity, and graceful degradation.",
+  "purpose": "Regression scenarios for evidence-first product design, blocking Visual Design Authority, implementation-first runtime visual proof, progressive context routing, provider-neutral Design Action Fabric execution, Figma design/code/library/motion/assets/Code Connect workflows, evidence-first design-system reuse, resumable design-session state, live URL reconstruction, cross-tool design-system synchronization, component labs, reference research, fidelity, and graceful degradation.",
   "scenarios": [
     {
       "id": "existing-system-small-change",
@@ -821,6 +821,48 @@
         "default to sidebar topbar cards because the repository has no strong design",
         "add a new UI dependency merely to obtain visual taste",
         "show terminal diff browser or inspector panels as decorative props"
+      ]
+    },
+    {
+      "id": "design-system-reuse-ladder",
+      "request": "Implement a new settings panel from Figma in a repository that already has Code Connect mappings, existing product screens, Storybook stories, tokens, and a shared component library.",
+      "expected_mode": "existing-system",
+      "must_load": [
+        "references/design-system.md",
+        "references/figma-integration.md",
+        "references/design-system-sync.md"
+      ],
+      "must_do": [
+        "resolve exact Code Connect or equivalent mappings before broad component creation",
+        "inspect existing product screens and stories for composition and state evidence",
+        "classify material component decisions as reuse wrap compose or new",
+        "search libraries only for unresolved design-system entities"
+      ],
+      "must_not": [
+        "create a duplicate component before proving the existing system cannot express the requirement",
+        "treat an empty local Figma variable list as proof no published library variables exist",
+        "bypass mapped production components because raw markup is easier"
+      ]
+    },
+    {
+      "id": "design-session-resume",
+      "request": "Continue yesterday's multi-tool redesign after context compaction. The Figma frame, component mappings, repository revision, and last runtime screenshot were already established, but the repository has one new commit.",
+      "expected_mode": "existing-system",
+      "must_load": [
+        "references/design-session-ledger.md",
+        "references/design-source-authority.md",
+        "references/execution-contract.md"
+      ],
+      "must_do": [
+        "reacquire exact repository design and runtime identities from the ledger",
+        "invalidate only evidence affected by the new revision",
+        "preserve still-fresh settled design decisions and mappings",
+        "continue from the smallest open design frontier"
+      ],
+      "must_not": [
+        "restart full design discovery from scratch",
+        "trust stale runtime evidence after a relevant source change",
+        "guess Figma node IDs component mappings or repository authority from conversation memory"
       ]
     }
   ]
