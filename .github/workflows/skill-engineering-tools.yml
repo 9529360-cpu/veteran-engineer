@@ -39,7 +39,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Reject Studio version regression
         shell: bash
@@ -73,6 +73,19 @@ jobs:
               )
           print(f"studio_version={current['version']} previous={previous['version']}")
           PY
+
+      - name: Reject unsafe Workspace overlay deletions
+        env:
+          BASE_REVISION: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${BASE_REVISION:-}" ] || [ "$BASE_REVISION" = "0000000000000000000000000000000000000000" ]; then
+            echo "No comparable base revision; skipping overlay deletion diff gate."
+            exit 0
+          fi
+          python skills/runtime-regression-debugger/scripts/workspace_overlay_deletion_gate.py             .             --base "$BASE_REVISION"             --head "$HEAD_REVISION"             --json
 
       - name: Setup Python
         uses: actions/setup-python@v6
