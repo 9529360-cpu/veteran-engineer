@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "purpose": "Regression scenarios for evidence-first product design, blocking Visual Design Authority, implementation-first runtime visual proof, progressive context routing, provider-neutral Design Action Fabric execution, Figma design/code/library/motion/assets/Code Connect workflows, evidence-first design-system reuse, resumable design-session state, live URL reconstruction, cross-tool design-system synchronization, component labs, reference research, fidelity, and graceful degradation.",
+  "purpose": "Regression scenarios for evidence-first product design, blocking Visual Design Authority, implementation-first runtime visual proof, progressive context routing, provider-neutral Design Action Fabric execution, safe design-provider mutation and recovery, Figma design/code/library/motion/assets/Code Connect workflows, evidence-first design-system reuse, resumable design-session state, live URL reconstruction, cross-tool design-system synchronization, component labs, reference research, fidelity, and graceful degradation.",
   "scenarios": [
     {
       "id": "existing-system-small-change",
@@ -863,6 +863,48 @@
         "restart full design discovery from scratch",
         "trust stale runtime evidence after a relevant source change",
         "guess Figma node IDs component mappings or repository authority from conversation memory"
+      ]
+    },
+    {
+      "id": "design-provider-partial-write-recovery",
+      "request": "A design-tool write timed out while creating a component family. The provider cannot guarantee the canvas is unchanged. Continue safely without duplicating or deleting unrelated user work.",
+      "expected_mode": "design-action",
+      "must_load": [
+        "references/design-action-fabric.md",
+        "references/design-action-recovery.md",
+        "references/design-session-ledger.md"
+      ],
+      "must_do": [
+        "treat the failed write as possible partial success",
+        "inspect the smallest affected design scope before retrying",
+        "use exact returned or reacquired IDs for cleanup or continuation",
+        "resume from the first unmet postcondition rather than restarting the whole workflow"
+      ],
+      "must_not": [
+        "blindly repeat the mutation",
+        "delete nodes by fuzzy name prefix",
+        "restart already verified phases",
+        "claim the canvas is unchanged without read-back evidence"
+      ]
+    },
+    {
+      "id": "code-connect-write-readback",
+      "request": "Publishing a Code Connect mapping returned an ambiguous timeout. Determine whether the mapping exists before deciding what to do next.",
+      "expected_mode": "design-action",
+      "must_load": [
+        "references/design-action-fabric.md",
+        "references/design-action-recovery.md",
+        "references/figma-integration.md"
+      ],
+      "must_do": [
+        "read back the mapping before attempting another write",
+        "accept an already-present correct mapping as successful completion",
+        "retry only when read-back proves the intended write did not land"
+      ],
+      "must_not": [
+        "submit the same mapping again before read-back",
+        "invent mapping success from the timeout response",
+        "replace a correct existing mapping merely to make the workflow linear"
       ]
     }
   ]
