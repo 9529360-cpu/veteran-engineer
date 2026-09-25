@@ -38,7 +38,7 @@ Do not force these numbers to match unless the same change actually releases bot
 
 The Studio keeps one accountable delivery path. `runtime-regression-debugger` owns whole-product/repository engineering and integration. `frontend-design-builder` owns material UI/frontend design and implementation phases, then returns implementation evidence, intentional deviations, and unresolved UI gaps to the full-stack owner. CI validates this composition and both Skill packages together.
 
-Invocation authority is deliberately singular: `runtime-regression-debugger` owns the ChatGPT/Codex/API/Atlas implicit-invocation policy. `frontend-design-builder` exposes only its interface metadata and is routed as the specialist sibling. This avoids duplicate trigger authorities and matches the Plugin Creator install contract.
+Skill discovery is metadata-driven: both packaged Skills expose interface metadata, while their frontmatter descriptions define the routing boundary. `runtime-regression-debugger` is the whole-product/full-stack owner and `frontend-design-builder` is the bounded UI/frontend specialist. Do not reintroduce unsupported ChatGPT/Codex/API/Atlas product-policy values or `allow_implicit_invocation`; the Workspace registry must discover both Skills without a second invocation-policy block.
 
 ## Design intelligence stack
 
@@ -77,7 +77,7 @@ The pinned base dependency graph is:
 
 Current integration gates prove:
 
-1. `npm run check`: exact **34-tool** surface, protocol constants, pinned SDK lock integrity, syntax, runtime-starter mirror parity, and the full Node regression suite;
+1. `npm run check`: exact **36-tool** surface, protocol constants, pinned SDK lock integrity, syntax, runtime-starter mirror parity, and the full Node regression suite;
 2. a real Docker engine-backed confined `WorkerAdapter` smoke;
 3. a real PostgreSQL engine-backed state-backend contract/durability integration gate, followed by the real modern MCP handshake while PostgreSQL is the active state backend;
 4. profile-aware Desktop/Codex/Web plugin artifact export with reproducibility and package-boundary checks;
@@ -87,7 +87,7 @@ The bundled recovery seed under `skills/runtime-regression-debugger/assets/plugi
 
 ## Remote repository onboarding
 
-`project_open` now accepts exactly one source: an existing local `repoPath` or an authorized `repoUrl`. A remote URL is cloned into the runtime-managed project area under the execution-local state root, so an operator can hand Veteran a repository address without manually preparing a checkout first. The public MCP surface remains 34 tools; this extends the existing project intent instead of adding a raw Git primitive.
+`project_open` now accepts exactly one source: an existing local `repoPath` or an authorized `repoUrl`. A remote URL is cloned into the runtime-managed project area under the execution-local state root, so an operator can hand Veteran a repository address without manually preparing a checkout first. The public MCP surface remains 36 tools; this extends the existing project intent instead of adding a raw Git primitive.
 
 Remote acquisition is deliberately conservative:
 
@@ -252,13 +252,13 @@ The convergence pass has closed concrete authority and lifecycle defects rather 
 - root/runtime-starter synchronization is executable CI policy, not a documentation promise;
 - remote project onboarding no longer requires a manual local clone, while managed checkout refresh remains credential-safe and fast-forward-only;
 - hosted PostgreSQL has cross-instance concurrency and durable-outcome evidence, not only same-process/same-pool coverage;
-- adaptive Mission strategy now preserves explicit risk intent through planning and execution-capacity policy without growing the 34-tool surface;
+- adaptive Mission strategy now preserves explicit risk intent through planning and execution-capacity policy without growing the public MCP surface;
 - planner/reviewer provider configuration fails fast and provider evidence redacts allowlisted secret values before durable persistence;
 - interruption recovery preserves unresolved task authority across repeated resume and partial retry;
 - Mission status/readiness cannot outrun authoritative execution task state: failed/cancelled/interrupted work stays blocked, while admitted/dispatched/executing/cancelling work keeps next-transition readiness false;
 - current capacity/lease and multi-Mission contention behavior remains unchanged where existing reservation/reconciliation tests already prove the contract.
 
-No convergence review found a reason to weaken the 34-tool compatibility surface, change state schema 3, relax fail-closed behavior, or move merge/push/deploy authority into the runtime.
+No convergence review found a reason to weaken the 36-tool compatibility surface, change state schema 3, relax fail-closed behavior, or move merge/push/deploy authority into the runtime.
 
 ## Deliberate deferrals
 
