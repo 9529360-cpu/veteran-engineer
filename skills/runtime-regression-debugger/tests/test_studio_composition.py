@@ -188,6 +188,10 @@ def test_studio_composition_contract():
     assert "A conflict proves only that the release state changed since the bound read" in distribution_contract
     assert "it does not prove a different human, model, session, or host performed the change" in distribution_contract
 
+    release_patterns = (SKILL_ROOT / "references" / "release-promotion-patterns.md").read_text()
+    assert "Treat the initiator as unknown until current-execution receipts" in release_patterns
+    assert "the changed state, account-level actor, or timing alone does not prove another actor/session caused it" in release_patterns
+
     journal = (SKILL_ROOT / "scripts" / "engineering_journal.py").read_text()
     assert 'sub.add_parser("mutation-receipt")' in journal
     assert '"mutation_receipts"' in journal
