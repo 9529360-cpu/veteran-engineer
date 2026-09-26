@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { TextDecoder } from 'node:util';
 import { assertLocalPathAllowed } from './workspace-policy.mjs';
 import { signalProcessTree } from './process-lifecycle-authority.mjs';
 import { randomId } from './util.mjs';
@@ -69,6 +70,24 @@ function executableKey(command) {
 function decodeContent(content, encoding) {
   const text = String(content ?? '');
   return encoding === 'base64' ? Buffer.from(text, 'base64') : Buffer.from(text, 'utf8');
+}
+
+function decodeUtf8Strict(buffer, label = 'file') {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+  } catch {
+    throw codedError('MACHINE_TEXT_ENCODING_INVALID', label + ' must be valid UTF-8 for fs.replace');
+  }
+}
+
+async function atomicReplaceFile(target, data, mode = null) {
+  const temp = path.join(path.dirname(target), '.' + path.basename(target) + '.' + randomId('machinewrite') + '.tmp');
+  try {
+    await fs.writeFile(temp, data, mode == null ? undefined : { mode: mode & 0o777 });
+    await fs.rename(temp, target);
+  } finally {
+    await fs.rm(temp, { force: true }).catch(() => {});
+  }
 }
 
 function appendBounded(current, chunk, maxBytes) {
@@ -699,7 +718,14 @@ export class MachineActionService {
           bytes: before.bytes, maxWriteBytes: this.limits.maxWriteBytes
         });
       }
-      const text = await fs.readFile(target, 'utf8');
+      const raw = await fs.readFile(target);
+      const rawSha256 = sha256Buffer(raw);
+      if (rawSha256 !== before.sha256) {
+        throw codedError('MACHINE_FILE_PRECONDITION_FAILED', 'fs.replace source changed between fingerprint and read; no write was performed', {
+          path: target, expectedSha256: before.sha256, actualSha256: rawSha256
+        });
+      }
+      const text = decodeUtf8Strict(raw, target);
       const actualOccurrences = countOccurrences(text, oldText);
       if (actualOccurrences !== expectedOccurrences) {
         throw codedError('MACHINE_REPLACE_MATCH_COUNT_MISMATCH', 'fs.replace match count did not equal expectedOccurrences; no write was performed', {
@@ -713,7 +739,17 @@ export class MachineActionService {
           bytes: data.length, maxWriteBytes: this.limits.maxWriteBytes
         });
       }
-      await fs.writeFile(target, data);
+      if (args.expectedRepoHead !== undefined && args.expectedRepoHead !== null && args.expectedRepoHead !== '') {
+        await this.#assertExpectedRepoHead(target, args.expectedRepoHead);
+      }
+      const current = await fileFingerprint(target);
+      if (!current.exists || current.sha256 !== before.sha256) {
+        throw codedError('MACHINE_FILE_PRECONDITION_FAILED', 'fs.replace source changed before commit; no write was performed', {
+          path: target, expectedSha256: before.sha256, actualSha256: current.sha256, exists: current.exists
+        });
+      }
+      const stat = await fs.stat(target);
+      await atomicReplaceFile(target, data, stat.mode);
       const after = await fileFingerprint(target);
       return {
         operation, path: target, replacements: actualOccurrences,
