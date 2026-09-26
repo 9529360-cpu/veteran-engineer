@@ -629,7 +629,7 @@ export class MachineActionService {
 
       if (!persistent) {
         let stdout = '', stderr = '', stdoutTruncated = false, stderrTruncated = false, timedOut = false;
-        const startedAt = Date.now();
+        const processStartedAt = Date.now();
         child.stdout.on('data', (chunk) => { const next = appendBounded(stdout, chunk, this.limits.maxSessionOutputBytes); stdout = next.text; stdoutTruncated ||= next.truncated; });
         child.stderr.on('data', (chunk) => { const next = appendBounded(stderr, chunk, this.limits.maxSessionOutputBytes); stderr = next.text; stderrTruncated ||= next.truncated; });
         const timeoutHandle = setTimeout(() => { timedOut = true; signalProcessTree(child.pid, 'SIGKILL'); }, timeoutMs);
@@ -641,7 +641,7 @@ export class MachineActionService {
           operation, persistent: false, pid: child.pid, command, args: argv, cwd,
           ...(Number.isInteger(exit.code) ? { exitCode: exit.code } : {}),
           ...(exit.signal ? { signal: exit.signal } : {}),
-          timedOut, durationMs: Date.now() - Date.parse(startedAt), stdout, stderr,
+          timedOut, durationMs: Date.now() - processStartedAt, stdout, stderr,
           outputSha256,
           truncated: { stdout: stdoutTruncated, stderr: stderrTruncated },
           receipt: receipt({ resultIdentity: 'process-action:' + actionId, target: cwd })
