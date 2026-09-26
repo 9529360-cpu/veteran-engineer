@@ -388,8 +388,7 @@ def test_publication_mode_rejects_nonterminal_next_offset(tmp_path: Path):
     write_installed_state(
         state,
         paths,
-        next_offset=200,
-        
+        final_next_offset=999,
     )
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
 
