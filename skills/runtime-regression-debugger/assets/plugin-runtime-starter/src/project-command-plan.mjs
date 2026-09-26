@@ -131,7 +131,7 @@ function validationSelection(validationCommands, changedPaths, { authorityDirty,
     return {
       status: 'degraded',
       minimal: [],
-      broader: available.slice(0, 12),
+      broader: [],
       reason: 'command-authority-dirty',
       issues
     };
@@ -203,15 +203,18 @@ function validationSelection(validationCommands, changedPaths, { authorityDirty,
 export function compileProjectCommandPlan(profile, readiness, { changedPaths = [] } = {}) {
   const normalizedChangedPaths = normalizePaths(changedPaths);
   const managerState = managerReadiness(profile, readiness);
+  const authorityDirty = normalizedChangedPaths.some((item) => COMMAND_AUTHORITY_PATHS.has(item));
+  const commandReadiness = authorityDirty
+    ? { ...managerState, runnable: false, reason: 'command-authority-dirty' }
+    : managerState;
   const scriptNames = (profile?.node?.scriptNames || []).slice(0, MAX_COMMANDS);
   const safeScriptNames = scriptNames.filter(safeScriptName);
   const unsafeScriptCount = scriptNames.length - safeScriptNames.length;
   const commands = managerState.manager
-    ? safeScriptNames.map((scriptName) => commandRecord(managerState.manager, scriptName, managerState))
+    ? safeScriptNames.map((scriptName) => commandRecord(managerState.manager, scriptName, commandReadiness))
     : [];
   const start = commands.filter((item) => item.kind === 'start');
   const validationCommands = commands.filter((item) => ['aggregate', 'typecheck', 'test', 'e2e', 'lint', 'build'].includes(item.kind));
-  const authorityDirty = normalizedChangedPaths.some((item) => COMMAND_AUTHORITY_PATHS.has(item));
   const validation = validationSelection(validationCommands, normalizedChangedPaths, {
     authorityDirty,
     runnable: managerState.runnable
