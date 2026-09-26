@@ -234,7 +234,8 @@ export class MissionService {
           environmentSourceIdentity: projectTruth.environmentSourceIdentity,
           environmentProfile: projectTruth.environmentProfile,
           environmentReadiness: projectTruth.environmentReadiness,
-          bootstrapPlan: projectTruth.bootstrapPlan
+          bootstrapPlan: projectTruth.bootstrapPlan,
+          commandPlan: projectTruth.commandPlan
         };
         const payload = {
           protocol: 'veteran-planner-v1',
@@ -318,7 +319,8 @@ export class MissionService {
       environmentSourceIdentity: projectTruth.environmentSourceIdentity,
       environmentProfile: projectTruth.environmentProfile,
       environmentReadiness: projectTruth.environmentReadiness,
-      bootstrapPlan: projectTruth.bootstrapPlan
+      bootstrapPlan: projectTruth.bootstrapPlan,
+      commandPlan: projectTruth.commandPlan
     };
     const executionStrategy = compileMissionExecutionStrategy({ tasks: normalized, waves, project: strategyProject, riskEnvelope, riskEnvelopeSource, continuity });
     const createdAt = truthCapturedAt;
