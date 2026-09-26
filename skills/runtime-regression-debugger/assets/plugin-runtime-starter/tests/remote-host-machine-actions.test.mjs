@@ -146,6 +146,13 @@ test('Remote Host exposes opt-in machine inspect/action through the real MCP sur
     assert.equal(run.isError, undefined, JSON.stringify(run));
     assert.equal(run.structuredContent.exitCode, 0);
     assert.equal(run.structuredContent.stdout, 'remote-process-ok');
+    assert.equal(run.structuredContent.outputComplete, true);
+    assert.equal(run.structuredContent.outputDigestContract, 'veteran-process-output-digest-v1');
+    assert.equal(run.structuredContent.stdoutBytes, Buffer.byteLength('remote-process-ok'));
+    assert.equal(run.structuredContent.stderrBytes, 0);
+    assert.match(run.structuredContent.stdoutSha256, /^[0-9a-f]{64}$/);
+    assert.match(run.structuredContent.stderrSha256, /^[0-9a-f]{64}$/);
+    assert.match(run.structuredContent.outputSha256, /^[0-9a-f]{64}$/);
     assert.equal(run.structuredContent.receipt.contract, 'veteran-machine-action-receipt-v1');
 
     const outside = path.join(path.dirname(fixture.root), 'outside-machine-actions.txt');

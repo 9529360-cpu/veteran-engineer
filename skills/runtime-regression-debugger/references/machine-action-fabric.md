@@ -6,8 +6,8 @@ Use this reference only when the current host actually exposes `machine_inspect`
 
 The public surface stays deliberately small:
 
-- `machine_inspect` is read-only. Use it for device/policy status, bounded filesystem list/stat/read/digest/search, repository status, and managed process list/status/output.
-- `machine_act` is mutating and request-id protected. Use it for bounded file write/append/mkdir/move and allowlisted process start/input/stop.
+- `machine_inspect` is read-only. Use it for device/policy status, bounded filesystem list/stat/read/digest/search, repository status/diff, and managed process list/status/output.
+- `machine_act` is mutating and request-id protected. Use it for bounded file write/append/replace/mkdir/move and allowlisted process start/input/stop.
 - every successful `machine_act` returns a `veteran-machine-action-receipt-v1` action identity. File mutations also return before/after SHA-256 fingerprints when regular-file content participates.
 - `expectedSha256` is an optimistic file-content precondition for `fs.write`, `fs.append`, `fs.replace`, and the `fs.move` source. `fs.replace` requires a fresh digest plus an exact expected match count so a narrow code edit fails closed when either the file or intended replacement site drifted. `requireAbsent` rejects an already-present target/destination. `expectedRepoHead` binds filesystem mutations and `process.start` to the exact Git HEAD observed by `repo.status`.
 
@@ -20,7 +20,7 @@ Machine Actions are opt-in per Remote Host and are restricted by application pol
 - filesystem operations must stay inside configured `allowedLocalRoots`;
 - writes re-check the nearest existing parent so symlinked parents cannot silently escape the workspace;
 - process execution accepts an allowlisted executable **name**, never an arbitrary executable path;
-- `repo.status` invokes only fixed read-only Git commands inside an allowed workspace;
+- `repo.status` / `repo.diff` invoke only fixed read-only Git commands inside an allowed workspace;
 - child environments expose only a bounded host environment set;
 - output, searches, sessions, and timeouts are bounded;
 - destructive file delete is intentionally absent.
@@ -38,8 +38,8 @@ Examples:
 - edit an existing file: `repo.status` -> `fs.digest` or `fs.read` -> prefer `fs.replace expectedRepoHead=<observed HEAD> expectedSha256=<observed digest> expectedOccurrences=<exact count>` for a narrow textual change, falling back to guarded `fs.write` only when whole-file replacement is intentional -> compare `receipt.resultIdentity` / `afterSha256` -> `repo.diff` -> `fs.digest` -> `repo.status`;
 - create a new file: inspect parent -> `fs.write requireAbsent=true` -> verify returned `afterSha256` -> inspect/read;
 - move an existing file: digest source -> `fs.move expectedSha256=<source digest> requireAbsent=true` -> inspect destination -> refresh repository status;
-- run a bounded command: inspect/status -> `machine_act process.start persistent=false` -> retain the returned `actionId`, exit state, and `outputSha256` -> inspect resulting files/runtime;
-- run a dev server or REPL: `process.start persistent=true` -> keep the returned session `actionId` -> `process.output` -> `process.input` as needed -> `process.stop` -> `process.status`;
+- run a bounded command: inspect/status -> `machine_act process.start persistent=false` -> retain the returned `actionId`, exit state, `stdoutBytes` / `stderrBytes`, full-stream `stdoutSha256` / `stderrSha256`, and aggregate `outputSha256` -> inspect resulting files/runtime; one-shot stdin is closed after the optional input payload so EOF-driven commands can terminate normally;
+- run a dev server or REPL: `process.start persistent=true` -> keep the returned session `actionId` -> `process.output` -> `process.input` as needed -> `process.stop` -> terminal `process.status`; bounded event retention may drop old text, but terminal session status carries complete stdout/stderr byte counts and full-stream digests;
 - search before editing: `fs.search`, then narrow reads rather than scanning the whole machine;
 - inspect machine-local source delta: `repo.diff` for working-tree changes or `staged=true` for the index. Treat the bounded patch as review evidence, not remote-repository synchronization.
 

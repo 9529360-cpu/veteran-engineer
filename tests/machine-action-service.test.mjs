@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -9,6 +10,17 @@ import { createGitRepo, cleanup } from './helpers.mjs';
 
 async function tempRoot() {
   return fs.mkdtemp(path.join(os.tmpdir(), 'veteran-machine-actions-'));
+}
+
+function testSha256(value) {
+  return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+function testProcessOutputSha256(stdoutSha256, stderrSha256) {
+  return testSha256(Buffer.from(
+    'veteran-process-output-digest-v1\nstdout:' + stdoutSha256 + '\nstderr:' + stderrSha256 + '\n',
+    'utf8'
+  ));
 }
 
 test('machine actions enforce workspace policy and support bounded files plus one-shot execution', async () => {
@@ -140,7 +152,13 @@ test('machine actions enforce workspace policy and support bounded files plus on
     });
     assert.equal(run.exitCode, 0);
     assert.equal(run.stdout, 'machine-ok');
-    assert.match(run.outputSha256, /^[0-9a-f]{64}$/);
+    assert.equal(run.outputComplete, true);
+    assert.equal(run.outputDigestContract, 'veteran-process-output-digest-v1');
+    assert.equal(run.stdoutBytes, Buffer.byteLength('machine-ok'));
+    assert.equal(run.stderrBytes, 0);
+    assert.equal(run.stdoutSha256, testSha256(Buffer.from('machine-ok')));
+    assert.equal(run.stderrSha256, testSha256(Buffer.alloc(0)));
+    assert.equal(run.outputSha256, testProcessOutputSha256(run.stdoutSha256, run.stderrSha256));
     assert.equal(run.receipt.contract, 'veteran-machine-action-receipt-v1');
     assert.equal(run.receipt.resultIdentity, 'process-action:' + run.receipt.actionId);
 
@@ -156,6 +174,45 @@ test('machine actions enforce workspace policy and support bounded files plus on
     await service.shutdown();
     await fs.rm(root, { recursive: true, force: true });
     await fs.rm(outside, { recursive: true, force: true });
+  }
+});
+
+test('one-shot process evidence covers full streams beyond retained text and closes stdin', async () => {
+  const root = await tempRoot();
+  const service = new MachineActionService({
+    enabled: true,
+    allowedLocalRoots: [root],
+    allowedExecutables: ['node'],
+    maxSessionOutputBytes: 32
+  });
+  try {
+    const input = 'eof-ok';
+    const expectedStdout = 'x'.repeat(256) + '|' + input;
+    const expectedStderr = 'stderr-full';
+    const result = await service.act({
+      operation: 'process.start',
+      command: 'node',
+      args: ['-e', 'let s="";process.stdin.setEncoding("utf8");process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>{process.stdout.write("x".repeat(256)+"|"+s);process.stderr.write("stderr-full");});'],
+      cwd: root,
+      input,
+      timeoutMs: 5_000
+    });
+    assert.equal(result.exitCode, 0);
+    assert.equal(result.timedOut, false);
+    assert.equal(result.outputComplete, true);
+    assert.equal(result.truncated.stdout, true);
+    assert.equal(result.truncated.stderr, false);
+    assert.notEqual(result.stdout, expectedStdout);
+    assert.equal(result.stdout.endsWith('|' + input), true);
+    assert.equal(result.stderr, expectedStderr);
+    assert.equal(result.stdoutBytes, Buffer.byteLength(expectedStdout));
+    assert.equal(result.stderrBytes, Buffer.byteLength(expectedStderr));
+    assert.equal(result.stdoutSha256, testSha256(Buffer.from(expectedStdout)));
+    assert.equal(result.stderrSha256, testSha256(Buffer.from(expectedStderr)));
+    assert.equal(result.outputSha256, testProcessOutputSha256(result.stdoutSha256, result.stderrSha256));
+  } finally {
+    await service.shutdown();
+    await fs.rm(root, { recursive: true, force: true });
   }
 });
 
@@ -183,6 +240,7 @@ test('machine actions preserve interactive process sessions and bounded output r
     let output = null;
     for (let attempt = 0; attempt < 100; attempt += 1) {
       output = await service.inspect({ operation: 'process.output', sessionId });
+      assert.equal(output.session.outputComplete, false);
       if (output.events.some((item) => item.text.includes('echo:hello'))) break;
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
@@ -196,6 +254,13 @@ test('machine actions preserve interactive process sessions and bounded output r
     }
     const final = await service.inspect({ operation: 'process.status', sessionId });
     assert.equal(final.session.status, 'exited');
+    assert.equal(final.session.outputComplete, true);
+    assert.equal(final.session.outputDigestContract, 'veteran-process-output-digest-v1');
+    assert.equal(final.session.stdoutBytes > 0, true);
+    assert.equal(final.session.stderrBytes, 0);
+    assert.match(final.session.stdoutSha256, /^[0-9a-f]{64}$/);
+    assert.match(final.session.stderrSha256, /^[0-9a-f]{64}$/);
+    assert.match(final.session.outputSha256, /^[0-9a-f]{64}$/);
     output = await service.inspect({ operation: 'process.output', sessionId });
     assert.equal(output.events.some((item) => item.text.includes('echo:bye')), true);
   } finally {

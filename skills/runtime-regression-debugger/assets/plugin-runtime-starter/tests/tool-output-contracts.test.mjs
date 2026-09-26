@@ -71,6 +71,12 @@ test('flagship output contracts expose fields needed to chain the engineering wo
   assert.ok(machineAct.properties.receipt);
   assert.ok(machineAct.properties.replacements);
   assert.ok(machineAct.properties.afterSha256);
+  assert.ok(machineAct.properties.outputDigestContract);
+  assert.ok(machineAct.properties.outputComplete);
+  assert.ok(machineAct.properties.stdoutBytes);
+  assert.ok(machineAct.properties.stderrBytes);
+  assert.ok(machineAct.properties.stdoutSha256);
+  assert.ok(machineAct.properties.stderrSha256);
   assert.ok(machineAct.properties.outputSha256);
 
   const handoff = toolOutputJsonSchema('handoff_export');

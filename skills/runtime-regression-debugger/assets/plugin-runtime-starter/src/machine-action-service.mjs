@@ -5,12 +5,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { TextDecoder } from 'node:util';
+import { StringDecoder } from 'node:string_decoder';
 import { assertLocalPathAllowed } from './workspace-policy.mjs';
 import { signalProcessTree } from './process-lifecycle-authority.mjs';
 import { randomId } from './util.mjs';
 
 export const MACHINE_ACTION_CONTRACT = 'veteran-machine-action-v2';
 export const MACHINE_ACTION_RECEIPT_CONTRACT = 'veteran-machine-action-receipt-v1';
+const PROCESS_OUTPUT_DIGEST_CONTRACT = 'veteran-process-output-digest-v1';
 
 const DEFAULT_LIMITS = Object.freeze({
   maxReadBytes: 256 * 1024,
@@ -117,6 +119,17 @@ function countOccurrences(text, needle) {
 
 function sha256Buffer(value) {
   return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+function processOutputSha256(stdoutSha256, stderrSha256) {
+  return sha256Buffer(Buffer.from(
+    PROCESS_OUTPUT_DIGEST_CONTRACT + '\nstdout:' + stdoutSha256 + '\nstderr:' + stderrSha256 + '\n',
+    'utf8'
+  ));
+}
+
+function outputBuffer(chunk) {
+  return Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), 'utf8');
 }
 
 function normalizedSha256(value) {
@@ -424,11 +437,20 @@ export class MachineActionService {
   }
 
   #sessionSummary(session) {
+    const outputComplete = session.status !== 'running' && Boolean(session.stdoutSha256 && session.stderrSha256 && session.outputSha256);
     return {
       id: session.id, actionId: session.actionId || null, pid: session.pid, status: session.status,
       command: session.command, args: session.args, cwd: session.cwd,
       startedAt: session.startedAt, endedAt: session.endedAt || null, exitCode: session.exitCode ?? null,
-      signal: session.signal || null, timedOut: session.timedOut === true, droppedEvents: session.droppedEvents || 0
+      signal: session.signal || null, timedOut: session.timedOut === true, droppedEvents: session.droppedEvents || 0,
+      stdoutBytes: session.stdoutBytes || 0, stderrBytes: session.stderrBytes || 0,
+      outputComplete,
+      ...(outputComplete ? {
+        outputDigestContract: PROCESS_OUTPUT_DIGEST_CONTRACT,
+        stdoutSha256: session.stdoutSha256,
+        stderrSha256: session.stderrSha256,
+        outputSha256: session.outputSha256
+      } : {})
     };
   }
 
@@ -448,8 +470,7 @@ export class MachineActionService {
     };
   }
 
-  #recordEvent(session, stream, chunk) {
-    const text = String(chunk);
+  #appendEventText(session, stream, text) {
     if (!text) return;
     session.events.push({ seq: session.nextSeq++, at: new Date().toISOString(), stream, text });
     session.eventBytes += Buffer.byteLength(text);
@@ -458,6 +479,31 @@ export class MachineActionService {
       session.eventBytes -= Buffer.byteLength(removed.text);
       session.droppedEvents += 1;
     }
+  }
+
+  #recordEvent(session, stream, chunk) {
+    if (stream === 'stdout' || stream === 'stderr') {
+      const buffer = outputBuffer(chunk);
+      if (!buffer.length) return;
+      session[stream + 'Hash'].update(buffer);
+      session[stream + 'Bytes'] += buffer.length;
+      const text = session[stream + 'Decoder'].write(buffer);
+      this.#appendEventText(session, stream, text);
+      return;
+    }
+    this.#appendEventText(session, stream, String(chunk));
+  }
+
+  #finalizeSessionOutput(session) {
+    if (session.outputSha256) return;
+    for (const stream of ['stdout', 'stderr']) {
+      const tail = session[stream + 'Decoder'].end();
+      this.#appendEventText(session, stream, tail);
+      session[stream + 'Sha256'] = session[stream + 'Hash'].digest('hex');
+      session[stream + 'Hash'] = null;
+      session[stream + 'Decoder'] = null;
+    }
+    session.outputSha256 = processOutputSha256(session.stdoutSha256, session.stderrSha256);
   }
 
   async inspect(args = {}) {
@@ -858,26 +904,53 @@ export class MachineActionService {
         const onError = (error) => { child.off('spawn', onSpawn); reject(error); };
         child.once('spawn', onSpawn); child.once('error', onError);
       });
-      child.stdout.setEncoding('utf8');
-      child.stderr.setEncoding('utf8');
-      if (args.input !== undefined && args.input !== null) child.stdin.write(String(args.input));
-
       if (!persistent) {
+        child.stdin.on('error', () => {});
         let stdout = '', stderr = '', stdoutTruncated = false, stderrTruncated = false, timedOut = false;
+        let stdoutBytes = 0, stderrBytes = 0;
+        const stdoutHash = crypto.createHash('sha256');
+        const stderrHash = crypto.createHash('sha256');
+        const stdoutDecoder = new StringDecoder('utf8');
+        const stderrDecoder = new StringDecoder('utf8');
         const processStartedAt = Date.now();
-        child.stdout.on('data', (chunk) => { const next = appendBounded(stdout, chunk, this.limits.maxSessionOutputBytes); stdout = next.text; stdoutTruncated ||= next.truncated; });
-        child.stderr.on('data', (chunk) => { const next = appendBounded(stderr, chunk, this.limits.maxSessionOutputBytes); stderr = next.text; stderrTruncated ||= next.truncated; });
+        child.stdout.on('data', (chunk) => {
+          const buffer = outputBuffer(chunk);
+          stdoutHash.update(buffer); stdoutBytes += buffer.length;
+          const next = appendBounded(stdout, stdoutDecoder.write(buffer), this.limits.maxSessionOutputBytes);
+          stdout = next.text; stdoutTruncated ||= next.truncated;
+        });
+        child.stderr.on('data', (chunk) => {
+          const buffer = outputBuffer(chunk);
+          stderrHash.update(buffer); stderrBytes += buffer.length;
+          const next = appendBounded(stderr, stderrDecoder.write(buffer), this.limits.maxSessionOutputBytes);
+          stderr = next.text; stderrTruncated ||= next.truncated;
+        });
+        child.stdin.end(args.input !== undefined && args.input !== null ? String(args.input) : undefined);
         const timeoutHandle = setTimeout(() => { timedOut = true; signalProcessTree(child.pid, 'SIGKILL'); }, timeoutMs);
         timeoutHandle.unref?.();
         const exit = await new Promise((resolve, reject) => { child.once('error', reject); child.once('close', (code, signal) => resolve({ code, signal })); });
         clearTimeout(timeoutHandle);
-        const outputSha256 = sha256Buffer(Buffer.from(stdout + '\0' + stderr, 'utf8'));
+        const stdoutTail = stdoutDecoder.end();
+        const stderrTail = stderrDecoder.end();
+        if (stdoutTail) {
+          const next = appendBounded(stdout, stdoutTail, this.limits.maxSessionOutputBytes);
+          stdout = next.text; stdoutTruncated ||= next.truncated;
+        }
+        if (stderrTail) {
+          const next = appendBounded(stderr, stderrTail, this.limits.maxSessionOutputBytes);
+          stderr = next.text; stderrTruncated ||= next.truncated;
+        }
+        const stdoutSha256 = stdoutHash.digest('hex');
+        const stderrSha256 = stderrHash.digest('hex');
+        const outputSha256 = processOutputSha256(stdoutSha256, stderrSha256);
         return {
           operation, persistent: false, pid: child.pid, command, args: argv, cwd,
           ...(Number.isInteger(exit.code) ? { exitCode: exit.code } : {}),
           ...(exit.signal ? { signal: exit.signal } : {}),
           timedOut, durationMs: Date.now() - processStartedAt, stdout, stderr,
-          outputSha256,
+          stdoutBytes, stderrBytes, outputComplete: true,
+          outputDigestContract: PROCESS_OUTPUT_DIGEST_CONTRACT,
+          stdoutSha256, stderrSha256, outputSha256,
           truncated: { stdout: stdoutTruncated, stderr: stderrTruncated },
           receipt: receipt({ resultIdentity: 'process-action:' + actionId, target: cwd, repository })
         };
@@ -886,15 +959,21 @@ export class MachineActionService {
       const session = {
         id: randomId('machinesession'), actionId, pid: child.pid, command, args: argv, cwd, repository, child, status: 'running',
         startedAt, endedAt: null, exitCode: null, signal: null, timedOut: false,
-        events: [], eventBytes: 0, droppedEvents: 0, nextSeq: 0, timeoutHandle: null
+        events: [], eventBytes: 0, droppedEvents: 0, nextSeq: 0, timeoutHandle: null,
+        stdoutHash: crypto.createHash('sha256'), stderrHash: crypto.createHash('sha256'),
+        stdoutDecoder: new StringDecoder('utf8'), stderrDecoder: new StringDecoder('utf8'),
+        stdoutBytes: 0, stderrBytes: 0, stdoutSha256: null, stderrSha256: null, outputSha256: null
       };
       child.stdout.on('data', (chunk) => this.#recordEvent(session, 'stdout', chunk));
       child.stderr.on('data', (chunk) => this.#recordEvent(session, 'stderr', chunk));
+      child.stdin.on('error', (error) => this.#recordEvent(session, 'system', 'stdin ' + (error?.code ? error.code + ': ' : '') + (error?.message || String(error))));
       child.once('close', (code, signal) => {
+        this.#finalizeSessionOutput(session);
         session.status = 'exited'; session.endedAt = new Date().toISOString(); session.exitCode = code; session.signal = signal || null;
         clearTimeout(session.timeoutHandle);
       });
       child.once('error', (error) => this.#recordEvent(session, 'system', (error?.code ? error.code + ': ' : '') + (error?.message || String(error))));
+      if (args.input !== undefined && args.input !== null) child.stdin.write(String(args.input));
       session.timeoutHandle = setTimeout(() => {
         if (session.status !== 'running') return;
         session.timedOut = true;
