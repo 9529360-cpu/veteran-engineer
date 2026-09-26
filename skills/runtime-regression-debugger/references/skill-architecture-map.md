@@ -270,6 +270,7 @@ Use this table before editing the Skill itself.
 | Long-investigation compact resume + frontier/stall + mutation provenance + dogfood telemetry | `scripts/engineering_journal.py` | keyed-decision, frontier lease, mutation-receipt replay, compact-resume, route/tool/host stats, and stalled-frontier regressions |
 | Repository navigation/calculation aid | focused `scripts/*.py` helper | smoke/unit test; never promote helper output to authority |
 | Capability/evidence execution envelope | `scripts/execution_envelope_gate.py` + `autonomous-repository-engineering.md` | unavailable-capability, honest-fallback, dynamic-refresh regressions; never confuse capability with authorization |
+| Local-machine repository/file/process execution evidence | runtime `src/machine-action-service.mjs` + `references/machine-action-fabric.md` | `repo.status`, file-digest/precondition, action-receipt, request-replay, Remote Host MCP, and cross-platform smoke regressions |
 | Plugin/MCP execution behavior | materialized `assets/plugin-runtime-starter/` runtime source | Node/runtime integration tests, archive byte-preservation, and identity proof |
 | Evaluation methodology | `evals/README.md` or evolution references | evaluator/harness validation; no runtime-rule inflation |
 | Skill architecture itself | smallest owning layer above | update this map only after the real owners are changed |
