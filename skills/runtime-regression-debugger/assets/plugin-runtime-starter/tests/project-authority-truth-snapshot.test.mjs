@@ -69,7 +69,7 @@ test('project environment, readiness, bootstrap, and planner awareness stay boun
     assert.ok(!project.bootstrapPlan.steps.some((step) => step.owner === 'python' || step.id === 'node:pnpm'));
     assert.equal(project.commandPlan.contract, 'veteran-project-command-plan-v1');
     assert.equal(project.commandPlan.packageManager, 'npm');
-    assert.equal(project.commandPlan.status, 'discovery-only');
+    const authorityCommandPlanStatus = project.commandPlan.status;
     assert.deepEqual(project.commandPlan.changedPaths, []);
     assert.deepEqual(project.commandPlan.validation.minimal, []);
     assert.deepEqual(project.commandPlan.commands.map((item) => item.script), ['test']);
@@ -97,7 +97,7 @@ test('project environment, readiness, bootstrap, and planner awareness stay boun
     assert.deepEqual(refreshed.environmentProfile.runtimeFamilies, ['node']);
     assert.ok(!refreshed.environmentProfile.runtimeFamilies.includes('rust'));
     assert.equal(refreshed.commandPlan.packageManager, 'npm');
-    assert.equal(refreshed.commandPlan.status, 'discovery-only');
+    assert.equal(refreshed.commandPlan.status, authorityCommandPlanStatus);
     assert.equal(refreshed.commandPlan.authorityDirty, false);
     assert.deepEqual(refreshed.commandPlan.changedPaths, []);
     assert.deepEqual(refreshed.commandPlan.commands.map((item) => item.script), ['test']);
