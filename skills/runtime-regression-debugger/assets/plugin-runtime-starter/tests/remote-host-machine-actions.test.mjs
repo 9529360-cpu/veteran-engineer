@@ -22,7 +22,14 @@ const officialSdkAvailable = (() => {
 })();
 
 test('Remote Host exposes opt-in machine inspect/action through the real MCP surface', { skip: !officialSdkAvailable }, async () => {
-  const fixture = await createGitRepo({ files: { 'README.md': 'machine bridge\n' } });
+  const fixture = await createGitRepo({ files: {
+    'README.md': 'machine bridge\n',
+    'package.json': `${JSON.stringify({
+      private: true,
+      scripts: { check: 'node -e "process.exit(0)"' }
+    }, null, 2)}\n`,
+    'package-lock.json': `${JSON.stringify({ lockfileVersion: 3 })}\n`
+  } });
   let running = null;
   let client = null;
   try {
@@ -31,7 +38,7 @@ test('Remote Host exposes opt-in machine inspect/action through the real MCP sur
       configPath,
       stateRoot: fixture.stateRoot,
       workspaces: [fixture.root],
-      machineActions: { enabled: true, allowedExecutables: ['node'] },
+      machineActions: { enabled: true, allowedExecutables: ['node', 'npm'] },
       port: 0
     });
     running = await startRemoteHost({ configPath, port: 0 });
@@ -130,6 +137,42 @@ test('Remote Host exposes opt-in machine inspect/action through the real MCP sur
     assert.equal(diff.structuredContent.scope, 'README.md');
     assert.match(diff.structuredContent.patch, /\+machine bridge edited/);
     assert.doesNotMatch(diff.structuredContent.patch, /remote-machine-edited/);
+
+    const commands = await client.callTool({
+      name: 'machine_inspect',
+      arguments: { operation: 'repo.commands', path: fixture.repo }
+    });
+    assert.equal(commands.isError, undefined, JSON.stringify(commands));
+    assert.equal(commands.structuredContent.repository.head, fixture.head);
+    assert.equal(commands.structuredContent.commandPlan.contract, 'veteran-project-command-plan-v1');
+    assert.ok(commands.structuredContent.commandPlan.changedPaths.includes('README.md'));
+    assert.doesNotMatch(JSON.stringify(commands.structuredContent.commandPlan), /process\.exit/);
+    if (process.platform === 'win32') {
+      assert.equal(commands.structuredContent.commandPlan.status, 'blocked');
+      assert.deepEqual(commands.structuredContent.commandPlan.validation.minimal, []);
+      assert.equal(
+        commands.structuredContent.commandPlan.commands.every((item) => item.readinessReason === 'windows-command-shim-requires-shell'),
+        true
+      );
+    } else {
+      const minimalCommand = commands.structuredContent.commandPlan.validation.minimal[0].command;
+      assert.deepEqual(minimalCommand, ['npm', 'run', 'check']);
+      const validationRun = await client.callTool({
+        name: 'machine_act',
+        arguments: {
+          requestId: crypto.randomUUID(),
+          operation: 'process.start',
+          command: minimalCommand[0],
+          args: minimalCommand.slice(1),
+          cwd: fixture.repo,
+          expectedRepoHead: commands.structuredContent.repository.head,
+          timeoutMs: 10_000
+        }
+      });
+      assert.equal(validationRun.isError, undefined, JSON.stringify(validationRun));
+      assert.equal(validationRun.structuredContent.exitCode, 0);
+      assert.equal(validationRun.structuredContent.receipt.repository.head, fixture.head);
+    }
 
     const run = await client.callTool({
       name: 'machine_act',
