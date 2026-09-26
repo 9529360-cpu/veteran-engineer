@@ -80,6 +80,21 @@ test('machine actions enforce workspace policy and support bounded files plus on
     );
     assert.equal((await service.inspect({ operation: 'fs.digest', path: file })).digest, replace.afterSha256);
 
+    const binary = path.join(dir, 'binary.dat');
+    await fs.writeFile(binary, Buffer.from([0xff, 0xfe, 0xfd]));
+    const binaryDigest = await service.inspect({ operation: 'fs.digest', path: binary });
+    await assert.rejects(
+      service.act({
+        operation: 'fs.replace',
+        path: binary,
+        oldText: 'x',
+        newText: 'y',
+        expectedSha256: binaryDigest.digest
+      }),
+      (error) => error?.code === 'MACHINE_TEXT_ENCODING_INVALID'
+    );
+    assert.equal((await service.inspect({ operation: 'fs.digest', path: binary })).digest, binaryDigest.digest);
+
     const read = await service.inspect({ operation: 'fs.read', path: file });
     assert.equal(read.data, 'alpha\nbeta-edited\ngamma\n');
 
