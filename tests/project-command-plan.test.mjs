@@ -61,6 +61,22 @@ test('project command plan derives safe invocations from script names without pe
   assert.doesNotMatch(JSON.stringify(plan), /node --test|eslint|DO_NOT_PERSIST/);
 });
 
+test('unsafe package script names are discovered as metadata but never converted into invocations', () => {
+  const p = profile({
+    node: {
+      engines: {},
+      scriptNames: ['--help', 'safe:test'],
+      startScriptNames: [],
+      validationScriptNames: ['--help', 'safe:test'],
+      workspaces: false
+    }
+  });
+  const plan = compileProjectCommandPlan(p, readiness(), { changedPaths: ['src/app.mjs'] });
+  assert.equal(plan.commands.some((item) => item.script === '--help'), false);
+  assert.equal(plan.commands.some((item) => item.script === 'safe:test'), true);
+  assert.ok(plan.issues.some((item) => item.code === 'COMMAND_SCRIPT_NAME_UNSAFE'));
+});
+
 test('minimal validation prefers typecheck plus unit test for source changes when no aggregate check exists', () => {
   const p = profile({
     node: {
