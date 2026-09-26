@@ -62,23 +62,52 @@ def archive_sha256(path: pathlib.Path) -> str:
     return digest.hexdigest()
 
 
-def load_installed_inventory(path: pathlib.Path) -> set[str]:
+def load_installed_state(path: pathlib.Path) -> dict:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"invalid installed inventory JSON: {path}") from exc
-    if isinstance(value, dict):
-        value = value.get("paths")
-    if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
-        raise RuntimeError("installed inventory must be a JSON array of paths or an object with a paths array")
-    paths = set(value)
-    if len(paths) != len(value):
-        raise RuntimeError("installed inventory contains duplicate paths")
+        raise RuntimeError(f"invalid installed state JSON: {path}") from exc
+    if not isinstance(value, dict):
+        raise RuntimeError("installed state must be a JSON object")
+    if value.get("schema") != "veteran-workspace-installed-state-v1":
+        raise RuntimeError("installed state schema mismatch")
+    if value.get("plugin_id") != "Plugin_8d9c7648269081918d366e3d9e9a43e2":
+        raise RuntimeError("installed state plugin identity mismatch")
+    release_id = value.get("release_id")
+    if not isinstance(release_id, str) or not release_id.startswith("pluginrel_"):
+        raise RuntimeError("installed state release_id is missing or invalid")
+    version = value.get("version")
+    parse_semver(version, "installed state version")
+    if value.get("inventory_complete") is not True:
+        raise RuntimeError("installed state inventory_complete must be true")
+    if value.get("next_offset", "__missing__") is not None:
+        raise RuntimeError("installed state must be captured through the final page with next_offset=null")
+    paths_value = value.get("paths")
+    if not isinstance(paths_value, list) or not all(isinstance(item, str) and item for item in paths_value):
+        raise RuntimeError("installed state paths must be a JSON array of non-empty strings")
+    if value.get("path_count") != len(paths_value):
+        raise RuntimeError("installed state path_count does not match paths")
+    paths = set(paths_value)
+    if len(paths) != len(paths_value):
+        raise RuntimeError("installed state contains duplicate paths")
     for item in paths:
         pure = pathlib.PurePosixPath(item)
         if pure.is_absolute() or ".." in pure.parts or "\\" in item or pure.as_posix() != item:
-            raise RuntimeError(f"installed inventory contains unsafe/non-canonical path: {item}")
-    return paths
+            raise RuntimeError(f"installed state contains unsafe/non-canonical path: {item}")
+    page_offsets = value.get("page_offsets")
+    if not isinstance(page_offsets, list) or not page_offsets or page_offsets[0] != 0:
+        raise RuntimeError("installed state page_offsets must start at 0")
+    if any(not isinstance(item, int) or item < 0 for item in page_offsets):
+        raise RuntimeError("installed state page_offsets must contain non-negative integers")
+    if page_offsets != sorted(set(page_offsets)):
+        raise RuntimeError("installed state page_offsets must be unique and increasing")
+    return {
+        "release_id": release_id,
+        "version": version,
+        "paths": paths,
+        "path_count": len(paths),
+        "page_offsets": page_offsets,
+    }
 
 
 def validate(
@@ -88,19 +117,17 @@ def validate(
     expected_version: str | None = None,
     installed_version: str | None = None,
     expected_sha256: str | None = None,
-    installed_inventory: pathlib.Path | None = None,
+    installed_state: pathlib.Path | None = None,
     publication: bool = False,
 ) -> dict:
     if not HEX_REVISION.fullmatch(expected_revision):
         raise RuntimeError("--expected-revision must be a Git commit revision")
     if publication:
         missing_args = []
-        if installed_version is None:
-            missing_args.append("--installed-version")
         if expected_sha256 is None:
             missing_args.append("--expected-sha256")
-        if installed_inventory is None:
-            missing_args.append("--installed-inventory")
+        if installed_state is None:
+            missing_args.append("--installed-state")
         if missing_args:
             raise RuntimeError(
                 "--publication requires fresh installed state and immutable artifact identity: "
@@ -170,9 +197,15 @@ def validate(
         if missing:
             raise RuntimeError("candidate Workspace archive is missing: " + ", ".join(missing))
 
-        if installed_inventory is not None:
-            installed_paths = load_installed_inventory(installed_inventory)
-            omitted_installed = sorted(installed_paths.difference(names))
+        installed_snapshot = load_installed_state(installed_state) if installed_state is not None else None
+        if installed_snapshot is not None:
+            if installed_version is not None and installed_snapshot["version"] != installed_version:
+                raise RuntimeError(
+                    "installed version argument disagrees with installed-state snapshot: "
+                    f"{installed_version} != {installed_snapshot['version']}"
+                )
+            installed_version = installed_snapshot["version"]
+            omitted_installed = sorted(installed_snapshot["paths"].difference(names))
             if omitted_installed:
                 raise RuntimeError(
                     "candidate omits installed Workspace paths that overlay publication cannot delete; "
@@ -239,7 +272,10 @@ def validate(
         "profile": "workspace",
         "file_count": len(names),
         "sha256": digest,
-        "installed_inventory_checked": installed_inventory is not None,
+        "installed_inventory_checked": installed_state is not None,
+        "installed_path_count": installed_snapshot["path_count"] if installed_state is not None else None,
+        "installed_page_offsets": installed_snapshot["page_offsets"] if installed_state is not None else None,
+        "expected_release_id": installed_snapshot["release_id"] if installed_state is not None else None,
         "publication_mode": publication,
         "safe_for_publication": True,
     }
@@ -252,7 +288,7 @@ def main() -> int:
     parser.add_argument("--expected-version")
     parser.add_argument("--installed-version")
     parser.add_argument("--expected-sha256")
-    parser.add_argument("--installed-inventory")
+    parser.add_argument("--installed-state")
     parser.add_argument("--publication", action="store_true")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
@@ -263,9 +299,9 @@ def main() -> int:
         expected_version=args.expected_version,
         installed_version=args.installed_version,
         expected_sha256=args.expected_sha256,
-        installed_inventory=(
-            pathlib.Path(args.installed_inventory).expanduser().resolve()
-            if args.installed_inventory
+        installed_state=(
+            pathlib.Path(args.installed_state).expanduser().resolve()
+            if args.installed_state
             else None
         ),
         publication=args.publication,
