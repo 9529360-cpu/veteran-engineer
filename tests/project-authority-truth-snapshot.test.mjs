@@ -67,6 +67,12 @@ test('project environment, readiness, bootstrap, and planner awareness stay boun
     assert.ok(!project.environmentProfile.manifests.some((item) => item.kind === 'python-project'));
     assert.ok(project.bootstrapPlan.steps.some((step) => step.id === 'node:npm' && step.command.join(' ') === 'npm ci'));
     assert.ok(!project.bootstrapPlan.steps.some((step) => step.owner === 'python' || step.id === 'node:pnpm'));
+    assert.equal(project.commandPlan.contract, 'veteran-project-command-plan-v1');
+    assert.equal(project.commandPlan.packageManager, 'npm');
+    const authorityCommandPlanStatus = project.commandPlan.status;
+    assert.deepEqual(project.commandPlan.changedPaths, []);
+    assert.deepEqual(project.commandPlan.validation.minimal, []);
+    assert.deepEqual(project.commandPlan.commands.map((item) => item.script), ['test']);
     assert.equal((await sourceIdentity(fixture.repo)).head, featureHead, 'project inspection must not switch/reset the caller checkout');
 
     const planned = await app.services.missionService.plan({
@@ -77,13 +83,25 @@ test('project environment, readiness, bootstrap, and planner awareness stay boun
     assert.equal(planned.mission.baseSourceIdentity.head, authorityHead);
     assert.equal(planned.tasks[0].contract, 'authority environment is node/npm');
 
+    const localPackagePath = path.join(fixture.repo, 'package.json');
+    const localPackage = JSON.parse(await fs.readFile(localPackagePath, 'utf8'));
+    localPackage.scripts.verify = 'node --test';
+    await fs.writeFile(localPackagePath, `${JSON.stringify(localPackage, null, 2)}\n`);
     await fs.writeFile(path.join(fixture.repo, 'Cargo.toml'), '[package]\nname = "dirty-feature-only"\nversion = "0.0.0"\n');
     const refreshed = await app.services.projectService.snapshot({ projectId: project.id });
     assert.equal(refreshed.sourceIdentity.dirty, true);
+    assert.ok(refreshed.sourceIdentity.dirtyPaths.includes('package.json'));
     assert.ok(refreshed.sourceIdentity.dirtyPaths.includes('Cargo.toml'));
     assert.equal(refreshed.environmentSourceIdentity.head, authorityHead);
+    assert.equal(refreshed.environmentSourceIdentity.dirty, false);
     assert.deepEqual(refreshed.environmentProfile.runtimeFamilies, ['node']);
     assert.ok(!refreshed.environmentProfile.runtimeFamilies.includes('rust'));
+    assert.equal(refreshed.commandPlan.packageManager, 'npm');
+    assert.equal(refreshed.commandPlan.status, authorityCommandPlanStatus);
+    assert.equal(refreshed.commandPlan.authorityDirty, false);
+    assert.deepEqual(refreshed.commandPlan.changedPaths, []);
+    assert.deepEqual(refreshed.commandPlan.commands.map((item) => item.script), ['test']);
+    assert.equal(refreshed.commandPlan.commands.some((item) => item.script === 'verify'), false);
     assert.equal((await sourceIdentity(fixture.repo)).head, featureHead);
   } finally {
     await cleanup(fixture.root);

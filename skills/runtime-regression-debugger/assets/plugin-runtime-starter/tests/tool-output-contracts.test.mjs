@@ -28,6 +28,7 @@ test('flagship output contracts expose fields needed to chain the engineering wo
   const open = toolOutputJsonSchema('project_open');
   assert.ok(open.required.includes('id'));
   assert.match(open.properties.id.description, /projectId/i);
+  assert.ok(open.properties.commandPlan);
 
   const plan = toolOutputJsonSchema('mission_plan');
   assert.deepEqual(plan.required, ['mission', 'tasks']);

@@ -27,6 +27,12 @@ Veteran Remote Host includes an opt-in cross-device Machine Action Fabric for we
 
 The bridge is designed for ChatGPT Web and other remote MCP-capable hosts that need local checkout state, terminal execution, persistent process sessions, local services, or desktop/runtime evidence without depending on a third-party desktop-control provider. `repo.status` now binds the local Git root, HEAD, branch, upstream relation, and dirty-state counts before mutation; `fs.digest` plus `expectedSha256` / `requireAbsent` provide optimistic file preconditions; `fs.replace` performs exact-count local text replacement against a required fresh digest instead of forcing whole-file overwrite; `repo.diff` returns a bounded no-ext-diff/no-textconv patch for post-edit review; `expectedRepoHead` rejects a mutation or process launch after checkout HEAD drift; and every successful `machine_act` returns an evidence-bound action receipt linked to its request id so duplicate request replay and postcondition checks can retain the exact machine action identity.
 
+## Project command and validation plan
+
+Project onboarding now derives a bounded command plan from repository-owned metadata instead of guessing shell commands. For Node projects, Veteran combines the selected package-manager authority, host readiness, and safe `package.json` script names into argument-vector invocations such as `npm run check` without persisting the script body itself. Unsafe script names are never converted into executable invocations.
+
+`project_open` and `project_snapshot` also derive a minimal validation recommendation from the current dirty paths. Documentation-only changes remain command-free; source/test changes prefer repository-declared aggregate, typecheck, unit-test, lint, or build scripts in a bounded order; end-to-end scripts remain broader evidence rather than an automatic minimum. If `package.json` or a Node lockfile is itself dirty, the plan fails closed and requires fresh command-authority evidence. The plan is advisory and never auto-executes repository code.
+
 ## Studio contract and versioning
 
 This repository has two intentionally separate version domains:

@@ -47,7 +47,8 @@ function snapshotMissionProjectTruth(project, baseSourceIdentity, sourceAuthorit
     environmentSourceIdentity: cloneTruthValue(environmentSourceIdentity),
     environmentProfile: cloneTruthValue(project.environmentProfile),
     environmentReadiness: cloneTruthValue(project.environmentReadiness),
-    bootstrapPlan: cloneTruthValue(project.bootstrapPlan)
+    bootstrapPlan: cloneTruthValue(project.bootstrapPlan),
+    commandPlan: cloneTruthValue(project.commandPlan)
   };
 }
 
@@ -233,7 +234,8 @@ export class MissionService {
           environmentSourceIdentity: projectTruth.environmentSourceIdentity,
           environmentProfile: projectTruth.environmentProfile,
           environmentReadiness: projectTruth.environmentReadiness,
-          bootstrapPlan: projectTruth.bootstrapPlan
+          bootstrapPlan: projectTruth.bootstrapPlan,
+          commandPlan: projectTruth.commandPlan
         };
         const payload = {
           protocol: 'veteran-planner-v1',
@@ -317,7 +319,8 @@ export class MissionService {
       environmentSourceIdentity: projectTruth.environmentSourceIdentity,
       environmentProfile: projectTruth.environmentProfile,
       environmentReadiness: projectTruth.environmentReadiness,
-      bootstrapPlan: projectTruth.bootstrapPlan
+      bootstrapPlan: projectTruth.bootstrapPlan,
+      commandPlan: projectTruth.commandPlan
     };
     const executionStrategy = compileMissionExecutionStrategy({ tasks: normalized, waves, project: strategyProject, riskEnvelope, riskEnvelopeSource, continuity });
     const createdAt = truthCapturedAt;
