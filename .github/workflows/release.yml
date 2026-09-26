@@ -23,17 +23,30 @@ on:
     tags:
       - "v*"
     paths:
+      - ".github/workflows/release.yml"
       - ".github/release-intent.json"
+      - "plugin.json"
+      - ".codex-plugin/plugin.json"
+      - "package.json"
+      - "package-lock.json"
+      - "src/constants.mjs"
+      - "scripts/release-contract.mjs"
+      - "scripts/release-candidate.mjs"
+      - "scripts/release-bootstrap.mjs"
+      - "tests/release-contract.test.mjs"
+      - "tests/release-bootstrap.test.mjs"
+      - "skills/runtime-regression-debugger/**"
+      - "skills/frontend-design-builder/**"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   dry-run:
     name: Release candidate dry run
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -45,17 +58,21 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: 20
+          node-version: "20.20.2"
           cache: npm
       - name: Install dependencies
         run: npm ci --include=optional
       - name: Validate release authorities
         env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet "$PR_BASE_SHA"...HEAD -- .github/release-intent.json; then
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            node scripts/release-contract.mjs --tag "$GITHUB_REF_NAME"
+          elif [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            node scripts/release-contract.mjs
+          elif git diff --quiet "$BASE_SHA"...HEAD -- .github/release-intent.json; then
             node scripts/release-contract.mjs
           else
             test -f .github/release-intent.json
@@ -74,10 +91,131 @@ jobs:
             sha256sum -c "$checksum"
           done
 
+  classify-push:
+    name: Classify release push
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      publish: ${{ steps.classify.outputs.publish }}
+    steps:
+      - name: Checkout release trigger source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Classify push
+        id: classify
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "reason=tag" >> "$GITHUB_OUTPUT"
+          elif [ "$GITHUB_REF" = "refs/heads/main" ] \
+            && [ -n "$BEFORE_SHA" ] \
+            && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ] \
+            && ! git diff --quiet "$BEFORE_SHA" "$GITHUB_SHA" -- .github/release-intent.json; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "reason=release-intent" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "reason=validation-only" >> "$GITHUB_OUTPUT"
+          fi
+
+  authorize-release-source:
+    name: Authorize release source
+    needs:
+      - classify-push
+    if: needs.classify-push.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout exact release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Prove merged-main provenance
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          HEAD_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --force
+          if ! git merge-base --is-ancestor "$HEAD_SHA" origin/main; then
+            echo "Release source $HEAD_SHA is not in current main lineage" >&2
+            exit 1
+          fi
+          python3 - <<'PY'
+          import json
+          import os
+          import time
+          import urllib.request
+
+          repo = os.environ["REPOSITORY"]
+          sha = os.environ["HEAD_SHA"]
+          token = os.environ["GITHUB_TOKEN"]
+          url = f"https://api.github.com/repos/{repo}/commits/{sha}/pulls"
+          deadline = time.time() + 2 * 60
+
+          while True:
+              request = urllib.request.Request(
+                  url,
+                  headers={
+                      "Accept": "application/vnd.github+json",
+                      "Authorization": f"Bearer {token}",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                      "User-Agent": "veteran-runtime-release-provenance-gate",
+                  },
+              )
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  pulls = json.load(response)
+              merged = [
+                  pr for pr in pulls
+                  if pr.get("merged_at")
+                  and pr.get("base", {}).get("ref") == "main"
+                  and pr.get("merge_commit_sha") == sha
+              ]
+              if len(merged) == 1:
+                  print(
+                      f"runtime release source authorized by merged PR "
+                      f"#{merged[0].get('number')} at {sha}"
+                  )
+                  break
+              if len(merged) > 1 or time.time() >= deadline:
+                  summary = [
+                      {
+                          "number": pr.get("number"),
+                          "merged_at": pr.get("merged_at"),
+                          "base": pr.get("base", {}).get("ref"),
+                          "merge_commit_sha": pr.get("merge_commit_sha"),
+                      }
+                      for pr in pulls[:20]
+                  ]
+                  raise SystemExit(
+                      f"runtime release source must map to exactly one merged main PR "
+                      f"with merge_commit_sha={sha}; matches={len(merged)} associated={summary}"
+                  )
+              print("runtime release PR association not visible yet; retrying")
+              time.sleep(5)
+          PY
+
   publish:
     name: Publish release
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    needs:
+      - dry-run
+      - classify-push
+      - authorize-release-source
+    if: needs.dry-run.result == 'success' && needs.classify-push.outputs.publish == 'true' && needs.authorize-release-source.result == 'success'
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: write
@@ -91,7 +229,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: 20
+          node-version: "20.20.2"
           cache: npm
       - name: Install dependencies
         run: npm ci --include=optional

@@ -16,7 +16,7 @@ concurrency:
 jobs:
   test:
     name: Node 20 / npm run check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     steps:
@@ -26,7 +26,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: 20
+          node-version: "20.20.2"
           cache: npm
 
       - name: Install dependencies
@@ -38,7 +38,7 @@ jobs:
   browser-smoke:
     name: Chromium full-stack smoke
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 8
 
     steps:
@@ -48,7 +48,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: 20
+          node-version: "20.20.2"
           cache: npm
 
       - name: Install runtime dependencies
@@ -79,7 +79,7 @@ jobs:
   electron-smoke:
     name: Electron desktop smoke
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 12
 
     steps:
@@ -89,7 +89,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: 22
+          node-version: "22.23.2"
           cache: npm
 
       - name: Install runtime dependencies
@@ -121,7 +121,7 @@ jobs:
   container-smoke:
     name: Docker worker smoke
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     steps:
@@ -131,7 +131,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: 20
+          node-version: "20.20.2"
 
       - name: Verify Docker engine
         run: docker version
@@ -151,7 +151,7 @@ jobs:
   postgres-smoke:
     name: PostgreSQL state backend smoke
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
       VETERAN_TEST_POSTGRES_URL: postgresql://veteran:veteran@127.0.0.1:5432/veteran
@@ -163,7 +163,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: 20
+          node-version: "20.20.2"
           cache: npm
 
       - name: Install runtime dependencies
