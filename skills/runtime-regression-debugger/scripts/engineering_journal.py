@@ -21,7 +21,7 @@ Examples:
   engineering_journal.py /tmp/work.json resume
   engineering_journal.py /tmp/work.json route-event --router-json /tmp/route.json
   engineering_journal.py /tmp/work.json tool-event --class github --outcome success --decision-impact changed --note "resolved exact PR head"
-  engineering_journal.py /tmp/work.json mutation-receipt --surface github --action merge-pr --target acme/repo#42 --result-id commit:abc123 --expected-descendant workflow:package
+  engineering_journal.py /tmp/work.json mutation-receipt --surface github --action merge-pr --target acme/repo#42 --evidence-kind tool-return --result-id commit:abc123 --expected-descendant workflow:package
   engineering_journal.py /tmp/work.json host-event --kind tool-call-ceiling --note "reduce fan-out for this session"
   engineering_journal.py /tmp/work.json stats
   engineering_journal.py /tmp/work.json summary
@@ -33,6 +33,7 @@ import argparse
 import datetime as dt
 import json
 import pathlib
+import re
 import sys
 
 from skill_identity import compute_identity
@@ -112,6 +113,33 @@ def save(path: pathlib.Path, data: dict) -> None:
 def require_open(data: dict) -> None:
     if data.get("closed"):
         raise RuntimeError("journal is closed")
+
+
+IDENTITY_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{0,31}:.+$")
+
+
+def require_namespaced_identity(value: str, field: str) -> str:
+    candidate = value.strip()
+    if not candidate or not IDENTITY_PATTERN.fullmatch(candidate):
+        raise RuntimeError(f"{field} must use a namespaced identity such as commit:<sha> or release:<id>")
+    return candidate
+
+
+def prior_mutation_receipts(data: dict) -> list[dict]:
+    return [
+        item
+        for item in data.get("telemetry", {}).get("mutation_receipts", [])
+        if isinstance(item, dict)
+    ]
+
+
+def prior_result_owners(data: dict) -> dict[str, list[int]]:
+    owners: dict[str, list[int]] = {}
+    for index, item in enumerate(prior_mutation_receipts(data)):
+        for result_id in item.get("result_ids", []) or []:
+            if isinstance(result_id, str):
+                owners.setdefault(result_id, []).append(index)
+    return owners
 
 
 def latest_forbidden_attempts(data: dict) -> dict[str, int]:
@@ -315,6 +343,11 @@ def main() -> int:
     p.add_argument("--surface", required=True)
     p.add_argument("--action", required=True)
     p.add_argument("--target", required=True)
+    p.add_argument(
+        "--evidence-kind",
+        choices=["tool-return", "platform-binding", "manual-observation"],
+        default="manual-observation",
+    )
     p.add_argument("--result-id", action="append", default=[])
     p.add_argument("--caused-by", default="")
     p.add_argument("--expected-descendant", action="append", default=[])
@@ -702,23 +735,50 @@ def main() -> int:
         surface = args.surface.strip()
         action = args.action.strip()
         target = args.target.strip()
-        result_ids = list(dict.fromkeys(item.strip() for item in args.result_id if item.strip()))
-        expected = list(dict.fromkeys(item.strip() for item in args.expected_descendant if item.strip()))
+        raw_result_ids = [item.strip() for item in args.result_id if item.strip()]
+        raw_expected = [item.strip() for item in args.expected_descendant if item.strip()]
         if not surface:
             raise RuntimeError("--surface must not be empty")
         if not action:
             raise RuntimeError("--action must not be empty")
         if not target:
             raise RuntimeError("--target must not be empty")
-        if not result_ids:
+        if not raw_result_ids:
             raise RuntimeError("mutation receipt requires at least one --result-id")
+
+        result_ids = list(dict.fromkeys(
+            require_namespaced_identity(item, "--result-id")
+            for item in raw_result_ids
+        ))
+        expected = list(dict.fromkeys(
+            require_namespaced_identity(item, "--expected-descendant")
+            for item in raw_expected
+        ))
+        caused_by = args.caused_by.strip() or None
+        if caused_by is not None:
+            caused_by = require_namespaced_identity(caused_by, "--caused-by")
+
+        owners = prior_result_owners(data)
+        duplicates = [result_id for result_id in result_ids if result_id in owners]
+        if duplicates:
+            raise RuntimeError(
+                "mutation receipt result identity already recorded: " + ", ".join(duplicates)
+            )
+        if caused_by is not None:
+            parent_owners = owners.get(caused_by, [])
+            if len(parent_owners) != 1:
+                raise RuntimeError(
+                    "--caused-by must reference exactly one prior mutation receipt result identity"
+                )
+
         receipt = {
             "at": now(),
             "surface": surface,
             "action": action,
             "target": target,
+            "evidence_kind": args.evidence_kind,
             "result_ids": result_ids,
-            "caused_by": args.caused_by.strip() or None,
+            "caused_by": caused_by,
             "expected_descendants": expected,
             "note": args.note.strip() or None,
         }
@@ -836,9 +896,13 @@ def main() -> int:
                     "surface": item.get("surface"),
                     "action": item.get("action"),
                     "target": item.get("target"),
+                    "evidence_kind": item.get("evidence_kind", "manual-observation"),
                     "result_ids": item.get("result_ids", []),
                     "caused_by": item.get("caused_by"),
                     "expected_descendants": item.get("expected_descendants", []),
+                    "expected_descendants_status": "predicted-unverified",
+                    "attribution_scope": "historical-mission-record",
+                    "requires_live_revalidation_for_session_attribution": True,
                     "at": item.get("at"),
                 }
                 for item in data.get("telemetry", {}).get("mutation_receipts", [])[-8:]
@@ -859,7 +923,7 @@ def main() -> int:
             "closed": bool(data.get("closed")),
             "evidence_level": data.get("evidence_level"),
             "residual_risks": data.get("residual_risks", []),
-            "note": "Compact resume state only. Revalidate any source/runtime fact whose freshness boundary may have changed.",
+            "note": "Compact resume state only. Mutation receipts are historical mission records, not session identity proof; revalidate source/runtime identity and causal bindings before attribution.",
         }
         print(json.dumps(payload, indent=2, sort_keys=True))
     elif args.command == "stats":
@@ -867,6 +931,10 @@ def main() -> int:
         route_events = [item for item in telemetry.get("route_events", []) if isinstance(item, dict)]
         tool_events = [item for item in telemetry.get("tool_events", []) if isinstance(item, dict)]
         mutation_receipts = [item for item in telemetry.get("mutation_receipts", []) if isinstance(item, dict)]
+        receipt_evidence_kinds: dict[str, int] = {}
+        for item in mutation_receipts:
+            kind = str(item.get("evidence_kind") or "manual-observation")
+            receipt_evidence_kinds[kind] = receipt_evidence_kinds.get(kind, 0) + 1
         host_events = [item for item in telemetry.get("host_events", []) if isinstance(item, dict)]
         frontier_states: dict[str, int] = {}
         for item in data.get("frontiers", []):
@@ -933,6 +1001,11 @@ def main() -> int:
                 "classes": tool_classes,
                 "outcomes": tool_outcomes,
                 "decision_impact": decision_impacts,
+            },
+            "mutation_receipts": {
+                "evidence_kinds": receipt_evidence_kinds,
+                "attribution_scope": "historical-mission-record",
+                "requires_live_revalidation_for_session_attribution": True,
             },
             "host_events": host_kinds,
             "stalled_current_frontier": stalled_frontier if stalled else None,
