@@ -274,6 +274,7 @@ const TOOL_INPUT_CONTRACTS = Object.freeze({
       encoding: stringField('File payload encoding.', { enumValues: ['utf8', 'base64'] }),
       createParents: booleanField('Create parent directories for file writes/moves. Defaults true.'),
       expectedSha256: stringField('Optimistic SHA-256 precondition for fs.write/fs.append or the fs.move source.', { minLength: null }),
+      expectedRepoHead: stringField('Optional exact Git HEAD precondition for filesystem mutations and process.start.', { minLength: null }),
       requireAbsent: booleanField('Require the target/destination path to be absent before mutation.'),
       command: stringField('Allowlisted executable name; arbitrary executable paths and shell interpolation are rejected.', { minLength: null }),
       args: stringArray('Bounded argv for process.start.', { maxItems: 128 }),
