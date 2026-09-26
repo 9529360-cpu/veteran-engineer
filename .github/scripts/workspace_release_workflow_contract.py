@@ -137,7 +137,13 @@ def main() -> int:
     require(release, '- "plugin.json"', "release main Studio trigger")
     require(release, '- "skills/runtime-regression-debugger/**"', "release main Studio trigger")
     require(release, '- "skills/frontend-design-builder/**"', "release main Studio trigger")
-    forbid(release, "if: github.event_name == 'push'\n    runs-on:", "release publish authority")
+    publish_block = release.split("\n  publish:\n", 1)[1]
+    require(
+        publish_block,
+        "if: needs.dry-run.result == 'success' && needs.classify-push.outputs.publish == 'true'",
+        "release publish authority",
+    )
+    forbid(publish_block, "if: github.event_name == 'push'", "release publish authority")
 
     print("workspace_release_workflow_contract=pass")
     return 0
