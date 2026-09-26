@@ -157,9 +157,9 @@ def load_installed_state(path: pathlib.Path) -> dict:
         if not all(isinstance(item, str) and item for item in page_paths):
             raise RuntimeError(f"installed state pages[{index}] paths must be non-empty strings")
         if index < len(pages) - 1:
-            if not isinstance(next_offset, int) or next_offset <= offset:
+            if not isinstance(next_offset, int) or next_offset != offset + count:
                 raise RuntimeError(
-                    f"installed state pages[{index}].next_offset must advance to the next page"
+                    f"installed state pages[{index}].next_offset must equal offset + count"
                 )
         elif next_offset is not None:
             raise RuntimeError("installed state final page must have next_offset=null")
