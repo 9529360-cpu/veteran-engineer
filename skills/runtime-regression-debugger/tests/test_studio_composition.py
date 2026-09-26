@@ -254,6 +254,8 @@ def test_studio_composition_contract():
         assert "actions: read" in package_workflow
         assert "Gate staged Workspace publication candidate" in package_workflow
         assert "workspace_release_gate.py" in package_workflow
+        assert '--expected-revision "$GITHUB_SHA"' in package_workflow
+        assert '--expected-revision "$SOURCE_REVISION"' not in package_workflow.split("Gate staged Workspace publication candidate", 1)[1]
         assert "Run packaged Workspace Skill regressions" in package_workflow
         assert "workspace-package-test/veteran-engineer/skills/frontend-design-builder/tests" in package_workflow
         assert "workflow_dispatch" in package_workflow
@@ -309,6 +311,10 @@ def test_studio_composition_contract():
                 )
         assert "pytest==9.1.1" in workflow_texts["skill-engineering-tools.yml"]
         assert "pytest==9.1.1" in workflow_texts["package-plugin-artifact.yml"]
+        assert "node@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293" in workflow_texts["ci.yml"]
+        assert "postgres@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea" in workflow_texts["ci.yml"]
+        assert "docker pull node:20-alpine" not in workflow_texts["ci.yml"]
+        assert "docker pull postgres:16-alpine" not in workflow_texts["ci.yml"]
         assert "pip install --disable-pip-version-check pytest\n" not in workflow_texts["skill-engineering-tools.yml"]
         assert "pip install --disable-pip-version-check pytest\n" not in workflow_texts["package-plugin-artifact.yml"]
 
