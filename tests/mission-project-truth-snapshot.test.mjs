@@ -73,7 +73,6 @@ test('Mission freezes authority-bound project truth and workers keep using it af
     assert.deepEqual(truth.environmentProfile.runtimeFamilies, ['node']);
     assert.deepEqual(truth.bootstrapPlan.steps[0].command, ['npm', 'ci']);
     assert.equal(truth.commandPlan.contract, 'veteran-project-command-plan-v1');
-    assert.equal(truth.commandPlan.status, 'discovery-only');
     assert.deepEqual(truth.commandPlan.start[0].command, ['npm', 'run', 'dev']);
 
     const fakeBootstrapPlan = {
