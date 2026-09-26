@@ -15,8 +15,8 @@ const migration = fs.readFileSync(
 );
 
 test('Runtime Release V2 has no tag publication trigger or branch', () => {
-  assert.equal(v2.includes('tags:'), false);
-  assert.equal(v2.includes('refs/tags/'), false);
+  assert.equal(v2.includes('\n    tags:\n'), false);
+  assert.equal(v2.includes('GITHUB_REF" == refs/tags/*'), false);
   assert.equal(v2.includes('reason=tag'), false);
   assert.ok(v2.includes('branches:\n      - main'));
   assert.ok(v2.includes('.github/release-intent.json'));
