@@ -103,7 +103,7 @@ def main() -> int:
         require(text, "runs-on: ubuntu-24.04", f"{name} runner")
         forbid(text, "runs-on: ubuntu-latest", f"{name} runner")
 
-    for needle in ("- ubuntu-24.04", "- macos-26-arm64", "- windows-2025-vs2026"):
+    for needle in ("- ubuntu-24.04", "- macos-26", "- windows-2025-vs2026"):
         require(cross, needle, "cross runner matrix")
     for needle in ("ubuntu-latest", "macos-latest", "windows-latest"):
         forbid(cross, needle, "cross runner matrix")
