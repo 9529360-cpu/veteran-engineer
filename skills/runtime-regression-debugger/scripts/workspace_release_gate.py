@@ -9,6 +9,7 @@ import json
 import pathlib
 import re
 import stat
+import unicodedata
 import zipfile
 
 
@@ -27,6 +28,18 @@ EXPECTED_SKILL_ENTRYPOINTS = {
     "skills/runtime-regression-debugger/SKILL.md",
     "skills/frontend-design-builder/SKILL.md",
 }
+EXPECTED_SKILL_ROOTS = {
+    "runtime-regression-debugger",
+    "frontend-design-builder",
+}
+EXPECTED_SKILL_NAMES = {
+    "skills/runtime-regression-debugger/SKILL.md": "runtime-regression-debugger",
+    "skills/frontend-design-builder/SKILL.md": "frontend-design-builder",
+}
+EXPECTED_AGENT_DISPLAY_NAMES = {
+    "skills/runtime-regression-debugger/agents/openai.yaml": "Veteran Full Stack Engineer",
+    "skills/frontend-design-builder/agents/openai.yaml": "Veteran Frontend Design Builder",
+}
 FORBIDDEN_PATHS = {
     ".mcp.json",
     "mcp.json",
@@ -36,8 +49,12 @@ FORBIDDEN_PATHS = {
 }
 FORBIDDEN_BASENAMES = {".mcp.json", "mcp.json", ".app.json"}
 ALLOWED_CODEX_PLUGIN_PATHS = {".codex-plugin/plugin.json"}
-HEX_REVISION = re.compile(r"^[0-9a-fA-F]{7,64}$")
+HEX_REVISION = re.compile(r"^[0-9a-f]{40}$")
 SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
+MAX_FILE_COUNT = 2_000
+MAX_TOTAL_UNCOMPRESSED_BYTES = 25 * 1024 * 1024
+MAX_SINGLE_FILE_BYTES = 8 * 1024 * 1024
+MAX_COMPRESSION_RATIO = 200.0
 
 
 def load_json(archive: zipfile.ZipFile, path: str) -> dict:
@@ -48,6 +65,37 @@ def load_json(archive: zipfile.ZipFile, path: str) -> dict:
     if not isinstance(value, dict):
         raise RuntimeError(f"JSON file must contain an object: {path}")
     return value
+
+
+def load_text(archive: zipfile.ZipFile, path: str) -> str:
+    try:
+        return archive.read(path).decode("utf-8")
+    except (KeyError, UnicodeDecodeError) as exc:
+        raise RuntimeError(f"invalid or missing UTF-8 file: {path}") from exc
+
+
+def skill_frontmatter_name(text: str, path: str) -> str:
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        raise RuntimeError(f"Skill frontmatter is missing: {path}")
+    try:
+        end = next(index for index, line in enumerate(lines[1:], 1) if line.strip() == "---")
+    except StopIteration as exc:
+        raise RuntimeError(f"Skill frontmatter is unterminated: {path}") from exc
+    names = [
+        line.split(":", 1)[1].strip().strip('"\'')
+        for line in lines[1:end]
+        if line.strip().startswith("name:") and ":" in line
+    ]
+    if len(names) != 1 or not names[0]:
+        raise RuntimeError(f"Skill frontmatter must contain exactly one name: {path}")
+    return names[0]
+
+
+def reject_control_characters(value: str, label: str) -> None:
+    for char in value:
+        if unicodedata.category(char).startswith("C"):
+            raise RuntimeError(f"{label} contains Unicode control/format characters: {value!r}")
 
 
 def parse_semver(value: object, label: str) -> tuple[int, int, int]:
