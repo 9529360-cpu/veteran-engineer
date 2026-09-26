@@ -90,6 +90,15 @@ function normalizedSha256(value) {
   return digest;
 }
 
+function normalizedGitObjectId(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const objectId = String(value).trim().toLowerCase();
+  if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(objectId)) {
+    throw codedError('MACHINE_GIT_OBJECT_ID_INVALID', 'expectedRepoHead must be a 40- or 64-character Git object id');
+  }
+  return objectId;
+}
+
 async function fileFingerprint(target) {
   try {
     const stat = await fs.stat(target);
@@ -292,6 +301,41 @@ export class MachineActionService {
     return resolved;
   }
 
+  async #assertExpectedRepoHead(candidate, expectedRepoHead) {
+    const expected = normalizedGitObjectId(expectedRepoHead);
+    if (expected === null) return null;
+    const existing = await nearestExistingParent(candidate);
+    const allowed = await this.#allowedReadPath(existing, 'repository precondition path');
+    const stat = await fs.stat(allowed);
+    const cwd = stat.isDirectory() ? allowed : path.dirname(allowed);
+    let rootProbe;
+    try {
+      rootProbe = await runBoundedProcess('git', ['rev-parse', '--show-toplevel'], cwd, {
+        timeoutMs: Math.min(this.limits.defaultTimeoutMs, 10_000),
+        maxOutputBytes: this.limits.maxReadBytes
+      });
+    } catch (error) {
+      if (error?.code === 'ENOENT') {
+        throw codedError('MACHINE_GIT_UNAVAILABLE', 'expectedRepoHead requires git on the machine PATH');
+      }
+      throw codedError('MACHINE_REPOSITORY_PRECONDITION_FAILED', 'Machine action expected a Git checkout but the mutation path is not inside one', {
+        path: candidate, expectedRepoHead: expected
+      });
+    }
+    const root = await this.#allowedReadPath(rootProbe.stdout.trim(), 'repository precondition root');
+    const headResult = await runBoundedProcess('git', ['rev-parse', 'HEAD'], root, {
+      timeoutMs: Math.min(this.limits.defaultTimeoutMs, 10_000),
+      maxOutputBytes: this.limits.maxReadBytes
+    });
+    const actual = headResult.stdout.trim().toLowerCase();
+    if (actual !== expected) {
+      throw codedError('MACHINE_REPOSITORY_PRECONDITION_FAILED', 'Machine action repository HEAD no longer matches expectedRepoHead', {
+        repositoryRoot: root, expectedRepoHead: expected, actualRepoHead: actual
+      });
+    }
+    return { root, head: actual };
+  }
+
   #assertExecutable(command) {
     this.#assertEnabled();
     const key = executableKey(command);
@@ -326,7 +370,7 @@ export class MachineActionService {
     };
   }
 
-  #actionReceipt({ actionId, operation, startedAt, outcome = 'completed', resultIdentity = null, target = null, parentActionId = null, endedAt = null } = {}) {
+  #actionReceipt({ actionId, operation, startedAt, outcome = 'completed', resultIdentity = null, target = null, parentActionId = null, repository = null, endedAt = null } = {}) {
     return {
       contract: MACHINE_ACTION_RECEIPT_CONTRACT,
       actionId,
@@ -337,7 +381,8 @@ export class MachineActionService {
       outcome,
       ...(resultIdentity ? { resultIdentity } : {}),
       ...(target ? { target } : {}),
-      ...(parentActionId ? { parentActionId } : {})
+      ...(parentActionId ? { parentActionId } : {}),
+      ...(repository ? { repository } : {})
     };
   }
 
@@ -548,6 +593,7 @@ export class MachineActionService {
       if (data.length > this.limits.maxWriteBytes) {
         throw codedError('MACHINE_WRITE_TOO_LARGE', 'Machine file write exceeds configured maxWriteBytes', { bytes: data.length, maxWriteBytes: this.limits.maxWriteBytes });
       }
+      const repository = await this.#assertExpectedRepoHead(target, args.expectedRepoHead);
       const before = await fileFingerprint(target);
       assertMutationPrecondition(before, args, target, { requireRegularFile: operation === 'fs.append' });
       if (args.createParents !== false) await fs.mkdir(path.dirname(target), { recursive: true });
@@ -559,12 +605,13 @@ export class MachineActionService {
         created: !before.exists,
         ...(before.sha256 ? { beforeSha256: before.sha256, beforeBytes: before.bytes } : {}),
         ...(after.sha256 ? { afterSha256: after.sha256, afterBytes: after.bytes } : {}),
-        receipt: receipt({ resultIdentity: after.sha256 ? 'sha256:' + after.sha256 : 'action:' + actionId, target })
+        receipt: receipt({ resultIdentity: after.sha256 ? 'sha256:' + after.sha256 : 'action:' + actionId, target, repository })
       };
     }
 
     if (operation === 'fs.mkdir') {
       const target = await this.#allowedWritePath(args.path, 'directory create path');
+      const repository = await this.#assertExpectedRepoHead(target, args.expectedRepoHead);
       const before = await fileFingerprint(target);
       if (args.requireAbsent === true && before.exists) {
         throw codedError('MACHINE_FILE_PRECONDITION_FAILED', 'Machine action expected the directory path to be absent before mkdir', {
@@ -574,13 +621,14 @@ export class MachineActionService {
       await fs.mkdir(target, { recursive: true });
       return {
         operation, path: target, created: !before.exists,
-        receipt: receipt({ resultIdentity: 'action:' + actionId, target })
+        receipt: receipt({ resultIdentity: 'action:' + actionId, target, repository })
       };
     }
 
     if (operation === 'fs.move') {
       const source = await this.#allowedReadPath(args.path, 'move source');
       const destination = await this.#allowedWritePath(args.destination, 'move destination');
+      const repository = await this.#assertExpectedRepoHead(source, args.expectedRepoHead);
       const sourceBefore = await fileFingerprint(source);
       assertMutationPrecondition(sourceBefore, { expectedSha256: args.expectedSha256 }, source, { requireRegularFile: args.expectedSha256 != null });
       const destinationBefore = await fileFingerprint(destination);
@@ -598,7 +646,8 @@ export class MachineActionService {
         ...(destinationAfter.sha256 ? { afterSha256: destinationAfter.sha256, afterBytes: destinationAfter.bytes } : {}),
         receipt: receipt({
           resultIdentity: destinationAfter.sha256 ? 'sha256:' + destinationAfter.sha256 : 'action:' + actionId,
-          target: destination
+          target: destination,
+          repository
         })
       };
     }
@@ -611,6 +660,7 @@ export class MachineActionService {
         throw codedError('MACHINE_COMMAND_ARGUMENTS_INVALID', 'Machine process arguments exceed bounded count/length limits');
       }
       const cwd = await this.#allowedReadPath(args.cwd || this.allowedLocalRoots[0], 'process cwd');
+      const repository = await this.#assertExpectedRepoHead(cwd, args.expectedRepoHead);
       const persistent = args.persistent === true;
       const maxTimeout = persistent ? this.limits.maxPersistentMs : this.limits.maxTimeoutMs;
       const timeoutMs = positiveInteger(args.timeoutMs, persistent ? Math.min(30 * 60 * 1000, maxTimeout) : this.limits.defaultTimeoutMs, maxTimeout);
@@ -644,7 +694,7 @@ export class MachineActionService {
           timedOut, durationMs: Date.now() - processStartedAt, stdout, stderr,
           outputSha256,
           truncated: { stdout: stdoutTruncated, stderr: stderrTruncated },
-          receipt: receipt({ resultIdentity: 'process-action:' + actionId, target: cwd })
+          receipt: receipt({ resultIdentity: 'process-action:' + actionId, target: cwd, repository })
         };
       }
 
@@ -670,7 +720,7 @@ export class MachineActionService {
       this.sessions.set(session.id, session);
       return {
         operation, persistent: true, session: this.#sessionSummary(session),
-        receipt: receipt({ outcome: 'running', resultIdentity: 'machinesession:' + session.id, target: cwd, endedAt: null })
+        receipt: receipt({ outcome: 'running', resultIdentity: 'machinesession:' + session.id, target: cwd, repository, endedAt: null })
       };
     }
 
