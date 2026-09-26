@@ -106,6 +106,8 @@ Before attributing an observed mutation:
 
 A stale expected release ID, changed branch head, new workflow run, or unexpected file is evidence that the previous snapshot is stale. It is **not** by itself evidence of a different executor. First test whether it is this execution's own earlier action, a delayed observation of that action, or automation causally triggered by it.
 
+Knowledge that another executor exists, has credentials, owns a machine, worked on earlier commits, or is mentioned in saved memory/prior-chat/handoff context is **capability/history evidence**, not event provenance. Use it to know which competing explanations are possible, never to select the actor for a specific mutation without a bound operation/session/tool/platform receipt.
+
 Use neutral wording until attribution is proven: "the state changed since my last read", "a new commit/release exists", or "the mutation source is not distinguishable from the available provenance." Do not say "someone else", "another AI", "another session", or "the machine changed it" merely because the state is surprising.
 
 When positive provenance does identify another executor, name the exact evidence and its scope. Do not generalize an account-level identity into a session-level claim.
