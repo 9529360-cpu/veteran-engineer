@@ -117,6 +117,24 @@ def main() -> int:
     require(skill, 'python-version: "3.12.14"', "skill python")
     require(package, 'python-version: "3.12.14"', "package python")
 
+    for needle in (
+        "if: github.event_name == 'pull_request' || github.event_name == 'push'",
+        "name: Classify release push",
+        "outputs:",
+        "publish: ${{ steps.classify.outputs.publish }}",
+        "reason=validation-only",
+        "needs.dry-run.result == 'success'",
+        "needs.classify-push.outputs.publish == 'true'",
+        'BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}',
+    ):
+        require(release, needle, "release validation/publish split")
+    require(release, 'permissions:\n      contents: write', "release publish permission")
+    require(release, 'permissions:\n      contents: read', "release validation permission")
+    require(release, '- "plugin.json"', "release main Studio trigger")
+    require(release, '- "skills/runtime-regression-debugger/**"', "release main Studio trigger")
+    require(release, '- "skills/frontend-design-builder/**"', "release main Studio trigger")
+    forbid(release, "if: github.event_name == 'push'\n    runs-on:", "release publish authority")
+
     print("workspace_release_workflow_contract=pass")
     return 0
 
