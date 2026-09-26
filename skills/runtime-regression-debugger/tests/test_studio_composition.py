@@ -305,6 +305,14 @@ def test_studio_composition_contract():
                 "package-plugin-artifact.yml",
             )
         }
+        for name in (
+            "ci.yml",
+            "skill-engineering-tools.yml",
+            "cross-platform-host-smoke.yml",
+            "package-plugin-artifact.yml",
+        ):
+            assert "cancel-in-progress: ${{ github.event_name == 'pull_request' }}" in workflow_texts[name]
+            assert "cancel-in-progress: true" not in workflow_texts[name]
         immutable_action_pattern = re.compile(r"uses:\s+actions/[A-Za-z0-9_.-]+@[0-9a-f]{40}(?:\s+#\s+v\d+)?")
         floating_action_pattern = re.compile(r"uses:\s+actions/[A-Za-z0-9_.-]+@v\d+\b")
         trusted_action_pins = {
