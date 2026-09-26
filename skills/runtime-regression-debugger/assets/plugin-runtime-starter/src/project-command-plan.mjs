@@ -23,8 +23,13 @@ function normalizePaths(values = []) {
     .slice(0, MAX_CHANGED_PATHS);
 }
 
+function safeScriptName(value) {
+  const name = String(value || '');
+  return /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,127}$/.test(name);
+}
+
 function nodeScriptCommand(manager, scriptName) {
-  if (!manager || !scriptName) return null;
+  if (!manager || !safeScriptName(scriptName)) return null;
   return [manager, 'run', scriptName];
 }
 
@@ -199,8 +204,10 @@ export function compileProjectCommandPlan(profile, readiness, { changedPaths = [
   const normalizedChangedPaths = normalizePaths(changedPaths);
   const managerState = managerReadiness(profile, readiness);
   const scriptNames = (profile?.node?.scriptNames || []).slice(0, MAX_COMMANDS);
+  const safeScriptNames = scriptNames.filter(safeScriptName);
+  const unsafeScriptCount = scriptNames.length - safeScriptNames.length;
   const commands = managerState.manager
-    ? scriptNames.map((scriptName) => commandRecord(managerState.manager, scriptName, managerState))
+    ? safeScriptNames.map((scriptName) => commandRecord(managerState.manager, scriptName, managerState))
     : [];
   const start = commands.filter((item) => item.kind === 'start');
   const validationCommands = commands.filter((item) => ['aggregate', 'typecheck', 'test', 'e2e', 'lint', 'build'].includes(item.kind));
@@ -210,6 +217,13 @@ export function compileProjectCommandPlan(profile, readiness, { changedPaths = [
     runnable: managerState.runnable
   });
   const issues = [...validation.issues];
+  if (unsafeScriptCount > 0) {
+    issues.unshift({
+      code: 'COMMAND_SCRIPT_NAME_UNSAFE',
+      severity: 'warning',
+      message: `${unsafeScriptCount} package script name(s) were not converted into executable invocations because they are unsafe as bounded command arguments.`
+    });
+  }
   if (!managerState.manager && profile?.node) {
     issues.unshift({
       code: profile?.packageManagers?.node?.ambiguous ? 'COMMAND_PACKAGE_MANAGER_AMBIGUOUS' : 'COMMAND_PACKAGE_MANAGER_UNRESOLVED',
