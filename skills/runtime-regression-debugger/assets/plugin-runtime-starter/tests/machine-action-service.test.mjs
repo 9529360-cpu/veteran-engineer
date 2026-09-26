@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { MachineActionService } from '../src/machine-action-service.mjs';
+import { git } from '../src/git.mjs';
 import { createGitRepo, cleanup } from './helpers.mjs';
 
 async function tempRoot() {
@@ -163,7 +164,8 @@ test('machine repo.status binds local repository truth before and after a guarde
       operation: 'fs.write',
       path: readme,
       content: 'hello\nchanged\n',
-      expectedSha256: before.digest
+      expectedSha256: before.digest,
+      expectedRepoHead: initial.repository.head
     });
     assert.equal(write.beforeSha256, before.digest);
 
@@ -172,6 +174,23 @@ test('machine repo.status binds local repository truth before and after a guarde
     assert.equal(after.repository.head, fixture.head);
     assert.equal(after.repository.dirty, true);
     assert.equal(after.repository.unstaged >= 1, true);
+
+    await git(fixture.repo, ['add', 'README.md']);
+    await git(fixture.repo, ['commit', '-q', '-m', 'advance repository head']);
+    const advanced = await service.inspect({ operation: 'repo.status', path: fixture.repo });
+    assert.notEqual(advanced.repository.head, initial.repository.head);
+    const currentDigest = await service.inspect({ operation: 'fs.digest', path: readme });
+    await assert.rejects(
+      service.act({
+        operation: 'fs.append',
+        path: readme,
+        content: 'should-not-land\n',
+        expectedSha256: currentDigest.digest,
+        expectedRepoHead: initial.repository.head
+      }),
+      (error) => error?.code === 'MACHINE_REPOSITORY_PRECONDITION_FAILED'
+    );
+    assert.equal((await service.inspect({ operation: 'fs.digest', path: readme })).digest, currentDigest.digest);
   } finally {
     await service.shutdown();
     await cleanup(fixture.root);
