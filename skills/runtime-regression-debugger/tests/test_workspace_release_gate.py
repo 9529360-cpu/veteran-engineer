@@ -408,3 +408,57 @@ def test_publication_mode_binds_version_to_same_installed_snapshot(tmp_path: Pat
 
     assert proc.returncode != 0
     assert "disagrees with installed-state snapshot" in proc.stderr
+
+
+def test_workspace_release_gate_rejects_nested_mcp_manifest(tmp_path: Path):
+    archive = tmp_path / "candidate.zip"
+    build_candidate(archive)
+    with zipfile.ZipFile(archive, "a") as handle:
+        handle.writestr("skills/runtime-regression-debugger/.mcp.json", "{}")
+
+    proc = run_gate(
+        archive,
+        "--expected-revision",
+        "abc1234",
+        check=False,
+    )
+
+    assert proc.returncode != 0
+    assert "leaks local runtime/MCP surfaces" in proc.stderr
+
+
+def test_workspace_release_gate_rejects_runtime_starter_subtree(tmp_path: Path):
+    archive = tmp_path / "candidate.zip"
+    build_candidate(archive)
+    with zipfile.ZipFile(archive, "a") as handle:
+        handle.writestr(
+            "skills/runtime-regression-debugger/assets/plugin-runtime-starter/src/mcp-server.mjs",
+            "export {}\n",
+        )
+
+    proc = run_gate(
+        archive,
+        "--expected-revision",
+        "abc1234",
+        check=False,
+    )
+
+    assert proc.returncode != 0
+    assert "leaks local runtime/MCP surfaces" in proc.stderr
+
+
+def test_workspace_release_gate_rejects_extra_codex_plugin_surface(tmp_path: Path):
+    archive = tmp_path / "candidate.zip"
+    build_candidate(archive)
+    with zipfile.ZipFile(archive, "a") as handle:
+        handle.writestr(".codex-plugin/mcp.json", "{}")
+
+    proc = run_gate(
+        archive,
+        "--expected-revision",
+        "abc1234",
+        check=False,
+    )
+
+    assert proc.returncode != 0
+    assert "unexpected .codex-plugin surfaces" in proc.stderr
