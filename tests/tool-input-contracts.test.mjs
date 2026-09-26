@@ -83,6 +83,7 @@ test('flagship tools expose the parameters needed to complete the product workfl
   assert.equal(toolInputJsonSchema('runtime_cleanup').properties.apply.type, 'boolean');
   const machineInspect = toolInputJsonSchema('machine_inspect');
   assert.equal(machineInspect.properties.operation.enum.includes('repo.status'), true);
+  assert.equal(machineInspect.properties.operation.enum.includes('repo.commands'), true);
   assert.equal(machineInspect.properties.operation.enum.includes('fs.digest'), true);
   assert.equal(machineInspect.properties.operation.enum.includes('repo.diff'), true);
   assert.equal(machineInspect.properties.staged.type, 'boolean');
