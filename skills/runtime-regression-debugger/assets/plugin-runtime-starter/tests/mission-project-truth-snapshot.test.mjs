@@ -10,7 +10,12 @@ const packageJson = `${JSON.stringify({
   name: 'mission-truth-fixture',
   version: '1.0.0',
   private: true,
-  packageManager: 'npm@10.0.0'
+  packageManager: 'npm@10.0.0',
+  scripts: {
+    dev: 'node dev-server.mjs',
+    check: 'node --check src/a.txt',
+    test: 'node --test'
+  }
 }, null, 2)}\n`;
 const packageLock = `${JSON.stringify({
   name: 'mission-truth-fixture',
@@ -67,6 +72,9 @@ test('Mission freezes authority-bound project truth and workers keep using it af
     assert.equal(truth.environmentSourceIdentity.head, fixture.mission.baseSourceIdentity.head);
     assert.deepEqual(truth.environmentProfile.runtimeFamilies, ['node']);
     assert.deepEqual(truth.bootstrapPlan.steps[0].command, ['npm', 'ci']);
+    assert.equal(truth.commandPlan.contract, 'veteran-project-command-plan-v1');
+    assert.equal(truth.commandPlan.status, 'discovery-only');
+    assert.deepEqual(truth.commandPlan.start[0].command, ['npm', 'run', 'dev']);
 
     const fakeBootstrapPlan = {
       contract: 'veteran-project-bootstrap-plan-v1',
@@ -118,6 +126,7 @@ test('Mission freezes authority-bound project truth and workers keep using it af
     const packet = status.tasks[0].dispatches.at(-1).packet;
     assert.equal(packet.mission.projectTruth.contract, MISSION_PROJECT_TRUTH_CONTRACT);
     assert.deepEqual(packet.mission.projectTruth.bootstrapPlan.steps[0].command, ['npm', 'ci']);
+    assert.deepEqual(packet.mission.projectTruth.commandPlan.start[0].command, ['npm', 'run', 'dev']);
 
     const evidence = await fixture.app.services.evidenceService.query({ missionId: fixture.mission.id, taskId: 'T1', type: 'bootstrap' });
     assert.equal(evidence.length, 1);
