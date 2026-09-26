@@ -47,7 +47,8 @@ function snapshotMissionProjectTruth(project, baseSourceIdentity, sourceAuthorit
     environmentSourceIdentity: cloneTruthValue(environmentSourceIdentity),
     environmentProfile: cloneTruthValue(project.environmentProfile),
     environmentReadiness: cloneTruthValue(project.environmentReadiness),
-    bootstrapPlan: cloneTruthValue(project.bootstrapPlan)
+    bootstrapPlan: cloneTruthValue(project.bootstrapPlan),
+    commandPlan: cloneTruthValue(project.commandPlan)
   };
 }
 
