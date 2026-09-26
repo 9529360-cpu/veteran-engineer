@@ -168,6 +168,7 @@ def test_studio_composition_contract():
     assert "`repo.status`" in machine_action
     assert "`fs.digest`" in machine_action
     assert "`expectedSha256`" in machine_action
+    assert "`expectedRepoHead`" in machine_action
     assert "veteran-machine-action-receipt-v1" in machine_action
     assert "repository identity -> remote/origin -> branch/ref -> exact HEAD -> dirty state" in machine_action
 
