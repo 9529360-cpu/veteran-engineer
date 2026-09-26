@@ -198,7 +198,7 @@ def build_workspace_profile(skill_root: pathlib.Path, plugin_root: pathlib.Path,
         "name": portable["name"],
         "version": portable.get("version"),
         "description": portable.get("description"),
-        "author": {"name": "Workspace upload"},
+        "author": portable.get("author"),
         "keywords": portable.get("keywords", []),
         "skills": "./skills",
     }
