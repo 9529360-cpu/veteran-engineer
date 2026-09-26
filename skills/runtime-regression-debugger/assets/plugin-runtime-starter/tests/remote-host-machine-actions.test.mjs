@@ -58,18 +58,21 @@ test('Remote Host exposes opt-in machine inspect/action through the real MCP sur
     assert.equal(repoStatus.structuredContent.repository.head, fixture.head);
     assert.equal(repoStatus.structuredContent.repository.dirty, false);
 
-    const target = path.join(fixture.root, 'machine.txt');
+    const target = path.join(fixture.repo, 'machine.txt');
     const writeRequestId = crypto.randomUUID();
     const writeArguments = {
       requestId: writeRequestId,
       operation: 'fs.write',
       path: target,
       content: 'remote-machine-ok\n',
-      requireAbsent: true
+      requireAbsent: true,
+      expectedRepoHead: repoStatus.structuredContent.repository.head
     };
     const write = await client.callTool({ name: 'machine_act', arguments: writeArguments });
     assert.equal(write.isError, undefined, JSON.stringify(write));
     assert.equal(write.structuredContent.receipt.contract, 'veteran-machine-action-receipt-v1');
+    assert.equal(write.structuredContent.receipt.requestId, writeRequestId);
+    assert.equal(write.structuredContent.receipt.repository.head, fixture.head);
     assert.match(write.structuredContent.afterSha256, /^[0-9a-f]{64}$/);
 
     const replay = await client.callTool({ name: 'machine_act', arguments: writeArguments });
@@ -88,7 +91,8 @@ test('Remote Host exposes opt-in machine inspect/action through the real MCP sur
         operation: 'process.start',
         command: 'node',
         args: ['-e', 'process.stdout.write("remote-process-ok")'],
-        cwd: fixture.root,
+        cwd: fixture.repo,
+        expectedRepoHead: fixture.head,
         timeoutMs: 10_000
       }
     });
