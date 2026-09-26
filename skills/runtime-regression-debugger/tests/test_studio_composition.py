@@ -273,7 +273,7 @@ def test_studio_composition_contract():
             "&& github.ref == 'refs/heads/main' && steps.studio-delta.outputs.changed == 'true' "
             "&& steps.studio-delta.outputs.trust_root_changed == 'false'"
         )
-        assert package_workflow.count(publishable_install) == 4
+        assert package_workflow.count(publishable_install) == 5
         assert "github.event_name != 'pull_request'" not in package_workflow
         assert "Detect publishable Studio delta" in package_workflow
         assert "Require merged PR provenance" in package_workflow
