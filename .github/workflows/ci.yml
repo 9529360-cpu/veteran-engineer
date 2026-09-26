@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -21,10 +21,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 20
           cache: npm
@@ -43,10 +43,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 20
           cache: npm
@@ -84,10 +84,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
           cache: npm
@@ -126,26 +126,22 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 20
 
       - name: Verify Docker engine
         run: docker version
 
-      - name: Resolve digest-pinned test image
+      - name: Pull trusted digest-pinned test image
         shell: bash
         run: |
           set -euo pipefail
-          docker pull node:20-alpine
-          IMAGE="$(docker image inspect node:20-alpine --format '{{index .RepoDigests 0}}')"
-          case "$IMAGE" in
-            *@sha256:*) ;;
-            *) echo "Failed to resolve digest-pinned image" >&2; exit 1 ;;
-          esac
+          IMAGE="node@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293"
+          docker pull "$IMAGE"
           echo "Using $IMAGE"
           echo "VETERAN_CONTAINER_SMOKE_IMAGE=$IMAGE" >> "$GITHUB_ENV"
 
@@ -162,10 +158,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 20
           cache: npm
@@ -176,16 +172,12 @@ jobs:
       - name: Install pinned PostgreSQL driver capability
         run: npm install --no-save --package-lock=false pg@8.23.0
 
-      - name: Start digest-pinned PostgreSQL
+      - name: Start trusted digest-pinned PostgreSQL
         shell: bash
         run: |
           set -euo pipefail
-          docker pull postgres:16-alpine
-          IMAGE="$(docker image inspect postgres:16-alpine --format '{{index .RepoDigests 0}}')"
-          case "$IMAGE" in
-            *@sha256:*) ;;
-            *) echo "Failed to resolve digest-pinned PostgreSQL image" >&2; exit 1 ;;
-          esac
+          IMAGE="postgres@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea"
+          docker pull "$IMAGE"
           echo "Using $IMAGE"
           docker run -d --name veteran-postgres \
             -e POSTGRES_USER=veteran \

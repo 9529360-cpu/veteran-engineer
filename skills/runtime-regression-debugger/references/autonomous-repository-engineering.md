@@ -97,13 +97,16 @@ Repository and release evidence answer **what changed** more readily than **who 
 
 Before attributing an observed mutation:
 
-1. **Current-execution receipt** - match exact commit/release/workflow/artifact IDs returned by tool calls made in the active execution.
-2. **Causal descendant** - match automation that is deterministically downstream of a receipt already owned here, such as a push-created CI run or release workflow tied to the exact commit this execution created.
-3. **Explicit executor provenance** - use a session/lease/operation/worker identity only when the platform actually exposes and binds it to the mutation.
-4. **Account/principal evidence** - GitHub actor, commit author/committer, plugin editor, or workspace identity can prove the account/principal but normally cannot distinguish which ChatGPT conversation, model instance, browser tab, local agent, or human initiated the action.
-5. **Unknown** - if the evidence stops above executor/session identity, keep the actor unknown.
+1. **Live current-execution tool return** - exact commit/release/workflow/artifact identity returned by a mutation tool call that is still present in the active execution context.
+2. **Explicit executor provenance** - a session/lease/operation/worker identity that the platform itself binds to the mutation.
+3. **Platform-bound causal descendant** - automation whose platform metadata binds it to a proven parent identity, such as a workflow whose exact head/source revision equals the commit returned by the active mutation. A human-written label such as `expected_descendant` is only a prediction until that binding is observed.
+4. **Historical mission receipt** - a persisted journal record may help recover candidate provenance after compaction/interruption, but it is a replayable claim, not session identity proof. Revalidate its result identity and causal relation against the live repository/release/workflow state before using it, and do not upgrade it to "this current conversation did it."
+5. **Account/principal evidence** - GitHub actor, commit author/committer, plugin editor, or workspace identity can prove the account/principal but normally cannot distinguish which ChatGPT conversation, model instance, browser tab, local agent, or human initiated the action.
+6. **Unknown** - if the evidence stops above executor/session identity, keep the actor unknown.
 
 A stale expected release ID, changed branch head, new workflow run, or unexpected file is evidence that the previous snapshot is stale. It is **not** by itself evidence of a different executor. First test whether it is this execution's own earlier action, a delayed observation of that action, or automation causally triggered by it.
+
+Knowledge that another executor exists, has credentials, owns a machine, worked on earlier commits, or is mentioned in saved memory/prior-chat/handoff context is **capability/history evidence**, not event provenance. Use it to know which competing explanations are possible, never to select the actor for a specific mutation without a bound operation/session/tool/platform receipt.
 
 Use neutral wording until attribution is proven: "the state changed since my last read", "a new commit/release exists", or "the mutation source is not distinguishable from the available provenance." Do not say "someone else", "another AI", "another session", or "the machine changed it" merely because the state is surprising.
 
@@ -113,9 +116,9 @@ For long/tool-heavy work, keep compact mutation receipts alongside mission state
 
 `action -> tool/surface -> target -> returned identity -> expected causal descendants -> last verified state`
 
-When a durable working journal helps, record consequential remote mutations with `scripts/engineering_journal.py <journal> mutation-receipt ...`; `resume` returns the latest receipts so an interrupted or compacted session can reconcile its own prior effects before assigning them to a foreign executor.
+When a durable working journal helps, record consequential remote mutations with `scripts/engineering_journal.py <journal> mutation-receipt ...`. Use namespaced returned identities such as `commit:<sha>`, `workflow:<id>`, or `release:<id>`; record `caused-by` only when it names a prior receipt result identity, and distinguish `tool-return`, `platform-binding`, and `manual-observation` evidence. `resume` deliberately returns these as historical mission records that require revalidation before session attribution.
 
-This ledger is for reconciliation, not ownership theater. It should prevent the model from misclassifying its own delayed side effects as foreign work.
+This ledger is a reconciliation cache, not an authentication system. Its contents can be copied, replayed, or written by a later executor; they prevent forgotten effects from being mistaken as foreign work only when live platform evidence still supports the recorded identity/causal chain.
 
 Also discover the execution environment actually available now: source/search/history access, mutation access, shell/compiler/test/browser/runtime, public network, external systems such as CI/cloud/observability, and the authorization boundary. Do not infer web, desktop, Codex, IDE, connector, or CI capabilities from product names or prior sessions. Prefer the least consequential tool that can produce the needed evidence: read/search -> local inspect/test -> local edit -> isolated branch/commit -> remote PR -> staging mutation -> production mutation.
 

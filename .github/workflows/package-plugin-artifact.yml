@@ -31,16 +31,18 @@ on:
 
 permissions:
   contents: read
+  actions: read
+  pull-requests: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   package-plugin:
     name: Export ${{ matrix.profile }} plugin artifact
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -48,9 +50,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
 
       - name: Export profile
         shell: bash
@@ -315,15 +318,222 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m pip install --disable-pip-version-check pytest
+          python3 -m pip install --disable-pip-version-check --no-deps -r skills/runtime-regression-debugger/tests/requirements-ci.txt
           rm -rf dist/workspace-package-test
           mkdir -p dist/workspace-package-test
           unzip -q dist/veteran-engineer-workspace.zip -d dist/workspace-package-test
           python3 -m compileall -q             dist/workspace-package-test/veteran-engineer/skills/runtime-regression-debugger/scripts             dist/workspace-package-test/veteran-engineer/skills/runtime-regression-debugger/tests             dist/workspace-package-test/veteran-engineer/skills/frontend-design-builder/scripts             dist/workspace-package-test/veteran-engineer/skills/frontend-design-builder/tests
           python3 -m pytest -q             dist/workspace-package-test/veteran-engineer/skills/runtime-regression-debugger/tests             dist/workspace-package-test/veteran-engineer/skills/frontend-design-builder/tests
 
+      - name: Detect publishable Studio delta
+        id: studio-delta
+        if: matrix.profile == 'workspace' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          TRUST_ROOTS=(
+            .github/workflows/ci.yml
+            .github/workflows/skill-engineering-tools.yml
+            .github/workflows/cross-platform-host-smoke.yml
+            .github/workflows/package-plugin-artifact.yml
+            skills/runtime-regression-debugger/scripts/workspace_release_gate.py
+            skills/runtime-regression-debugger/scripts/export_plugin_bundle.py
+          )
+          if git diff --quiet "$BEFORE_SHA" "$GITHUB_SHA" -- "${TRUST_ROOTS[@]}"; then
+            echo "trust_root_changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "trust_root_changed=true" >> "$GITHUB_OUTPUT"
+            echo "Workspace publication trust root changed in this main push; validate only and require a later clean Studio version bump before publication."
+          fi
+          if git diff --quiet "$BEFORE_SHA" "$GITHUB_SHA" -- plugin.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          python3 - "$BEFORE_SHA" <<'PY'
+          import json
+          import re
+          import subprocess
+          import sys
+
+          def parse(value):
+              if not isinstance(value, str) or not re.fullmatch(r"\d+\.\d+\.\d+", value):
+                  raise SystemExit(f"invalid Studio semver: {value!r}")
+              return tuple(int(part) for part in value.split("."))
+
+          before = sys.argv[1]
+          current = json.load(open("plugin.json", encoding="utf-8"))["version"]
+          previous = json.loads(
+              subprocess.check_output(["git", "show", f"{before}:plugin.json"], text=True)
+          )["version"]
+          if parse(current) <= parse(previous):
+              raise SystemExit(f"publishable Studio version did not increase: {previous} -> {current}")
+          print(f"publishable Studio delta: {previous} -> {current}")
+          PY
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Require merged PR provenance
+        if: matrix.profile == 'workspace' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.studio-delta.outputs.changed == 'true' && steps.studio-delta.outputs.trust_root_changed == 'false'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          repo = os.environ["REPOSITORY"]
+          sha = os.environ["HEAD_SHA"]
+          token = os.environ["GITHUB_TOKEN"]
+          url = f"https://api.github.com/repos/{repo}/commits/{sha}/pulls"
+          request = urllib.request.Request(
+              url,
+              headers={
+                  "Accept": "application/vnd.github+json",
+                  "Authorization": f"Bearer {token}",
+                  "X-GitHub-Api-Version": "2022-11-28",
+                  "User-Agent": "veteran-workspace-pr-provenance-gate",
+              },
+          )
+          with urllib.request.urlopen(request, timeout=30) as response:
+              pulls = json.load(response)
+
+          merged = [
+              pr for pr in pulls
+              if pr.get("merged_at")
+              and pr.get("base", {}).get("ref") == "main"
+              and pr.get("merge_commit_sha") == sha
+          ]
+          if len(merged) != 1:
+              summary = [
+                  {
+                      "number": pr.get("number"),
+                      "merged_at": pr.get("merged_at"),
+                      "base": pr.get("base", {}).get("ref"),
+                      "merge_commit_sha": pr.get("merge_commit_sha"),
+                  }
+                  for pr in pulls[:20]
+              ]
+              raise SystemExit(
+                  f"publishable Workspace revision must map to exactly one merged PR "
+                  f"whose merge_commit_sha is {sha}; matches={len(merged)} associated={summary}"
+              )
+          pr = merged[0]
+          print(
+              f"merged PR provenance verified: #{pr.get('number')} "
+              f"merge_commit_sha={sha} base=main"
+          )
+          PY
+
+      - name: Require exact-main validation workflows
+        if: matrix.profile == 'workspace' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.studio-delta.outputs.changed == 'true' && steps.studio-delta.outputs.trust_root_changed == 'false'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import time
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          required = {
+              356929464: "CI",
+              358643055: "Skill Engineering Tools",
+              358628814: "Cross-platform host smoke",
+          }
+          repo = os.environ["REPOSITORY"]
+          sha = os.environ["HEAD_SHA"]
+          token = os.environ["GITHUB_TOKEN"]
+          deadline = time.time() + 20 * 60
+          url = (
+              f"https://api.github.com/repos/{repo}/actions/runs?"
+              + urllib.parse.urlencode({"head_sha": sha, "per_page": 100})
+          )
+
+          while True:
+              request = urllib.request.Request(
+                  url,
+                  headers={
+                      "Accept": "application/vnd.github+json",
+                      "Authorization": f"Bearer {token}",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                      "User-Agent": "veteran-workspace-release-gate",
+                  },
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      payload = json.load(response)
+              except (urllib.error.URLError, TimeoutError) as exc:
+                  if time.time() >= deadline:
+                      raise SystemExit(f"timed out reading exact-main workflow status: {exc}")
+                  time.sleep(10)
+                  continue
+
+              by_workflow = {}
+              for run in payload.get("workflow_runs", []):
+                  if run.get("head_sha") != sha or run.get("event") != "push":
+                      continue
+                  workflow_id = run.get("workflow_id")
+                  if workflow_id not in required:
+                      continue
+                  if run.get("name") != required[workflow_id]:
+                      raise SystemExit(
+                          f"trusted workflow identity/name mismatch: "
+                          f"{workflow_id} expected={required[workflow_id]!r} got={run.get('name')!r}"
+                      )
+                  previous = by_workflow.get(workflow_id)
+                  if previous is None or str(run.get("created_at", "")) > str(previous.get("created_at", "")):
+                      by_workflow[workflow_id] = run
+
+              missing = sorted(
+                  f"{workflow_id}:{name}"
+                  for workflow_id, name in required.items()
+                  if workflow_id not in by_workflow
+              )
+              failed = {
+                  f"{workflow_id}:{required[workflow_id]}": run.get("conclusion")
+                  for workflow_id, run in by_workflow.items()
+                  if run.get("status") == "completed" and run.get("conclusion") != "success"
+              }
+              if failed:
+                  raise SystemExit(f"exact-main validation workflow failed for {sha}: {failed}")
+              pending = sorted(
+                  f"{workflow_id}:{required[workflow_id]}"
+                  for workflow_id, run in by_workflow.items()
+                  if run.get("status") != "completed"
+              )
+              if not missing and not pending:
+                  print(
+                      f"exact-main validation workflows passed for {sha}: "
+                      f"{[f'{workflow_id}:{name}' for workflow_id, name in required.items()]}"
+                  )
+                  break
+              if time.time() >= deadline:
+                  raise SystemExit(
+                      f"timed out waiting for exact-main validation workflows for {sha}; "
+                      f"missing={missing} pending={pending}"
+                  )
+              print(f"waiting for exact-main validation workflows; missing={missing} pending={pending}")
+              time.sleep(10)
+          PY
+
       - name: Stage workspace install artifact
-        if: matrix.profile == 'workspace' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        if: matrix.profile == 'workspace' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.studio-delta.outputs.changed == 'true' && steps.studio-delta.outputs.trust_root_changed == 'false'
         shell: bash
         run: |
           set -euo pipefail
@@ -362,9 +572,26 @@ jobs:
               raise SystemExit("workspace install staging missing: " + ", ".join(missing))
           PY
 
+      - name: Gate staged Workspace publication candidate
+        if: matrix.profile == 'workspace' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.studio-delta.outputs.changed == 'true' && steps.studio-delta.outputs.trust_root_changed == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          STUDIO_VERSION="$(python3 - <<'PY'
+          import json
+          print(json.load(open("plugin.json", encoding="utf-8"))["version"])
+          PY
+          )"
+          rm -f dist/workspace-install-candidate.zip
+          (
+            cd dist/workspace-install
+            zip -q -r ../workspace-install-candidate.zip .
+          )
+          python3 skills/runtime-regression-debugger/scripts/workspace_release_gate.py             dist/workspace-install-candidate.zip             --expected-revision "$GITHUB_SHA"             --expected-version "$STUDIO_VERSION"             --json
+
       - name: Upload workspace install artifact
-        if: matrix.profile == 'workspace' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
+        if: matrix.profile == 'workspace' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.studio-delta.outputs.changed == 'true' && steps.studio-delta.outputs.trust_root_changed == 'false'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: veteran-engineering-studio-workspace-install-${{ github.event.pull_request.head.sha || github.sha }}
           path: dist/workspace-install/
@@ -373,7 +600,7 @@ jobs:
           retention-days: 7
 
       - name: Upload profile artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: veteran-engineer-${{ matrix.profile }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
