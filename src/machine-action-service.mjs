@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { createReadStream } from 'node:fs';
+import { createReadStream, constants as fsConstants } from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -81,6 +81,35 @@ export function machinePackageManagerExecutionSupport(manager, {
     return { available: false, reason: 'windows-command-shim-requires-shell' };
   }
   return { available: true, reason: 'allowlisted-direct-executable' };
+}
+
+export async function machineExecutablePresence(command, {
+  platform = process.platform,
+  environment = process.env,
+  access = fs.access
+} = {}) {
+  const key = String(command || '').trim();
+  if (!key || path.isAbsolute(key) || key.includes('/') || key.includes('\\')) {
+    return { available: false, reason: 'executable-name-invalid' };
+  }
+  const searchPath = String(environment?.PATH || environment?.Path || '');
+  if (!searchPath) return { available: false, reason: 'executable-path-unavailable' };
+  const delimiter = platform === 'win32' ? ';' : ':';
+  const directories = searchPath.split(delimiter).map((value) => value.trim()).filter(Boolean);
+  const hasExtension = /\.[A-Za-z0-9]+$/.test(key);
+  const extensions = platform === 'win32' && !hasExtension
+    ? String(environment?.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').map((value) => value.trim()).filter(Boolean)
+    : [''];
+  for (const directory of directories) {
+    for (const extension of extensions) {
+      const candidate = path.join(directory, key + extension);
+      try {
+        await access(candidate, platform === 'win32' ? fsConstants.F_OK : fsConstants.X_OK);
+        return { available: true, reason: 'executable-present-on-path' };
+      } catch {}
+    }
+  }
+  return { available: false, reason: 'executable-not-found-on-path' };
 }
 
 function decodeContent(content, encoding) {
@@ -649,10 +678,14 @@ export class MachineActionService {
         inspectProjectEnvironment(repositoryRoot)
       ]);
       const manager = environmentProfile?.packageManagers?.node?.selected || null;
-      const managerSupport = machinePackageManagerExecutionSupport(manager, {
+      let managerSupport = machinePackageManagerExecutionSupport(manager, {
         platform: process.platform,
         allowedExecutables: this.allowedExecutables
       });
+      if (managerSupport.available && manager) {
+        const presence = await machineExecutablePresence(manager);
+        if (!presence.available) managerSupport = presence;
+      }
       const environmentReadiness = await assessProjectEnvironmentReadiness(environmentProfile, {
         cwd: repositoryRoot,
         surfaceProfile: 'machine-bridge',
