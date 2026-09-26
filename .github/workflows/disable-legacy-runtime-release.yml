@@ -23,6 +23,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       REPOSITORY: ${{ github.repository }}
+      HEAD_SHA: ${{ github.sha }}
     steps:
       - name: Verify V2 and disable legacy workflow
         shell: bash
@@ -35,6 +36,29 @@ jobs:
           V2_PATH="$(gh api "repos/$REPOSITORY/actions/workflows/$V2_ID" --jq '.path')"
           test "$V2_STATE" = "active"
           test "$V2_PATH" = ".github/workflows/runtime-release-v2.yml"
+
+          deadline=$((SECONDS + 900))
+          while true; do
+            RUNS="$(gh api "repos/$REPOSITORY/actions/workflows/$V2_ID/runs?head_sha=$HEAD_SHA&event=push&per_page=20")"
+            MATCH_COUNT="$(jq '[.workflow_runs[] | select(.head_sha == env.HEAD_SHA and .event == "push")] | length' <<<"$RUNS")"
+            if [ "$MATCH_COUNT" -gt 1 ]; then
+              echo "Expected at most one Runtime Release V2 push run for $HEAD_SHA, found $MATCH_COUNT" >&2
+              exit 1
+            fi
+            if [ "$MATCH_COUNT" -eq 1 ]; then
+              STATUS="$(jq -r '[.workflow_runs[] | select(.head_sha == env.HEAD_SHA and .event == "push")][0].status' <<<"$RUNS")"
+              CONCLUSION="$(jq -r '[.workflow_runs[] | select(.head_sha == env.HEAD_SHA and .event == "push")][0].conclusion // ""' <<<"$RUNS")"
+              if [ "$STATUS" = "completed" ]; then
+                test "$CONCLUSION" = "success"
+                break
+              fi
+            fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "Timed out waiting for Runtime Release V2 exact-main success for $HEAD_SHA" >&2
+              exit 1
+            fi
+            sleep 5
+          done
 
           LEGACY_STATE="$(gh api "repos/$REPOSITORY/actions/workflows/$LEGACY_ID" --jq '.state')"
           if [ "$LEGACY_STATE" != "disabled_manually" ]; then
