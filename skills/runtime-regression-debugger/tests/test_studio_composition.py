@@ -166,6 +166,9 @@ def test_studio_composition_contract():
 
     machine_action = (SKILL_ROOT / "references" / "machine-action-fabric.md").read_text()
     assert "`repo.status`" in machine_action
+    assert "`repo.commands`" in machine_action
+    assert "process.start(minimal validation" in machine_action
+    assert "shell-free" in machine_action
     assert "`fs.digest`" in machine_action
     assert "`expectedSha256`" in machine_action
     assert "`expectedRepoHead`" in machine_action
