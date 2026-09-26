@@ -14,8 +14,9 @@ import { requireSurfaceCapability, resolveSurfaceProfile } from './surface-capab
 import { inspectProjectEnvironment } from './project-environment.mjs';
 import { assessProjectEnvironmentReadiness } from './project-environment-readiness.mjs';
 import { compileProjectBootstrapPlan } from './project-bootstrap-plan.mjs';
+import { compileProjectCommandPlan } from './project-command-plan.mjs';
 
-async function inspectAuthorityEnvironment({ repo, projectKey, sourceAuthority, storeRoot, surfaceProfile }) {
+async function inspectAuthorityEnvironment({ repo, projectKey, sourceAuthority, observedIdentity, storeRoot, surfaceProfile }) {
   const environmentSourceIdentity = sourceIdentityFromAuthority(sourceAuthority);
   const inspect = async (snapshotRepo) => {
     const environmentProfile = await inspectProjectEnvironment(snapshotRepo);
@@ -24,7 +25,10 @@ async function inspectAuthorityEnvironment({ repo, projectKey, sourceAuthority, 
       surfaceProfile: surfaceProfile.id
     });
     const bootstrapPlan = compileProjectBootstrapPlan(environmentProfile, environmentReadiness);
-    return { environmentProfile, environmentReadiness, bootstrapPlan, environmentSourceIdentity };
+    const commandPlan = compileProjectCommandPlan(environmentProfile, environmentReadiness, {
+      changedPaths: observedIdentity?.dirtyPaths || []
+    });
+    return { environmentProfile, environmentReadiness, bootstrapPlan, commandPlan, environmentSourceIdentity };
   };
 
   if (sourceAuthority.scope === 'remote-default' && !sourceAuthority.aligned) {
@@ -93,11 +97,13 @@ export class ProjectService {
       environmentProfile,
       environmentReadiness,
       bootstrapPlan,
+      commandPlan,
       environmentSourceIdentity
     } = await inspectAuthorityEnvironment({
       repo,
       projectKey,
       sourceAuthority,
+      observedIdentity: identity,
       storeRoot: this.store.root,
       surfaceProfile: this.surfaceProfile
     });
@@ -121,6 +127,7 @@ export class ProjectService {
           environmentProfile,
           environmentReadiness,
           bootstrapPlan,
+          commandPlan,
           validationCapabilities: policy.validationCapabilities,
           validationPolicy: policy.validationPolicy,
           runtimeFeedbackCapabilities: policy.runtimeFeedbackCapabilities,
@@ -141,6 +148,7 @@ export class ProjectService {
         project.environmentProfile = environmentProfile;
         project.environmentReadiness = environmentReadiness;
         project.bootstrapPlan = bootstrapPlan;
+        project.commandPlan = commandPlan;
         project.remoteUrl = remoteUrl;
         project.sourceKind = sourceKind;
         project.managedCheckout = sourceKind === 'managed-remote';
@@ -167,6 +175,8 @@ export class ProjectService {
       environmentContract: environmentProfile.contract,
       environmentReadiness: environmentReadiness.status,
       bootstrapPlan: bootstrapPlan.status,
+      commandPlan: commandPlan.status,
+      commandPlanMinimal: commandPlan.validation.minimal.map((item) => item.id),
       runtimeFamilies: environmentProfile.runtimeFamilies
     });
   }
@@ -181,11 +191,13 @@ export class ProjectService {
       environmentProfile,
       environmentReadiness,
       bootstrapPlan,
+      commandPlan,
       environmentSourceIdentity
     } = await inspectAuthorityEnvironment({
       repo: project.repoPath,
       projectKey: project.projectKey,
       sourceAuthority,
+      observedIdentity: identity,
       storeRoot: this.store.root,
       surfaceProfile: this.surfaceProfile
     });
@@ -197,6 +209,7 @@ export class ProjectService {
       target.environmentProfile = environmentProfile;
       target.environmentReadiness = environmentReadiness;
       target.bootstrapPlan = bootstrapPlan;
+      target.commandPlan = commandPlan;
       target.updatedAt = nowIso();
       return target;
     }, {
@@ -208,6 +221,8 @@ export class ProjectService {
       environmentContract: environmentProfile.contract,
       environmentReadiness: environmentReadiness.status,
       bootstrapPlan: bootstrapPlan.status,
+      commandPlan: commandPlan.status,
+      commandPlanMinimal: commandPlan.validation.minimal.map((item) => item.id),
       runtimeFamilies: environmentProfile.runtimeFamilies
     });
     return result;
