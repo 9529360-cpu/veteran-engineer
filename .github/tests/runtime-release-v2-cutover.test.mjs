@@ -3,7 +3,7 @@ import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const root = path.resolve(import.meta.dirname, '..');
+const root = path.resolve(import.meta.dirname, '../..');
 const v2 = fs.readFileSync(path.join(root, '.github', 'workflows', 'runtime-release-v2.yml'), 'utf8');
 const packageWorkflow = fs.readFileSync(
   path.join(root, '.github', 'workflows', 'package-plugin-artifact.yml'),
