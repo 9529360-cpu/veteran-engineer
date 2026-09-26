@@ -95,7 +95,9 @@ export async function machineExecutablePresence(command, {
   const searchPath = String(environment?.PATH || environment?.Path || '');
   if (!searchPath) return { available: false, reason: 'executable-path-unavailable' };
   const delimiter = platform === 'win32' ? ';' : ':';
-  const directories = searchPath.split(delimiter).map((value) => value.trim()).filter(Boolean);
+  const directories = searchPath.split(delimiter).map((value) => (
+    value.length >= 2 && value.startsWith('"') && value.endsWith('"') ? value.slice(1, -1) : value
+  )).filter(Boolean);
   const hasExtension = /\.[A-Za-z0-9]+$/.test(key);
   const extensions = platform === 'win32' && !hasExtension
     ? String(environment?.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').map((value) => value.trim()).filter(Boolean)
