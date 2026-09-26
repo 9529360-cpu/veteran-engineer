@@ -311,6 +311,7 @@ def test_studio_composition_contract():
             "cross-platform-host-smoke.yml",
             "package-plugin-artifact.yml",
         ):
+            assert "group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}" in workflow_texts[name]
             assert "cancel-in-progress: ${{ github.event_name == 'pull_request' }}" in workflow_texts[name]
             assert "cancel-in-progress: true" not in workflow_texts[name]
         immutable_action_pattern = re.compile(r"uses:\s+actions/[A-Za-z0-9_.-]+@[0-9a-f]{40}(?:\s+#\s+v\d+)?")
