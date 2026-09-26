@@ -246,7 +246,7 @@ def test_studio_composition_contract():
     assert "89. **Own delayed side effect looks foreign**" in benchmark_text
     assert "90. **Release conflict with ambiguous initiator**" in benchmark_text
     assert "91. **Explicit executor provenance resolves attribution**" in benchmark_text
-    assert "94. **Valid artifact becomes stale after main advances**" in benchmark_text
+    assert "95. **Valid artifact becomes stale after main advances**" in benchmark_text
     assert "92. **Shared journal replays another session's receipt**" in benchmark_text
     assert "93. **Predicted descendant mismatches platform identity**" in benchmark_text
     assert "94. **Known parallel agent becomes an attribution shortcut**" in benchmark_text
