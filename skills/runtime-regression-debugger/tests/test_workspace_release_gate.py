@@ -201,3 +201,96 @@ def test_workspace_release_gate_rejects_unexpected_top_level_surface(tmp_path: P
 
     assert proc.returncode != 0
     assert "unexpected top-level surfaces" in proc.stderr
+
+
+def test_publication_mode_requires_fresh_installed_state_and_artifact_digest(tmp_path: Path):
+    archive = tmp_path / "candidate.zip"
+    build_candidate(archive)
+
+    proc = run_gate(
+        archive,
+        "--expected-revision",
+        "abc1234",
+        "--publication",
+        check=False,
+    )
+
+    assert proc.returncode != 0
+    assert "--installed-version" in proc.stderr
+    assert "--expected-sha256" in proc.stderr
+    assert "--installed-inventory" in proc.stderr
+
+
+def test_publication_mode_rejects_undeletable_overlay_omission(tmp_path: Path):
+    archive = tmp_path / "candidate.zip"
+    build_candidate(archive)
+    inventory = tmp_path / "installed.json"
+    inventory.write_text(
+        json.dumps(
+            {
+                "paths": [
+                    "plugin.json",
+                    ".codex-plugin/plugin.json",
+                    "veteran-distribution.json",
+                    "skills/runtime-regression-debugger/SKILL.md",
+                    "skills/runtime-regression-debugger/agents/openai.yaml",
+                    "skills/frontend-design-builder/SKILL.md",
+                    "skills/frontend-design-builder/agents/openai.yaml",
+                    "skills/runtime-regression-debugger/references/legacy-online-only.md",
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+
+    proc = run_gate(
+        archive,
+        "--expected-revision",
+        "abc1234",
+        "--expected-version",
+        "1.14.9",
+        "--installed-version",
+        "1.14.8",
+        "--expected-sha256",
+        digest,
+        "--installed-inventory",
+        str(inventory),
+        "--publication",
+        check=False,
+    )
+
+    assert proc.returncode != 0
+    assert "overlay publication cannot delete" in proc.stderr
+    assert "legacy-online-only.md" in proc.stderr
+
+
+def test_publication_mode_accepts_inventory_preserved_by_candidate(tmp_path: Path):
+    archive = tmp_path / "candidate.zip"
+    build_candidate(archive)
+    with zipfile.ZipFile(archive, "r") as handle:
+        paths = [item.filename for item in handle.infolist() if not item.is_dir()]
+    inventory = tmp_path / "installed.json"
+    inventory.write_text(json.dumps({"paths": paths}), encoding="utf-8")
+    digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+
+    proc = run_gate(
+        archive,
+        "--expected-revision",
+        "abc1234",
+        "--expected-version",
+        "1.14.9",
+        "--installed-version",
+        "1.14.8",
+        "--expected-sha256",
+        digest,
+        "--installed-inventory",
+        str(inventory),
+        "--publication",
+        "--json",
+    )
+    report = json.loads(proc.stdout)
+
+    assert report["safe_for_publication"] is True
+    assert report["publication_mode"] is True
+    assert report["installed_inventory_checked"] is True
