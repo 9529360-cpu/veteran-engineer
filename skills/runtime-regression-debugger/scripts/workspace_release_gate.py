@@ -34,6 +34,8 @@ FORBIDDEN_PATHS = {
     "mcp/server.mjs",
     "src/mcp-server.mjs",
 }
+FORBIDDEN_BASENAMES = {".mcp.json", "mcp.json", ".app.json"}
+ALLOWED_CODEX_PLUGIN_PATHS = {".codex-plugin/plugin.json"}
 HEX_REVISION = re.compile(r"^[0-9a-fA-F]{7,64}$")
 SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 
@@ -170,10 +172,31 @@ def validate(
                 raise RuntimeError(f"candidate ZIP contains symbolic link: {name}")
 
         leaked = sorted(path for path in FORBIDDEN_PATHS if path in names)
+        leaked.extend(
+            name for name in names
+            if pathlib.PurePosixPath(name).name in FORBIDDEN_BASENAMES
+            and name not in leaked
+        )
+        leaked.extend(
+            name for name in names
+            if "plugin-runtime-starter" in pathlib.PurePosixPath(name).parts
+            and name not in leaked
+        )
         if leaked:
             raise RuntimeError(
                 "candidate Workspace archive leaks local runtime/MCP surfaces: "
-                + ", ".join(leaked)
+                + ", ".join(sorted(leaked))
+            )
+
+        unexpected_codex = sorted(
+            name for name in names
+            if name.startswith(".codex-plugin/")
+            and name not in ALLOWED_CODEX_PLUGIN_PATHS
+        )
+        if unexpected_codex:
+            raise RuntimeError(
+                "candidate Workspace archive contains unexpected .codex-plugin surfaces: "
+                + ", ".join(unexpected_codex)
             )
 
         top_levels = {pathlib.PurePosixPath(name).parts[0] for name in names}
@@ -239,6 +262,8 @@ def validate(
     openai_extension = plugin.get("extensions", {}).get("com.openai", {})
     if isinstance(openai_extension, dict) and "apps" in openai_extension:
         raise RuntimeError("candidate root manifest must remain Workspace skill-only")
+    if "apps" in plugin or "mcpServers" in plugin:
+        raise RuntimeError("candidate root manifest must not declare app/MCP runtime surfaces")
 
     if distribution.get("product") != PLUGIN_NAME:
         raise RuntimeError("candidate distribution product mismatch")
