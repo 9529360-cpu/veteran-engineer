@@ -191,6 +191,8 @@ def test_studio_composition_contract():
     assert "Historical mission receipt" in autonomous
     assert "Account/principal evidence" in autonomous
     assert "replayable claim, not session identity proof" in autonomous
+    assert "capability/history evidence" in autonomous
+    assert "saved memory/prior-chat/handoff context" in autonomous
     assert "mutation-receipt" in autonomous
 
     batch = (SKILL_ROOT / "references" / "batch-mission-orchestration.md").read_text()
@@ -221,6 +223,10 @@ def test_studio_composition_contract():
         "release-conflict-does-not-prove-foreign-executor",
         "account-identity-is-not-session-identity",
         "positive-session-provenance-allows-attribution",
+        "historical-journal-receipt-is-not-current-session-proof",
+        "expected-descendant-label-is-not-causal-proof",
+        "shared-journal-cannot-transfer-executor-identity",
+        "known-parallel-agent-is-not-specific-mutation-provenance",
     }.issubset(eval_names)
 
     benchmark_text = (SKILL_ROOT / "references" / "veteran-engineer-benchmark.md").read_text()
@@ -228,6 +234,9 @@ def test_studio_composition_contract():
     assert "89. **Own delayed side effect looks foreign**" in benchmark_text
     assert "90. **Release conflict with ambiguous initiator**" in benchmark_text
     assert "91. **Explicit executor provenance resolves attribution**" in benchmark_text
+    assert "92. **Shared journal replays another session's receipt**" in benchmark_text
+    assert "93. **Predicted descendant mismatches platform identity**" in benchmark_text
+    assert "94. **Known parallel agent becomes an attribution shortcut**" in benchmark_text
 
     assert "refs/heads/main" in exporter
     assert "never publish pull-request artifacts" in exporter
