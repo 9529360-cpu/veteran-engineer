@@ -107,6 +107,13 @@ def validate(
             if stat.S_ISLNK(mode):
                 raise RuntimeError(f"candidate ZIP contains symbolic link: {name}")
 
+        leaked = sorted(path for path in FORBIDDEN_PATHS if path in names)
+        if leaked:
+            raise RuntimeError(
+                "candidate Workspace archive leaks local runtime/MCP surfaces: "
+                + ", ".join(leaked)
+            )
+
         top_levels = {pathlib.PurePosixPath(name).parts[0] for name in names}
         unexpected_top = sorted(top_levels.difference(ALLOWED_TOP_LEVEL))
         if unexpected_top:
@@ -127,10 +134,6 @@ def validate(
         missing = sorted(REQUIRED_PATHS.difference(names))
         if missing:
             raise RuntimeError("candidate Workspace archive is missing: " + ", ".join(missing))
-
-        leaked = sorted(path for path in FORBIDDEN_PATHS if path in names)
-        if leaked:
-            raise RuntimeError("candidate Workspace archive leaks local runtime/MCP surfaces: " + ", ".join(leaked))
 
         plugin = load_json(archive, "plugin.json")
         legacy = load_json(archive, ".codex-plugin/plugin.json")
