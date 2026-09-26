@@ -338,8 +338,18 @@ def test_studio_composition_contract():
                 assert trusted_action_pins.get(action_name) == action_sha, (
                     f"{name} action pin is outside the trusted set: {action_ref}"
                 )
-        assert "pytest==9.1.1" in workflow_texts["skill-engineering-tools.yml"]
-        assert "pytest==9.1.1" in workflow_texts["package-plugin-artifact.yml"]
+        skill_ci_requirements = (SKILL_ROOT / "tests" / "requirements-ci.txt").read_text().splitlines()
+        assert skill_ci_requirements == [
+            "# Deterministic Linux/Python 3.12 test runner used by Studio Skill and package validation.",
+            "pytest==9.1.1",
+            "iniconfig==2.3.0",
+            "packaging==26.3",
+            "pluggy==1.6.0",
+            "pygments==2.21.0",
+        ]
+        for name in ("skill-engineering-tools.yml", "package-plugin-artifact.yml"):
+            assert "--no-deps -r skills/runtime-regression-debugger/tests/requirements-ci.txt" in workflow_texts[name]
+            assert "pip install --disable-pip-version-check pytest" not in workflow_texts[name]
         assert "node@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293" in workflow_texts["ci.yml"]
         assert "postgres@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea" in workflow_texts["ci.yml"]
         assert "docker pull node:20-alpine" not in workflow_texts["ci.yml"]
