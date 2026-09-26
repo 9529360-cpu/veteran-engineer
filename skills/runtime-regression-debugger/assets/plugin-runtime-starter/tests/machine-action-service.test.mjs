@@ -95,6 +95,23 @@ test('machine actions enforce workspace policy and support bounded files plus on
     );
     assert.equal((await service.inspect({ operation: 'fs.digest', path: binary })).digest, binaryDigest.digest);
 
+    if (process.platform !== 'win32') {
+      const symlink = path.join(dir, 'linked.txt');
+      await fs.symlink(file, symlink);
+      const symlinkDigest = await service.inspect({ operation: 'fs.digest', path: symlink });
+      await assert.rejects(
+        service.act({
+          operation: 'fs.replace',
+          path: symlink,
+          oldText: 'beta-edited\n',
+          newText: 'should-not-replace-link\n',
+          expectedSha256: symlinkDigest.digest
+        }),
+        (error) => error?.code === 'MACHINE_REPLACE_SYMLINK_UNSUPPORTED'
+      );
+      assert.equal((await service.inspect({ operation: 'fs.digest', path: symlink })).digest, symlinkDigest.digest);
+    }
+
     const read = await service.inspect({ operation: 'fs.read', path: file });
     assert.equal(read.data, 'alpha\nbeta-edited\ngamma\n');
 
@@ -188,7 +205,7 @@ test('machine actions preserve interactive process sessions and bounded output r
 });
 
 test('machine repo.status binds local repository truth before and after a guarded edit', async () => {
-  const fixture = await createGitRepo();
+  const fixture = await createGitRepo({ files: { 'README.md': 'hello\n', 'other.txt': 'other\n' } });
   const service = new MachineActionService({
     enabled: true,
     allowedLocalRoots: [fixture.repo],
@@ -219,11 +236,14 @@ test('machine repo.status binds local repository truth before and after a guarde
     assert.equal(after.repository.dirty, true);
     assert.equal(after.repository.unstaged >= 1, true);
 
+    await fs.writeFile(path.join(fixture.repo, 'other.txt'), 'other\nunrelated\n');
     const diff = await service.inspect({ operation: 'repo.diff', path: readme, contextLines: 1 });
     assert.equal(diff.repository.head, fixture.head);
+    assert.equal(diff.scope, 'README.md');
     assert.equal(diff.staged, false);
     assert.equal(diff.contextLines, 1);
     assert.match(diff.patch, /\+changed/);
+    assert.doesNotMatch(diff.patch, /unrelated/);
     assert.equal(diff.truncated, false);
 
     await git(fixture.repo, ['add', 'README.md']);
