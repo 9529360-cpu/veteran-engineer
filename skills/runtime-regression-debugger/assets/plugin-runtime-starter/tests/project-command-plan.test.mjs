@@ -116,6 +116,9 @@ test('dirty command authority fails closed instead of guessing from stale packag
   assert.equal(plan.authorityDirty, true);
   assert.equal(plan.status, 'degraded');
   assert.deepEqual(plan.validation.minimal, []);
+  assert.deepEqual(plan.validation.broader, []);
+  assert.equal(plan.commands.every((item) => item.runnable === false), true);
+  assert.equal(plan.commands.every((item) => item.readinessReason === 'command-authority-dirty'), true);
   assert.ok(plan.issues.some((item) => item.code === 'COMMAND_AUTHORITY_DIRTY'));
 });
 
