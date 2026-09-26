@@ -251,7 +251,7 @@ const TOOL_INPUT_CONTRACTS = Object.freeze({
   machine_inspect: {
     description: 'Read-only inspection of an explicitly enabled Veteran Machine Bridge.',
     properties: {
-      operation: stringField('Machine inspection operation.', { enumValues: ['status', 'fs.list', 'fs.stat', 'fs.read', 'fs.digest', 'fs.search', 'repo.status', 'repo.diff', 'process.list', 'process.status', 'process.output'] }),
+      operation: stringField('Machine inspection operation.', { enumValues: ['status', 'fs.list', 'fs.stat', 'fs.read', 'fs.digest', 'fs.search', 'repo.status', 'repo.commands', 'repo.diff', 'process.list', 'process.status', 'process.output'] }),
       path: stringField('Workspace-bounded filesystem or repository path.', { minLength: null }),
       query: stringField('Literal case-insensitive search query for fs.search.', { minLength: null }),
       includeContent: booleanField('For fs.search, also search bounded text-file contents. Defaults true.'),
@@ -329,7 +329,7 @@ const TOOL_DESCRIPTIONS = Object.freeze({
   experience_challenge: 'Challenge an active experience with contrary evidence.',
   experience_audit: 'Audit experience freshness, conflicts, evidence, and lifecycle state.',
   experience_compact: 'Compact exact duplicate candidate experiences without auto-activation.',
-  machine_inspect: 'Inspect device policy, repository truth, bounded files, and managed process sessions through the Veteran Machine Bridge.',
+  machine_inspect: 'Inspect device policy, repository truth, repository-derived command plans, bounded files, and managed process sessions through the Veteran Machine Bridge.',
   machine_act: 'Perform a request-id protected workspace mutation or allowlisted process action with action receipts and optimistic file preconditions.',
   runtime_health: 'Report runtime, state, MCP transport mode, surface capability, and protocol health.',
   runtime_integrity: 'Verify audit hash chain, state readability, and runtime invariants.',
