@@ -81,6 +81,12 @@ test('flagship tools expose the parameters needed to complete the product workfl
   const review = toolInputJsonSchema('experience_review');
   assert.deepEqual(review.properties.action.enum, ['activate', 'reject', 'reactivate', 'retire']);
   assert.equal(toolInputJsonSchema('runtime_cleanup').properties.apply.type, 'boolean');
+  const machineInspect = toolInputJsonSchema('machine_inspect');
+  assert.equal(machineInspect.properties.operation.enum.includes('repo.status'), true);
+  assert.equal(machineInspect.properties.operation.enum.includes('fs.digest'), true);
+  const machineAct = toolInputJsonSchema('machine_act');
+  assert.equal(machineAct.properties.expectedSha256.type, 'string');
+  assert.equal(machineAct.properties.requireAbsent.type, 'boolean');
 });
 
 test('official SDK Zod contracts are generated from the same canonical tool schema', () => {
