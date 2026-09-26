@@ -22,9 +22,15 @@ REQUIRED_PATHS = {
     "skills/frontend-design-builder/SKILL.md",
     "skills/frontend-design-builder/agents/openai.yaml",
 }
+ALLOWED_TOP_LEVEL = {"plugin.json", "veteran-distribution.json", ".codex-plugin", "skills"}
+EXPECTED_SKILL_ENTRYPOINTS = {
+    "skills/runtime-regression-debugger/SKILL.md",
+    "skills/frontend-design-builder/SKILL.md",
+}
 FORBIDDEN_PATHS = {
     ".mcp.json",
     "mcp.json",
+    ".app.json",
     "mcp/server.mjs",
     "src/mcp-server.mjs",
 }
@@ -82,14 +88,41 @@ def validate(
         names = [item.filename for item in infos if not item.is_dir()]
         if len(names) != len(set(names)):
             raise RuntimeError("candidate ZIP contains duplicate file paths")
+        folded = [name.casefold() for name in names]
+        if len(folded) != len(set(folded)):
+            raise RuntimeError("candidate ZIP contains case-colliding file paths")
         for item in infos:
             name = item.filename
+            if "\\" in name:
+                raise RuntimeError(f"candidate ZIP contains non-portable backslash path: {name}")
             pure = pathlib.PurePosixPath(name)
             if pure.is_absolute() or ".." in pure.parts:
                 raise RuntimeError(f"candidate ZIP contains unsafe path: {name}")
+            canonical = pure.as_posix()
+            if item.is_dir():
+                canonical += "/"
+            if canonical != name:
+                raise RuntimeError(f"candidate ZIP contains non-canonical path: {name}")
             mode = (item.external_attr >> 16) & 0xFFFF
             if stat.S_ISLNK(mode):
                 raise RuntimeError(f"candidate ZIP contains symbolic link: {name}")
+
+        top_levels = {pathlib.PurePosixPath(name).parts[0] for name in names}
+        unexpected_top = sorted(top_levels.difference(ALLOWED_TOP_LEVEL))
+        if unexpected_top:
+            raise RuntimeError(
+                "candidate Workspace archive contains unexpected top-level surfaces: "
+                + ", ".join(unexpected_top)
+            )
+        skill_entrypoints = {
+            name for name in names
+            if name.startswith("skills/") and name.endswith("/SKILL.md")
+        }
+        if skill_entrypoints != EXPECTED_SKILL_ENTRYPOINTS:
+            raise RuntimeError(
+                "candidate Workspace archive Skill entrypoints mismatch: "
+                + ", ".join(sorted(skill_entrypoints))
+            )
 
         missing = sorted(REQUIRED_PATHS.difference(names))
         if missing:
@@ -107,6 +140,10 @@ def validate(
         raise RuntimeError("candidate root plugin identity mismatch")
     if legacy.get("name") != PLUGIN_NAME:
         raise RuntimeError("candidate compatibility manifest identity mismatch")
+    if legacy.get("skills") != "./skills":
+        raise RuntimeError("candidate compatibility manifest must point to ./skills")
+    if "mcpServers" in legacy or "apps" in legacy:
+        raise RuntimeError("candidate compatibility manifest must remain Workspace skill-only")
     version = plugin.get("version")
     version_tuple = parse_semver(version, "candidate plugin version")
     if legacy.get("version") != version:
@@ -117,6 +154,10 @@ def validate(
         raise RuntimeError(
             f"candidate version must be newer than installed version: {installed_version} -> {version}"
         )
+
+    openai_extension = plugin.get("extensions", {}).get("com.openai", {})
+    if isinstance(openai_extension, dict) and "apps" in openai_extension:
+        raise RuntimeError("candidate root manifest must remain Workspace skill-only")
 
     if distribution.get("product") != PLUGIN_NAME:
         raise RuntimeError("candidate distribution product mismatch")
