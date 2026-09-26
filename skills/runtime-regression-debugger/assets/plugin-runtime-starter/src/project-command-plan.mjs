@@ -64,11 +64,15 @@ function managerReadiness(profile, readiness) {
       reason: profile?.packageManagers?.node?.ambiguous ? 'package-manager-ambiguous' : 'package-manager-unresolved'
     };
   }
-  const check = (readiness?.checks || []).find((item) => item?.id === `node-package-manager:${manager}`);
+  const checks = readiness?.checks || [];
+  const nodeCheck = checks.find((item) => item?.id === 'node');
+  if (!nodeCheck) return { manager, runnable: false, reason: 'node-readiness-unverified' };
+  if (nodeCheck.available !== true) return { manager, runnable: false, reason: 'node-runtime-unavailable' };
+  if (nodeCheck.compatibility === 'mismatch') return { manager, runnable: false, reason: 'node-runtime-version-mismatch' };
+  const check = checks.find((item) => item?.id === `node-package-manager:${manager}`);
   if (!check) return { manager, runnable: false, reason: 'package-manager-readiness-unverified' };
   if (check.available !== true) return { manager, runnable: false, reason: 'package-manager-unavailable' };
   if (check.compatibility === 'mismatch') return { manager, runnable: false, reason: 'package-manager-version-mismatch' };
-  if (readiness?.usable === false) return { manager, runnable: false, reason: 'environment-not-usable' };
   return { manager, runnable: true, reason: 'ready' };
 }
 
@@ -154,6 +158,9 @@ function validationSelection(validationCommands, changedPaths, { authorityDirty,
     minimal = [aggregate];
   } else if (testLike(changedPaths)) {
     minimal = [first(available, 'test', ['test', 'test:unit'])].filter(Boolean);
+    if (!minimal.length) minimal = [first(available, 'typecheck', ['typecheck', 'check:types'])].filter(Boolean);
+    if (!minimal.length) minimal = [first(available, 'lint', ['lint'])].filter(Boolean);
+    if (!minimal.length) minimal = [first(available, 'build', ['build'])].filter(Boolean);
   } else if (sourceLike(changedPaths)) {
     minimal = [
       first(available, 'typecheck', ['typecheck', 'check:types']),
