@@ -5,7 +5,7 @@ import {
   compareVersion,
   parseStableVersion,
   validateReleaseMonotonicity,
-} from '../scripts/release-monotonicity.mjs';
+} from '../.github/scripts/release_monotonicity_gate.mjs';
 
 test('stable release monotonicity accepts a strictly newer public version', () => {
   const result = validateReleaseMonotonicity({
