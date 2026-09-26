@@ -1,0 +1,6 @@
+# Deterministic Linux/Python 3.12 test runner used by Studio Skill and package validation.
+pytest==9.1.1
+iniconfig==2.3.0
+packaging==26.3
+pluggy==1.6.0
+pygments==2.21.0
