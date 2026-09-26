@@ -251,8 +251,8 @@ const TOOL_INPUT_CONTRACTS = Object.freeze({
   machine_inspect: {
     description: 'Read-only inspection of an explicitly enabled Veteran Machine Bridge.',
     properties: {
-      operation: stringField('Machine inspection operation.', { enumValues: ['status', 'fs.list', 'fs.stat', 'fs.read', 'fs.search', 'process.list', 'process.status', 'process.output'] }),
-      path: stringField('Workspace-bounded filesystem path.', { minLength: null }),
+      operation: stringField('Machine inspection operation.', { enumValues: ['status', 'fs.list', 'fs.stat', 'fs.read', 'fs.digest', 'fs.search', 'repo.status', 'process.list', 'process.status', 'process.output'] }),
+      path: stringField('Workspace-bounded filesystem or repository path.', { minLength: null }),
       query: stringField('Literal case-insensitive search query for fs.search.', { minLength: null }),
       includeContent: booleanField('For fs.search, also search bounded text-file contents. Defaults true.'),
       offsetBytes: integerField('Byte offset for fs.read.', 0, Number.MAX_SAFE_INTEGER),
@@ -273,6 +273,8 @@ const TOOL_INPUT_CONTRACTS = Object.freeze({
       content: stringField('Text or base64 file payload.', { minLength: null }),
       encoding: stringField('File payload encoding.', { enumValues: ['utf8', 'base64'] }),
       createParents: booleanField('Create parent directories for file writes/moves. Defaults true.'),
+      expectedSha256: stringField('Optimistic SHA-256 precondition for fs.write/fs.append or the fs.move source.', { minLength: null }),
+      requireAbsent: booleanField('Require the target/destination path to be absent before mutation.'),
       command: stringField('Allowlisted executable name; arbitrary executable paths and shell interpolation are rejected.', { minLength: null }),
       args: stringArray('Bounded argv for process.start.', { maxItems: 128 }),
       cwd: stringField('Workspace-bounded working directory for process.start.', { minLength: null }),
