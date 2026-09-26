@@ -30,6 +30,10 @@ def main() -> int:
     skill = read("skill-engineering-tools.yml")
     cross = read("cross-platform-host-smoke.yml")
 
+    require(package, "timeout-minutes: 45", "package timeout budget")
+    require(package, "deadline = time.time() + 20 * 60", "exact-main wait budget")
+    require(package, "deadline = time.time() + 10 * 60", "sibling wait budget")
+
     for needle in (
         '356929464: "CI"',
         '358643055: "Skill Engineering Tools"',
