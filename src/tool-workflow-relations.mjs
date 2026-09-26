@@ -204,11 +204,11 @@ export const TOOL_WORKFLOW_RELATIONS = Object.freeze({
     relation('experience_query', 'inspect', 'Confirm the active advisory set after maintenance.')
   ]),
   machine_inspect: workflow('runtime', [], [
-    relation('machine_act', 'next', 'Use fresh device/path/session evidence before an explicitly authorized machine mutation or process action.'),
+    relation('machine_act', 'next', 'Use fresh device/repository/path/session evidence before an explicitly authorized machine mutation or process action.'),
     relation('runtime_health', 'inspect', 'Pair machine-bridge state with Veteran runtime/protocol health.')
   ]),
   machine_act: workflow('runtime', [], [
-    relation('machine_inspect', 'inspect', 'Verify file/process postconditions through the read-only machine surface after each consequential action.'),
+    relation('machine_inspect', 'inspect', 'Verify repository/file/process postconditions and revalidate the returned action receipt after each consequential action.'),
     relation('runtime_health', 'inspect', 'Inspect runtime health when machine execution exposes a transport or lifecycle problem.')
   ]),
   runtime_health: workflow('runtime', [], [
