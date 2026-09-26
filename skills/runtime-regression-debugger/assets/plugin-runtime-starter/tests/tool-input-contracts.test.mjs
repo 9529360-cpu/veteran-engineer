@@ -86,6 +86,7 @@ test('flagship tools expose the parameters needed to complete the product workfl
   assert.equal(machineInspect.properties.operation.enum.includes('fs.digest'), true);
   const machineAct = toolInputJsonSchema('machine_act');
   assert.equal(machineAct.properties.expectedSha256.type, 'string');
+  assert.equal(machineAct.properties.expectedRepoHead.type, 'string');
   assert.equal(machineAct.properties.requireAbsent.type, 'boolean');
 });
 
