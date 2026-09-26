@@ -351,6 +351,7 @@ jobs:
             .github/workflows/cross-platform-host-smoke.yml
             .github/workflows/package-plugin-artifact.yml
             .github/workflows/release.yml
+            scripts/release-monotonicity.mjs
             skills/runtime-regression-debugger/scripts/workspace_release_gate.py
             skills/runtime-regression-debugger/scripts/export_plugin_bundle.py
             skills/runtime-regression-debugger/tests/requirements-ci.txt
