@@ -101,9 +101,35 @@ test('Remote Host exposes opt-in machine inspect/action through the real MCP sur
     assert.equal(read.isError, undefined, JSON.stringify(read));
     assert.equal(read.structuredContent.data, 'remote-machine-edited\n');
 
-    const diff = await client.callTool({ name: 'machine_inspect', arguments: { operation: 'repo.diff', path: fixture.repo } });
+    const trackedReadme = path.join(fixture.repo, 'README.md');
+    const trackedDigest = await client.callTool({
+      name: 'machine_inspect',
+      arguments: { operation: 'fs.digest', path: trackedReadme }
+    });
+    assert.equal(trackedDigest.isError, undefined, JSON.stringify(trackedDigest));
+    const trackedEdit = await client.callTool({
+      name: 'machine_act',
+      arguments: {
+        requestId: crypto.randomUUID(),
+        operation: 'fs.replace',
+        path: trackedReadme,
+        oldText: 'machine bridge\n',
+        newText: 'machine bridge edited\n',
+        expectedOccurrences: 1,
+        expectedSha256: trackedDigest.structuredContent.digest,
+        expectedRepoHead: fixture.head
+      }
+    });
+    assert.equal(trackedEdit.isError, undefined, JSON.stringify(trackedEdit));
+
+    const diff = await client.callTool({
+      name: 'machine_inspect',
+      arguments: { operation: 'repo.diff', path: trackedReadme }
+    });
     assert.equal(diff.isError, undefined, JSON.stringify(diff));
-    assert.match(diff.structuredContent.patch, /\+remote-machine-edited/);
+    assert.equal(diff.structuredContent.scope, 'README.md');
+    assert.match(diff.structuredContent.patch, /\+machine bridge edited/);
+    assert.doesNotMatch(diff.structuredContent.patch, /remote-machine-edited/);
 
     const run = await client.callTool({
       name: 'machine_act',
