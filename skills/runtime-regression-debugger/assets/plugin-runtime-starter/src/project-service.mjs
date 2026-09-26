@@ -16,7 +16,7 @@ import { assessProjectEnvironmentReadiness } from './project-environment-readine
 import { compileProjectBootstrapPlan } from './project-bootstrap-plan.mjs';
 import { compileProjectCommandPlan } from './project-command-plan.mjs';
 
-async function inspectAuthorityEnvironment({ repo, projectKey, sourceAuthority, observedIdentity, storeRoot, surfaceProfile }) {
+async function inspectAuthorityEnvironment({ repo, projectKey, sourceAuthority, storeRoot, surfaceProfile }) {
   const environmentSourceIdentity = sourceIdentityFromAuthority(sourceAuthority);
   const inspect = async (snapshotRepo) => {
     const environmentProfile = await inspectProjectEnvironment(snapshotRepo);
@@ -26,7 +26,7 @@ async function inspectAuthorityEnvironment({ repo, projectKey, sourceAuthority, 
     });
     const bootstrapPlan = compileProjectBootstrapPlan(environmentProfile, environmentReadiness);
     const commandPlan = compileProjectCommandPlan(environmentProfile, environmentReadiness, {
-      changedPaths: observedIdentity?.dirtyPaths || []
+      changedPaths: environmentSourceIdentity.dirtyPaths || []
     });
     return { environmentProfile, environmentReadiness, bootstrapPlan, commandPlan, environmentSourceIdentity };
   };
@@ -103,7 +103,6 @@ export class ProjectService {
       repo,
       projectKey,
       sourceAuthority,
-      observedIdentity: identity,
       storeRoot: this.store.root,
       surfaceProfile: this.surfaceProfile
     });
@@ -197,7 +196,6 @@ export class ProjectService {
       repo: project.repoPath,
       projectKey: project.projectKey,
       sourceAuthority,
-      observedIdentity: identity,
       storeRoot: this.store.root,
       surfaceProfile: this.surfaceProfile
     });
