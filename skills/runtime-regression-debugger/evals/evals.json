@@ -1355,5 +1355,22 @@
       "treats a local machine receipt as proof that the remote repository is synchronized",
       "uses the requestId or actionId as proof of which human or ChatGPT conversation initiated the action after session provenance is lost"
     ]
+  },
+  {
+    "name": "machine-process-evidence-covers-truncated-output-and-eof",
+    "prompt": "A one-shot command through the Veteran Machine Bridge can emit more output than the chat retention limit and reads stdin until EOF. Explain what evidence you must preserve and how the process should terminate. Then contrast that with a persistent session whose old events may be dropped.",
+    "expected_decisions": [
+      "close one-shot stdin after the optional input payload so EOF-driven commands can terminate without waiting for timeout",
+      "treat bounded stdout/stderr text as a display projection while preserving total stdoutBytes/stderrBytes and SHA-256 over the complete raw stdout/stderr streams",
+      "use outputDigestContract plus stdoutSha256 stderrSha256 and aggregate outputSha256 as terminal execution evidence even when returned text is truncated",
+      "for a persistent session keep outputComplete false while running and require terminal process.status before treating full-stream digests as complete",
+      "do not infer missing output from dropped persistent events because droppedEvents describes text retention while terminal stream digests cover the full captured streams"
+    ],
+    "red_flags": [
+      "hashes only the retained or truncated stdout/stderr text and calls that full execution evidence",
+      "leaves one-shot stdin open after sending the provided input and relies on timeout to end EOF-driven commands",
+      "treats a running persistent session digest as terminal evidence",
+      "equates bounded process.output events with the complete historical byte stream"
+    ]
   }
 ]
