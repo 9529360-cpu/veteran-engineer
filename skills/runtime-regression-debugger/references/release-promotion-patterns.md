@@ -62,7 +62,7 @@ Before the next consequential action, reacquire only the authoritative state tha
 - package registry, update channel, or public release metadata when publication participates;
 - deployed revision/version when deployment participates.
 
-Compare the new state with the pre-action snapshot. If it advanced, discard the stale plan and continue from the new truth. Treat the initiator as unknown until current-execution receipts, causal automation, or explicit executor provenance identify it; the changed state, account-level actor, or timing alone does not prove another actor/session caused it. Never assume a local checkout, cached connector response, or previously listed tags/releases became current automatically after a remote mutation.
+Compare the new state with the pre-action snapshot. If it advanced, discard the stale plan and continue from the new truth. Treat the initiator as unknown until a live current-execution tool return, platform-bound causal automation, or explicit executor provenance identifies it. A persisted journal receipt is only a historical mission claim until its identity and causal relation are revalidated; the changed state, account-level actor, timing, or journal entry alone does not prove another actor/session caused it. Never assume a local checkout, cached connector response, or previously listed tags/releases became current automatically after a remote mutation.
 
 Do not chain two consequential release mutations using only the state observed before the first one.
 
