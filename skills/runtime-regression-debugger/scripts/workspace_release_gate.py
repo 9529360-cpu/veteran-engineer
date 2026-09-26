@@ -62,6 +62,25 @@ def archive_sha256(path: pathlib.Path) -> str:
     return digest.hexdigest()
 
 
+def load_installed_inventory(path: pathlib.Path) -> set[str]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"invalid installed inventory JSON: {path}") from exc
+    if isinstance(value, dict):
+        value = value.get("paths")
+    if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
+        raise RuntimeError("installed inventory must be a JSON array of paths or an object with a paths array")
+    paths = set(value)
+    if len(paths) != len(value):
+        raise RuntimeError("installed inventory contains duplicate paths")
+    for item in paths:
+        pure = pathlib.PurePosixPath(item)
+        if pure.is_absolute() or ".." in pure.parts or "\\" in item or pure.as_posix() != item:
+            raise RuntimeError(f"installed inventory contains unsafe/non-canonical path: {item}")
+    return paths
+
+
 def validate(
     archive_path: pathlib.Path,
     *,
@@ -69,9 +88,25 @@ def validate(
     expected_version: str | None = None,
     installed_version: str | None = None,
     expected_sha256: str | None = None,
+    installed_inventory: pathlib.Path | None = None,
+    publication: bool = False,
 ) -> dict:
     if not HEX_REVISION.fullmatch(expected_revision):
         raise RuntimeError("--expected-revision must be a Git commit revision")
+    if publication:
+        missing_args = []
+        if installed_version is None:
+            missing_args.append("--installed-version")
+        if expected_sha256 is None:
+            missing_args.append("--expected-sha256")
+        if installed_inventory is None:
+            missing_args.append("--installed-inventory")
+        if missing_args:
+            raise RuntimeError(
+                "--publication requires fresh installed state and immutable artifact identity: "
+                + ", ".join(missing_args)
+            )
+
     digest = archive_sha256(archive_path)
     if expected_sha256 and digest.lower() != expected_sha256.lower():
         raise RuntimeError(
@@ -135,6 +170,16 @@ def validate(
         if missing:
             raise RuntimeError("candidate Workspace archive is missing: " + ", ".join(missing))
 
+        if installed_inventory is not None:
+            installed_paths = load_installed_inventory(installed_inventory)
+            omitted_installed = sorted(installed_paths.difference(names))
+            if omitted_installed:
+                raise RuntimeError(
+                    "candidate omits installed Workspace paths that overlay publication cannot delete; "
+                    "preserve them or ship explicit inert tombstones: "
+                    + ", ".join(omitted_installed[:50])
+                )
+
         plugin = load_json(archive, "plugin.json")
         legacy = load_json(archive, ".codex-plugin/plugin.json")
         distribution = load_json(archive, "veteran-distribution.json")
@@ -194,6 +239,8 @@ def validate(
         "profile": "workspace",
         "file_count": len(names),
         "sha256": digest,
+        "installed_inventory_checked": installed_inventory is not None,
+        "publication_mode": publication,
         "safe_for_publication": True,
     }
 
@@ -205,6 +252,8 @@ def main() -> int:
     parser.add_argument("--expected-version")
     parser.add_argument("--installed-version")
     parser.add_argument("--expected-sha256")
+    parser.add_argument("--installed-inventory")
+    parser.add_argument("--publication", action="store_true")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
@@ -214,6 +263,12 @@ def main() -> int:
         expected_version=args.expected_version,
         installed_version=args.installed_version,
         expected_sha256=args.expected_sha256,
+        installed_inventory=(
+            pathlib.Path(args.installed_inventory).expanduser().resolve()
+            if args.installed_inventory
+            else None
+        ),
+        publication=args.publication,
     )
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))
