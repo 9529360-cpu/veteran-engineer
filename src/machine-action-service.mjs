@@ -904,9 +904,8 @@ export class MachineActionService {
         const onError = (error) => { child.off('spawn', onSpawn); reject(error); };
         child.once('spawn', onSpawn); child.once('error', onError);
       });
-      child.stdin.on('error', () => {});
-
       if (!persistent) {
+        child.stdin.on('error', () => {});
         let stdout = '', stderr = '', stdoutTruncated = false, stderrTruncated = false, timedOut = false;
         let stdoutBytes = 0, stderrBytes = 0;
         const stdoutHash = crypto.createHash('sha256');
@@ -967,6 +966,7 @@ export class MachineActionService {
       };
       child.stdout.on('data', (chunk) => this.#recordEvent(session, 'stdout', chunk));
       child.stderr.on('data', (chunk) => this.#recordEvent(session, 'stderr', chunk));
+      child.stdin.on('error', (error) => this.#recordEvent(session, 'system', 'stdin ' + (error?.code ? error.code + ': ' : '') + (error?.message || String(error))));
       child.once('close', (code, signal) => {
         this.#finalizeSessionOutput(session);
         session.status = 'exited'; session.endedAt = new Date().toISOString(); session.exitCode = code; session.signal = signal || null;
