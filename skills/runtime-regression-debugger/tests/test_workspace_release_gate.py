@@ -60,6 +60,34 @@ def run_gate(archive: Path, *args: str, check: bool = True):
     )
 
 
+def write_installed_state(
+    path: Path,
+    paths: list[str],
+    *,
+    version: str = "1.14.8",
+    release_id: str = "pluginrel_current",
+    inventory_complete: bool = True,
+    next_offset=None,
+    page_offsets: list[int] | None = None,
+):
+    path.write_text(
+        json.dumps(
+            {
+                "schema": "veteran-workspace-installed-state-v1",
+                "plugin_id": "Plugin_8d9c7648269081918d366e3d9e9a43e2",
+                "release_id": release_id,
+                "version": version,
+                "inventory_complete": inventory_complete,
+                "next_offset": next_offset,
+                "page_offsets": page_offsets or [0],
+                "path_count": len(paths),
+                "paths": paths,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 def test_workspace_release_gate_accepts_exact_main_candidate(tmp_path: Path):
     archive = tmp_path / "candidate.zip"
     build_candidate(archive)
@@ -216,31 +244,27 @@ def test_publication_mode_requires_fresh_installed_state_and_artifact_digest(tmp
     )
 
     assert proc.returncode != 0
-    assert "--installed-version" in proc.stderr
     assert "--expected-sha256" in proc.stderr
-    assert "--installed-inventory" in proc.stderr
+    assert "--installed-state" in proc.stderr
 
 
 def test_publication_mode_rejects_undeletable_overlay_omission(tmp_path: Path):
     archive = tmp_path / "candidate.zip"
     build_candidate(archive)
     inventory = tmp_path / "installed.json"
-    inventory.write_text(
-        json.dumps(
-            {
-                "paths": [
-                    "plugin.json",
-                    ".codex-plugin/plugin.json",
-                    "veteran-distribution.json",
-                    "skills/runtime-regression-debugger/SKILL.md",
-                    "skills/runtime-regression-debugger/agents/openai.yaml",
-                    "skills/frontend-design-builder/SKILL.md",
-                    "skills/frontend-design-builder/agents/openai.yaml",
-                    "skills/runtime-regression-debugger/references/legacy-online-only.md",
-                ]
-            }
-        ),
-        encoding="utf-8",
+    write_installed_state(
+        inventory,
+        [
+            "plugin.json",
+            ".codex-plugin/plugin.json",
+            "veteran-distribution.json",
+            "skills/runtime-regression-debugger/SKILL.md",
+            "skills/runtime-regression-debugger/agents/openai.yaml",
+            "skills/frontend-design-builder/SKILL.md",
+            "skills/frontend-design-builder/agents/openai.yaml",
+            "skills/runtime-regression-debugger/references/legacy-online-only.md",
+        ],
+        page_offsets=[0, 100, 200],
     )
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
 
@@ -254,7 +278,7 @@ def test_publication_mode_rejects_undeletable_overlay_omission(tmp_path: Path):
         "1.14.8",
         "--expected-sha256",
         digest,
-        "--installed-inventory",
+        "--installed-state",
         str(inventory),
         "--publication",
         check=False,
@@ -271,7 +295,7 @@ def test_publication_mode_accepts_inventory_preserved_by_candidate(tmp_path: Pat
     with zipfile.ZipFile(archive, "r") as handle:
         paths = [item.filename for item in handle.infolist() if not item.is_dir()]
     inventory = tmp_path / "installed.json"
-    inventory.write_text(json.dumps({"paths": paths}), encoding="utf-8")
+    write_installed_state(inventory, paths, page_offsets=[0, 100, 200])
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
 
     proc = run_gate(
@@ -284,7 +308,7 @@ def test_publication_mode_accepts_inventory_preserved_by_candidate(tmp_path: Pat
         "1.14.8",
         "--expected-sha256",
         digest,
-        "--installed-inventory",
+        "--installed-state",
         str(inventory),
         "--publication",
         "--json",
@@ -294,3 +318,93 @@ def test_publication_mode_accepts_inventory_preserved_by_candidate(tmp_path: Pat
     assert report["safe_for_publication"] is True
     assert report["publication_mode"] is True
     assert report["installed_inventory_checked"] is True
+    assert report["expected_release_id"] == "pluginrel_current"
+    assert report["installed_page_offsets"] == [0, 100, 200]
+
+
+def test_publication_mode_rejects_incomplete_pagination_snapshot(tmp_path: Path):
+    archive = tmp_path / "candidate.zip"
+    build_candidate(archive)
+    with zipfile.ZipFile(archive, "r") as handle:
+        paths = [item.filename for item in handle.infolist() if not item.is_dir()]
+    state = tmp_path / "installed.json"
+    write_installed_state(
+        state,
+        paths,
+        inventory_complete=False,
+        next_offset=100,
+        page_offsets=[0],
+    )
+    digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+
+    proc = run_gate(
+        archive,
+        "--expected-revision",
+        "abc1234",
+        "--expected-sha256",
+        digest,
+        "--installed-state",
+        str(state),
+        "--publication",
+        check=False,
+    )
+
+    assert proc.returncode != 0
+    assert "inventory_complete must be true" in proc.stderr
+
+
+def test_publication_mode_rejects_nonterminal_next_offset(tmp_path: Path):
+    archive = tmp_path / "candidate.zip"
+    build_candidate(archive)
+    with zipfile.ZipFile(archive, "r") as handle:
+        paths = [item.filename for item in handle.infolist() if not item.is_dir()]
+    state = tmp_path / "installed.json"
+    write_installed_state(
+        state,
+        paths,
+        next_offset=200,
+        page_offsets=[0, 100],
+    )
+    digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+
+    proc = run_gate(
+        archive,
+        "--expected-revision",
+        "abc1234",
+        "--expected-sha256",
+        digest,
+        "--installed-state",
+        str(state),
+        "--publication",
+        check=False,
+    )
+
+    assert proc.returncode != 0
+    assert "next_offset=null" in proc.stderr
+
+
+def test_publication_mode_binds_version_to_same_installed_snapshot(tmp_path: Path):
+    archive = tmp_path / "candidate.zip"
+    build_candidate(archive)
+    with zipfile.ZipFile(archive, "r") as handle:
+        paths = [item.filename for item in handle.infolist() if not item.is_dir()]
+    state = tmp_path / "installed.json"
+    write_installed_state(state, paths, version="1.14.7")
+    digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+
+    proc = run_gate(
+        archive,
+        "--expected-revision",
+        "abc1234",
+        "--installed-version",
+        "1.14.8",
+        "--expected-sha256",
+        digest,
+        "--installed-state",
+        str(state),
+        "--publication",
+        check=False,
+    )
+
+    assert proc.returncode != 0
+    assert "disagrees with installed-state snapshot" in proc.stderr
