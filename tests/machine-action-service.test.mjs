@@ -123,8 +123,12 @@ test('machine actions preserve interactive process sessions and bounded output r
     assert.equal(started.session.actionId, started.receipt.actionId);
     const inputReceipt = await service.act({ operation: 'process.input', sessionId, input: 'hello\n' });
     assert.equal(inputReceipt.receipt.parentActionId, started.receipt.actionId);
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    let output = await service.inspect({ operation: 'process.output', sessionId });
+    let output = null;
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      output = await service.inspect({ operation: 'process.output', sessionId });
+      if (output.events.some((item) => item.text.includes('echo:hello'))) break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
     assert.equal(output.events.some((item) => item.text.includes('echo:hello')), true);
 
     await service.act({ operation: 'process.input', sessionId, input: 'bye\n' });
