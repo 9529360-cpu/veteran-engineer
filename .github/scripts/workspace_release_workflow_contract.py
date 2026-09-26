@@ -59,7 +59,7 @@ def main() -> int:
         ".github/workflows/cross-platform-host-smoke.yml",
         ".github/workflows/package-plugin-artifact.yml",
         ".github/workflows/runtime-release-v2.yml",
-        "scripts/release-monotonicity.mjs",
+        ".github/scripts/release_monotonicity_gate.mjs",
         "skills/runtime-regression-debugger/scripts/workspace_release_gate.py",
         "skills/runtime-regression-debugger/scripts/export_plugin_bundle.py",
         "skills/runtime-regression-debugger/tests/requirements-ci.txt",
