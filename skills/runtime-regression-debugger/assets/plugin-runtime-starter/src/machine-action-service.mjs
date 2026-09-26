@@ -7,6 +7,9 @@ import { spawn } from 'node:child_process';
 import { TextDecoder } from 'node:util';
 import { assertLocalPathAllowed } from './workspace-policy.mjs';
 import { signalProcessTree } from './process-lifecycle-authority.mjs';
+import { inspectProjectEnvironment } from './project-environment.mjs';
+import { assessProjectEnvironmentReadiness } from './project-environment-readiness.mjs';
+import { compileProjectCommandPlan } from './project-command-plan.mjs';
 import { randomId } from './util.mjs';
 
 export const MACHINE_ACTION_CONTRACT = 'veteran-machine-action-v2';
@@ -65,6 +68,19 @@ function executableKey(command) {
     throw codedError('MACHINE_EXECUTABLE_PATH_REJECTED', 'machine process start accepts an allowlisted executable name, not an arbitrary executable path');
   }
   return text.toLowerCase().replace(/\.(exe|cmd|bat|com)$/i, '');
+}
+
+export function machinePackageManagerExecutionSupport(manager, {
+  platform = process.platform,
+  allowedExecutables = []
+} = {}) {
+  const key = String(manager || '').trim().toLowerCase();
+  const allowed = new Set((allowedExecutables || []).map((value) => String(value || '').trim().toLowerCase().replace(/\.(exe|cmd|bat|com)$/i, '')));
+  if (!key || !allowed.has(key)) return { available: false, reason: 'package-manager-not-allowlisted' };
+  if (platform === 'win32' && ['npm', 'pnpm', 'yarn'].includes(key)) {
+    return { available: false, reason: 'windows-command-shim-requires-shell' };
+  }
+  return { available: true, reason: 'allowlisted-direct-executable' };
 }
 
 function decodeContent(content, encoding) {
@@ -250,6 +266,29 @@ async function runReadOnlyGit(args, cwd, options = {}) {
       }
     }
   );
+}
+
+function parseNullSeparatedPaths(raw) {
+  return [...new Set(String(raw || '').split('\0').map((value) => value.trim()).filter(Boolean))].sort();
+}
+
+async function repositoryChangedPaths(repositoryRoot, maxOutputBytes) {
+  const [tracked, untracked] = await Promise.all([
+    runReadOnlyGit(['diff', '--name-only', '-z', 'HEAD', '--'], repositoryRoot, {
+      timeoutMs: 10_000,
+      maxOutputBytes,
+      retain: 'head'
+    }),
+    runReadOnlyGit(['ls-files', '--others', '--exclude-standard', '-z', '--'], repositoryRoot, {
+      timeoutMs: 10_000,
+      maxOutputBytes,
+      retain: 'head'
+    })
+  ]);
+  return [...new Set([
+    ...parseNullSeparatedPaths(tracked.stdout),
+    ...parseNullSeparatedPaths(untracked.stdout)
+  ])].sort();
 }
 
 function parseGitStatusPorcelainV2(raw) {
@@ -580,6 +619,65 @@ export class MachineActionService {
           conflicts: parsed.conflicts,
           origin: originResult.exitCode === 0 ? originResult.stdout.trim() || null : null
         }
+      };
+    }
+
+    if (operation === 'repo.commands') {
+      const target = await this.#allowedReadPath(args.path || this.allowedLocalRoots[0], 'repository path');
+      const targetStat = await fs.stat(target);
+      const cwd = targetStat.isDirectory() ? target : path.dirname(target);
+      let rootProbe;
+      try {
+        rootProbe = await runReadOnlyGit(['rev-parse', '--show-toplevel'], cwd, {
+          timeoutMs: Math.min(this.limits.defaultTimeoutMs, 10_000),
+          maxOutputBytes: this.limits.maxReadBytes
+        });
+      } catch (error) {
+        if (error?.code === 'ENOENT') throw codedError('MACHINE_GIT_UNAVAILABLE', 'repo.commands requires git on the machine PATH');
+        if (error?.code === 'MACHINE_INSPECT_PROCESS_FAILED') {
+          throw codedError('MACHINE_GIT_REPOSITORY_REQUIRED', 'repo.commands path is not inside a readable Git worktree', { path: target });
+        }
+        throw error;
+      }
+      const repositoryRoot = await this.#allowedReadPath(rootProbe.stdout.trim(), 'repository root');
+      const [headResult, changedPaths, environmentProfile] = await Promise.all([
+        runReadOnlyGit(['rev-parse', 'HEAD'], repositoryRoot, {
+          timeoutMs: Math.min(this.limits.defaultTimeoutMs, 10_000),
+          maxOutputBytes: this.limits.maxReadBytes
+        }),
+        repositoryChangedPaths(repositoryRoot, this.limits.maxReadBytes),
+        inspectProjectEnvironment(repositoryRoot)
+      ]);
+      const manager = environmentProfile?.packageManagers?.node?.selected || null;
+      const managerSupport = machinePackageManagerExecutionSupport(manager, {
+        platform: process.platform,
+        allowedExecutables: this.allowedExecutables
+      });
+      const environmentReadiness = await assessProjectEnvironmentReadiness(environmentProfile, {
+        cwd: repositoryRoot,
+        surfaceProfile: 'machine-bridge',
+        probe: async (spec) => {
+          if (spec.id === 'node') {
+            return { available: true, exitCode: 0, version: process.versions.node, reason: 'machine-runtime' };
+          }
+          if (manager && spec.id === `node-package-manager:${manager}`) {
+            return {
+              available: managerSupport.available,
+              exitCode: managerSupport.available ? 0 : null,
+              version: null,
+              reason: managerSupport.reason
+            };
+          }
+          return { available: false, exitCode: null, version: null, reason: 'not-probed-by-machine-command-plan' };
+        }
+      });
+      const commandPlan = compileProjectCommandPlan(environmentProfile, environmentReadiness, { changedPaths });
+      return {
+        operation,
+        contract: MACHINE_ACTION_CONTRACT,
+        observedAt: new Date().toISOString(),
+        repository: { root: repositoryRoot, head: headResult.stdout.trim() },
+        commandPlan
       };
     }
 
