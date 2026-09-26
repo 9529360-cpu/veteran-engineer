@@ -451,7 +451,7 @@ def test_workspace_release_gate_rejects_extra_codex_plugin_surface(tmp_path: Pat
     archive = tmp_path / "candidate.zip"
     build_candidate(archive)
     with zipfile.ZipFile(archive, "a") as handle:
-        handle.writestr(".codex-plugin/mcp.json", "{}")
+        handle.writestr(".codex-plugin/extra.json", "{}")
 
     proc = run_gate(
         archive,
