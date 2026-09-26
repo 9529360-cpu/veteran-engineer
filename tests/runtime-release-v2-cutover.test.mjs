@@ -20,7 +20,7 @@ test('Runtime Release V2 has no tag publication trigger or branch', () => {
   assert.equal(v2.includes('reason=tag'), false);
   assert.ok(v2.includes('branches:\n      - main'));
   assert.ok(v2.includes('.github/release-intent.json'));
-  assert.equal(v2.split('scripts/release-monotonicity.mjs').length - 1 >= 4, true);
+  assert.equal(v2.split('.github/scripts/release_monotonicity_gate.mjs').length - 1 >= 4, true);
 });
 
 test('Runtime Release V2 serializes publication with a bounded lossless queue', () => {
@@ -41,7 +41,7 @@ test('Workspace readiness trusts the fresh V2 workflow identity', () => {
   assert.ok(packageWorkflow.includes('367487813: "Runtime Release V2"'));
   assert.equal(packageWorkflow.includes('358757508: "Release"'), false);
   assert.ok(packageWorkflow.includes('.github/workflows/runtime-release-v2.yml'));
-  assert.ok(packageWorkflow.includes('scripts/release-monotonicity.mjs'));
+  assert.ok(packageWorkflow.includes('.github/scripts/release_monotonicity_gate.mjs'));
 });
 
 test('legacy workflow disable migration is narrowly scoped', () => {
