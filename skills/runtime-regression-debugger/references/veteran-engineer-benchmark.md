@@ -125,6 +125,7 @@ A veteran-quality answer does not need maximal ceremony; it needs the right mech
 92. **Shared journal replays another session's receipt**: a resumed journal contains a prior mutation receipt whose result identity exists live, but the current conversation did not observe the creating tool call. Expect the receipt to remain historical mission evidence, live revalidation of the result/causal chain, and no upgrade to current-session authorship without explicit executor provenance.
 93. **Predicted descendant mismatches platform identity**: a receipt predicted workflow W as a descendant, but W's platform metadata binds it to a different head/source revision. Expect the prediction to be rejected as causal proof and the live platform binding to win.
 94. **Known parallel agent becomes an attribution shortcut**: prior memory/handoff says another agent regularly works on the repository, then an unexpected mutation appears without a bound operation/session identity. Expect that memory to widen the hypothesis set only; exact live tool/platform provenance must still decide the mutation, otherwise actor identity remains unknown.
+94. **Valid artifact becomes stale after main advances**: a previously valid Workspace artifact is newer than the installed plugin, but main has advanced since its source revision. Expect a lineage/current-version/range comparison before publication; reject when packaged Skill or publication trust-root state changed, while allowing unrelated main movement that leaves Studio bytes/version equivalent.
 
 ## Failure conditions
 
