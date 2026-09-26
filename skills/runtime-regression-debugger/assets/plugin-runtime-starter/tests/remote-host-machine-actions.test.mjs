@@ -80,9 +80,30 @@ test('Remote Host exposes opt-in machine inspect/action through the real MCP sur
     assert.equal(replay.structuredContent.receipt.actionId, write.structuredContent.receipt.actionId);
     assert.equal(replay.structuredContent.afterSha256, write.structuredContent.afterSha256);
 
+    const replace = await client.callTool({
+      name: 'machine_act',
+      arguments: {
+        requestId: crypto.randomUUID(),
+        operation: 'fs.replace',
+        path: target,
+        oldText: 'remote-machine-ok\n',
+        newText: 'remote-machine-edited\n',
+        expectedOccurrences: 1,
+        expectedSha256: write.structuredContent.afterSha256,
+        expectedRepoHead: fixture.head
+      }
+    });
+    assert.equal(replace.isError, undefined, JSON.stringify(replace));
+    assert.equal(replace.structuredContent.replacements, 1);
+    assert.equal(replace.structuredContent.receipt.repository.head, fixture.head);
+
     const read = await client.callTool({ name: 'machine_inspect', arguments: { operation: 'fs.read', path: target } });
     assert.equal(read.isError, undefined, JSON.stringify(read));
-    assert.equal(read.structuredContent.data, 'remote-machine-ok\n');
+    assert.equal(read.structuredContent.data, 'remote-machine-edited\n');
+
+    const diff = await client.callTool({ name: 'machine_inspect', arguments: { operation: 'repo.diff', path: fixture.repo } });
+    assert.equal(diff.isError, undefined, JSON.stringify(diff));
+    assert.match(diff.structuredContent.patch, /\+remote-machine-edited/);
 
     const run = await client.callTool({
       name: 'machine_act',
