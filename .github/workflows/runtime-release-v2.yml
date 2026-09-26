@@ -12,7 +12,7 @@ on:
       - "src/constants.mjs"
       - "scripts/release-contract.mjs"
       - "scripts/release-candidate.mjs"
-      - "scripts/release-monotonicity.mjs"
+      - ".github/scripts/release_monotonicity_gate.mjs"
       - "scripts/release-bootstrap.mjs"
       - "tests/release-contract.test.mjs"
       - "tests/release-bootstrap.test.mjs"
@@ -31,7 +31,7 @@ on:
       - "src/constants.mjs"
       - "scripts/release-contract.mjs"
       - "scripts/release-candidate.mjs"
-      - "scripts/release-monotonicity.mjs"
+      - ".github/scripts/release_monotonicity_gate.mjs"
       - "scripts/release-bootstrap.mjs"
       - "tests/release-contract.test.mjs"
       - "tests/release-bootstrap.test.mjs"
@@ -114,7 +114,7 @@ jobs:
             .github/workflows/runtime-release-v2.yml
             scripts/release-contract.mjs
             scripts/release-candidate.mjs
-            scripts/release-monotonicity.mjs
+            .github/scripts/release_monotonicity_gate.mjs
           )
 
           TRUST_BASE="$BEFORE_SHA"
@@ -235,7 +235,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="$(node -p 'require("./package.json").version')"
-          node scripts/release-monotonicity.mjs \
+          node .github/scripts/release_monotonicity_gate.mjs \
             --candidate "$VERSION" \
             --repository "$REPOSITORY"
 
@@ -358,7 +358,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="$(node -p 'require("./package.json").version')"
-          node scripts/release-monotonicity.mjs \
+          node .github/scripts/release_monotonicity_gate.mjs \
             --candidate "$VERSION" \
             --repository "$REPOSITORY"
       - name: Publish release
