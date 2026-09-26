@@ -20,6 +20,7 @@ test('Runtime Release V2 has no tag publication trigger or branch', () => {
   assert.equal(v2.includes('reason=tag'), false);
   assert.ok(v2.includes('branches:\n      - main'));
   assert.ok(v2.includes('.github/release-intent.json'));
+  assert.equal(v2.split('scripts/release-monotonicity.mjs').length - 1 >= 4, true);
 });
 
 test('Runtime Release V2 serializes publication with a bounded lossless queue', () => {
