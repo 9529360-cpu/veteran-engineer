@@ -33,7 +33,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
@@ -98,12 +98,12 @@ jobs:
           PY
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
 
       - name: Install Skill test runner
-        run: python -m pip install --disable-pip-version-check pytest
+        run: python -m pip install --disable-pip-version-check pytest==9.1.1
 
       - name: Compile Skill engineering tools
         run: python -m compileall -q skills/runtime-regression-debugger/scripts skills/runtime-regression-debugger/tests skills/frontend-design-builder/scripts skills/frontend-design-builder/tests
