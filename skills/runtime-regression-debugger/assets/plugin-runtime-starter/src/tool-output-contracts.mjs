@@ -335,6 +335,7 @@ const TOOL_OUTPUT_CONTRACTS = Object.freeze({
     repository: anyField('Repository identity and dirty-state projection for repo.status/repo.diff.'),
     observedAt: stringField('Observation timestamp for repo.status/repo.diff.', { minLength: null }),
     patch: stringField('Bounded unified patch for repo.diff.', { minLength: null }),
+    scope: stringField('Repository-relative scope used by repo.diff; dot means the whole repository.', { minLength: null }),
     staged: booleanField('Whether repo.diff inspected the staged/index diff.'),
     contextLines: integerField('Unified context lines used for repo.diff.', 0, 20),
     matches: anyField('Search matches for fs.search.'),
