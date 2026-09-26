@@ -244,7 +244,7 @@ def test_studio_composition_contract():
             "matrix.profile == 'workspace' && github.event_name == 'push' "
             "&& github.ref == 'refs/heads/main' && steps.studio-delta.outputs.changed == 'true'"
         )
-        assert package_workflow.count(publishable_install) == 3
+        assert package_workflow.count(publishable_install) == 4
         assert "github.event_name != 'pull_request'" not in package_workflow
         assert "Detect publishable Studio delta" in package_workflow
         assert "Require exact-main validation workflows" in package_workflow
@@ -252,7 +252,7 @@ def test_studio_composition_contract():
         assert "358643055: \"Skill Engineering Tools\"" in package_workflow
         assert "358628814: \"Cross-platform host smoke\"" in package_workflow
         assert "actions: read" in package_workflow
-        assert "Gate Workspace publication candidate" in package_workflow
+        assert "Gate staged Workspace publication candidate" in package_workflow
         assert "workspace_release_gate.py" in package_workflow
         assert "Run packaged Workspace Skill regressions" in package_workflow
         assert "workspace-package-test/veteran-engineer/skills/frontend-design-builder/tests" in package_workflow
