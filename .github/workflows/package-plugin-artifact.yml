@@ -515,7 +515,7 @@ jobs:
             cd dist/workspace-install
             zip -q -r ../workspace-install-candidate.zip .
           )
-          python3 skills/runtime-regression-debugger/scripts/workspace_release_gate.py             dist/workspace-install-candidate.zip             --expected-revision "$SOURCE_REVISION"             --expected-version "$STUDIO_VERSION"             --json
+          python3 skills/runtime-regression-debugger/scripts/workspace_release_gate.py             dist/workspace-install-candidate.zip             --expected-revision "$GITHUB_SHA"             --expected-version "$STUDIO_VERSION"             --json
 
       - name: Upload workspace install artifact
         if: matrix.profile == 'workspace' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.studio-delta.outputs.changed == 'true'
