@@ -215,7 +215,7 @@ def validate(
     publication: bool = False,
 ) -> dict:
     if not HEX_REVISION.fullmatch(expected_revision):
-        raise RuntimeError("--expected-revision must be a Git commit revision")
+        raise RuntimeError("--expected-revision must be a full lowercase 40-hex Git commit SHA")
     if publication:
         missing_args = []
         if expected_sha256 is None:
@@ -241,14 +241,52 @@ def validate(
 
     with archive:
         infos = archive.infolist()
-        names = [item.filename for item in infos if not item.is_dir()]
+        file_infos = [item for item in infos if not item.is_dir()]
+        names = [item.filename for item in file_infos]
+        if len(file_infos) > MAX_FILE_COUNT:
+            raise RuntimeError(
+                f"candidate ZIP contains too many files: {len(file_infos)} > {MAX_FILE_COUNT}"
+            )
+        total_uncompressed = sum(item.file_size for item in file_infos)
+        if total_uncompressed >= MAX_TOTAL_UNCOMPRESSED_BYTES:
+            raise RuntimeError(
+                "candidate ZIP is unexpectedly large when uncompressed: "
+                f"{total_uncompressed} bytes"
+            )
         if len(names) != len(set(names)):
             raise RuntimeError("candidate ZIP contains duplicate file paths")
-        folded = [name.casefold() for name in names]
-        if len(folded) != len(set(folded)):
-            raise RuntimeError("candidate ZIP contains case-colliding file paths")
+
+        normalized_names: dict[str, str] = {}
         for item in infos:
             name = item.filename
+            if item.flag_bits & 0x1:
+                raise RuntimeError(f"candidate ZIP contains encrypted entry: {name}")
+            if not item.is_dir():
+                if item.file_size > MAX_SINGLE_FILE_BYTES:
+                    raise RuntimeError(
+                        f"candidate ZIP file is unexpectedly large: {name} -> {item.file_size} bytes"
+                    )
+                if item.file_size > 0:
+                    if item.compress_size <= 0:
+                        raise RuntimeError(f"candidate ZIP has invalid compressed size: {name}")
+                    ratio = item.file_size / item.compress_size
+                    if ratio > MAX_COMPRESSION_RATIO:
+                        raise RuntimeError(
+                            f"candidate ZIP compression ratio is suspicious: {name} -> {ratio:.1f}x"
+                        )
+
+            reject_control_characters(name, "candidate ZIP path")
+            normalized = unicodedata.normalize("NFC", name)
+            if normalized != name:
+                raise RuntimeError(f"candidate ZIP path is not Unicode NFC-normalized: {name!r}")
+            folded = normalized.casefold()
+            previous = normalized_names.get(folded)
+            if previous is not None and previous != name:
+                raise RuntimeError(
+                    f"candidate ZIP contains Unicode/case-colliding paths: {previous!r} and {name!r}"
+                )
+            normalized_names[folded] = name
+
             if "\\" in name:
                 raise RuntimeError(f"candidate ZIP contains non-portable backslash path: {name}")
             pure = pathlib.PurePosixPath(name)
@@ -307,6 +345,19 @@ def validate(
                 "candidate Workspace archive Skill entrypoints mismatch: "
                 + ", ".join(sorted(skill_entrypoints))
             )
+        skill_members = [
+            pathlib.PurePosixPath(name)
+            for name in names
+            if name.startswith("skills/")
+        ]
+        if any(len(member.parts) < 3 for member in skill_members):
+            raise RuntimeError("candidate Workspace archive contains files directly under skills/")
+        skill_roots = {member.parts[1] for member in skill_members}
+        if skill_roots != EXPECTED_SKILL_ROOTS:
+            raise RuntimeError(
+                "candidate Workspace archive Skill roots mismatch: "
+                + ", ".join(sorted(skill_roots))
+            )
 
         missing = sorted(REQUIRED_PATHS.difference(names))
         if missing:
@@ -331,6 +382,14 @@ def validate(
         plugin = load_json(archive, "plugin.json")
         legacy = load_json(archive, ".codex-plugin/plugin.json")
         distribution = load_json(archive, "veteran-distribution.json")
+        skill_texts = {
+            skill_path: load_text(archive, skill_path)
+            for skill_path in EXPECTED_SKILL_NAMES
+        }
+        agent_texts = {
+            agent_path: load_text(archive, agent_path)
+            for agent_path in EXPECTED_AGENT_DISPLAY_NAMES
+        }
 
     if plugin.get("name") != PLUGIN_NAME:
         raise RuntimeError("candidate root plugin identity mismatch")
@@ -338,8 +397,132 @@ def validate(
         raise RuntimeError("candidate compatibility manifest identity mismatch")
     if legacy.get("skills") != "./skills":
         raise RuntimeError("candidate compatibility manifest must point to ./skills")
+    root_interface = plugin.get("extensions", {}).get("com.openai", {}).get("interface")
+    if not isinstance(root_interface, dict) or not root_interface:
+        raise RuntimeError("candidate root manifest OpenAI interface is missing")
+    if legacy.get("interface") != root_interface:
+        raise RuntimeError("candidate compatibility manifest interface drifted from root manifest")
     if "mcpServers" in legacy or "apps" in legacy:
         raise RuntimeError("candidate compatibility manifest must remain Workspace skill-only")
+    for skill_path, expected_name in EXPECTED_SKILL_NAMES.items():
+        actual_name = skill_frontmatter_name(skill_texts[skill_path], skill_path)
+        if actual_name != expected_name:
+            raise RuntimeError(
+                f"candidate Skill frontmatter name mismatch: {skill_path} -> {actual_name!r}"
+            )
+    for agent_path, expected_display in EXPECTED_AGENT_DISPLAY_NAMES.items():
+        agent_text = agent_texts[agent_path]
+        if re.search(r"(?m)^\s*policy\s*:", agent_text) or "allow_implicit_invocation" in agent_text:
+            raise RuntimeError(f"candidate Skill agent declares unsupported invocation policy: {agent_path}")
+        for product in ("chatgpt", "codex", "api", "atlas"):
+            if re.search(rf"(?m)^\s*-\s*{re.escape(product)}\s*$", agent_text):
+                raise RuntimeError(
+                    f"candidate Skill agent declares unsupported product policy metadata: {agent_path}"
+                )
+        display_pattern = rf'(?m)^\s*display_name:\s*["\']?{re.escape(expected_display)}["\']?\s*    version_tuple = parse_semver(version, "candidate plugin version")
+    if legacy.get("version") != version:
+        raise RuntimeError("candidate manifests disagree on Studio version")
+    if expected_version is not None and version != expected_version:
+        raise RuntimeError(f"candidate version mismatch: expected {expected_version} got {version}")
+    if installed_version is not None and version_tuple <= parse_semver(installed_version, "installed version"):
+        raise RuntimeError(
+            f"candidate version must be newer than installed version: {installed_version} -> {version}"
+        )
+
+    openai_extension = plugin.get("extensions", {}).get("com.openai", {})
+    if isinstance(openai_extension, dict) and "apps" in openai_extension:
+        raise RuntimeError("candidate root manifest must remain Workspace skill-only")
+    if "apps" in plugin or "mcpServers" in plugin:
+        raise RuntimeError("candidate root manifest must not declare app/MCP runtime surfaces")
+
+    if distribution.get("product") != PLUGIN_NAME:
+        raise RuntimeError("candidate distribution product mismatch")
+    if distribution.get("profile") != "workspace" or distribution.get("surfaceProfile") != "workspace-skill":
+        raise RuntimeError("candidate is not a Workspace Skill profile")
+    includes = distribution.get("includes")
+    expected_includes = {
+        "skill": True,
+        "runtime": False,
+        "mcpManifest": False,
+        "appReference": False,
+    }
+    if includes != expected_includes:
+        raise RuntimeError("candidate Workspace surface includes are not fail-closed")
+
+    provenance = distribution.get("releaseProvenance")
+    if not isinstance(provenance, dict):
+        raise RuntimeError("candidate Workspace provenance is missing")
+    revision = provenance.get("sourceRevision")
+    if revision != expected_revision:
+        raise RuntimeError(
+            f"candidate source revision mismatch: expected {expected_revision} got {revision}"
+        )
+    if provenance.get("sourceOfTruth") != "https://github.com/9529360-cpu/veteran-engineer":
+        raise RuntimeError("candidate source-of-truth repository mismatch")
+
+    return {
+        "plugin": PLUGIN_NAME,
+        "version": version,
+        "source_revision": revision,
+        "profile": "workspace",
+        "file_count": len(names),
+        "uncompressed_bytes": total_uncompressed,
+        "sha256": digest,
+        "installed_inventory_checked": installed_state is not None,
+        "installed_path_count": installed_snapshot["path_count"] if installed_state is not None else None,
+        "installed_page_offsets": installed_snapshot["page_offsets"] if installed_state is not None else None,
+        "expected_release_id": installed_snapshot["release_id"] if installed_state is not None else None,
+        "publication_mode": publication,
+        "safe_for_publication": True,
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("archive")
+    parser.add_argument("--expected-revision", required=True)
+    parser.add_argument("--expected-version")
+    parser.add_argument("--installed-version")
+    parser.add_argument("--expected-sha256")
+    parser.add_argument("--installed-state")
+    parser.add_argument("--publication", action="store_true")
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args()
+
+    report = validate(
+        pathlib.Path(args.archive).expanduser().resolve(),
+        expected_revision=args.expected_revision,
+        expected_version=args.expected_version,
+        installed_version=args.installed_version,
+        expected_sha256=args.expected_sha256,
+        installed_state=(
+            pathlib.Path(args.installed_state).expanduser().resolve()
+            if args.installed_state
+            else None
+        ),
+        publication=args.publication,
+    )
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        print(
+            f"workspace_release_gate=pass version={report['version']} "
+            f"revision={report['source_revision']} sha256={report['sha256']}"
+        )
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except RuntimeError as exc:
+        raise SystemExit(f"error: {exc}")
+
+        if not re.search(display_pattern, agent_text):
+            raise RuntimeError(
+                f"candidate Skill agent display name mismatch: {agent_path}"
+            )
+
     version = plugin.get("version")
     version_tuple = parse_semver(version, "candidate plugin version")
     if legacy.get("version") != version:
