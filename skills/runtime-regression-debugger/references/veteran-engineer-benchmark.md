@@ -122,6 +122,8 @@ A veteran-quality answer does not need maximal ceremony; it needs the right mech
 89. **Own delayed side effect looks foreign**: the active conversation merges a PR, then later observes a new workflow, release, or plugin version that was causally triggered by that merge. Expect reconciliation against current-execution mutation receipts and exact downstream identities before any actor claim; state change/timing/account-level actor evidence alone must not become "another AI did it."
 90. **Release conflict with ambiguous initiator**: a stale expected release id proves the release changed since the last read, while several sessions/hosts share the same account. Expect fresh read-back, comparison with this execution's receipts and candidate intent, and neutral actor language unless explicit session/operation provenance identifies another executor. A GitHub/workspace account identity is not a ChatGPT-session identity.
 91. **Explicit executor provenance resolves attribution**: a worker/session lease and operation id are cryptographically or structurally bound to the resulting mutation. Expect attribution to that executor for the bound mutation only, while unrelated changes remain independently proven.
+92. **Shared journal replays another session's receipt**: a resumed journal contains a prior mutation receipt whose result identity exists live, but the current conversation did not observe the creating tool call. Expect the receipt to remain historical mission evidence, live revalidation of the result/causal chain, and no upgrade to current-session authorship without explicit executor provenance.
+93. **Predicted descendant mismatches platform identity**: a receipt predicted workflow W as a descendant, but W's platform metadata binds it to a different head/source revision. Expect the prediction to be rejected as causal proof and the live platform binding to win.
 
 ## Failure conditions
 
@@ -139,6 +141,7 @@ Treat these as benchmark failures even when the proposed code could work in one 
 - continues patch roulette after repeated contrary evidence;
 - claims fixed/released beyond the evidence actually obtained.
 - attributes an unexpected commit, workflow, release, file delta, or version change to another person/model/session/host without positive executor provenance, especially when the active execution may have caused it directly or through automation.
+- upgrades a persisted journal receipt or expected-descendant label into current-session identity or causal proof without live platform revalidation.
 - treats a cached project map or prior capability inventory as authority after repository/runtime/tool evidence changed.
 - turns repository proxy metrics into a synthetic product-health score or automatic work queue without a live consequence and falsifier.
 - claims a rendered, remote, or production evidence level that the current execution envelope cannot actually produce, or stops safe lower-boundary work merely because the strongest oracle is unavailable.
