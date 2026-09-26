@@ -50,6 +50,13 @@ test('legacy workflow disable migration is narrowly scoped', () => {
   assert.ok(migration.includes('LEGACY_ID="358757508"'));
   assert.ok(migration.includes('/disable'));
   assert.ok(migration.includes('disabled_manually'));
+  assert.ok(migration.includes('HEAD_SHA: ${{ github.sha }}'));
+  assert.ok(migration.includes('actions/workflows/$V2_ID/runs?head_sha=$HEAD_SHA&event=push'));
+  assert.ok(migration.includes('Timed out waiting for Runtime Release V2 exact-main success'));
+  assert.ok(
+    migration.indexOf('test "$CONCLUSION" = "success"') <
+      migration.indexOf('actions/workflows/$LEGACY_ID/disable'),
+  );
   assert.equal(migration.includes('actions/checkout'), false);
   assert.equal(migration.includes('contents: write'), false);
 });
