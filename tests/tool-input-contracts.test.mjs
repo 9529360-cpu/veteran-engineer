@@ -90,6 +90,7 @@ test('flagship tools expose the parameters needed to complete the product workfl
   const machineAct = toolInputJsonSchema('machine_act');
   assert.equal(machineAct.properties.operation.enum.includes('fs.replace'), true);
   assert.equal(machineAct.properties.oldText.type, 'string');
+  assert.equal(machineAct.properties.oldText.minLength, 1);
   assert.equal(machineAct.properties.expectedOccurrences.maximum, 100);
   assert.equal(machineAct.properties.expectedSha256.type, 'string');
   assert.equal(machineAct.properties.expectedRepoHead.type, 'string');
