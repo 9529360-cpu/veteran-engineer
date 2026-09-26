@@ -23,7 +23,20 @@ on:
     tags:
       - "v*"
     paths:
+      - ".github/workflows/release.yml"
       - ".github/release-intent.json"
+      - "plugin.json"
+      - ".codex-plugin/plugin.json"
+      - "package.json"
+      - "package-lock.json"
+      - "src/constants.mjs"
+      - "scripts/release-contract.mjs"
+      - "scripts/release-candidate.mjs"
+      - "scripts/release-bootstrap.mjs"
+      - "tests/release-contract.test.mjs"
+      - "tests/release-bootstrap.test.mjs"
+      - "skills/runtime-regression-debugger/**"
+      - "skills/frontend-design-builder/**"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
@@ -32,7 +45,7 @@ concurrency:
 jobs:
   dry-run:
     name: Release candidate dry run
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -51,11 +64,15 @@ jobs:
         run: npm ci --include=optional
       - name: Validate release authorities
         env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet "$PR_BASE_SHA"...HEAD -- .github/release-intent.json; then
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            node scripts/release-contract.mjs --tag "$GITHUB_REF_NAME"
+          elif [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            node scripts/release-contract.mjs
+          elif git diff --quiet "$BASE_SHA"...HEAD -- .github/release-intent.json; then
             node scripts/release-contract.mjs
           else
             test -f .github/release-intent.json
@@ -74,9 +91,47 @@ jobs:
             sha256sum -c "$checksum"
           done
 
+  classify-push:
+    name: Classify release push
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      publish: ${{ steps.classify.outputs.publish }}
+    steps:
+      - name: Checkout release trigger source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Classify push
+        id: classify
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "reason=tag" >> "$GITHUB_OUTPUT"
+          elif [ "$GITHUB_REF" = "refs/heads/main" ] \
+            && [ -n "$BEFORE_SHA" ] \
+            && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ] \
+            && ! git diff --quiet "$BEFORE_SHA" "$GITHUB_SHA" -- .github/release-intent.json; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "reason=release-intent" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "reason=validation-only" >> "$GITHUB_OUTPUT"
+          fi
+
   publish:
     name: Publish release
-    if: github.event_name == 'push'
+    needs:
+      - dry-run
+      - classify-push
+    if: needs.dry-run.result == 'success' && needs.classify-push.outputs.publish == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
