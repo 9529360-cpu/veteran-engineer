@@ -699,7 +699,7 @@ export class MachineActionService {
       }
 
       const session = {
-        id: randomId('machinesession'), actionId, pid: child.pid, command, args: argv, cwd, child, status: 'running',
+        id: randomId('machinesession'), actionId, pid: child.pid, command, args: argv, cwd, repository, child, status: 'running',
         startedAt, endedAt: null, exitCode: null, signal: null, timedOut: false,
         events: [], eventBytes: 0, droppedEvents: 0, nextSeq: 0, timeoutHandle: null
       };
@@ -735,7 +735,8 @@ export class MachineActionService {
         receipt: receipt({
           resultIdentity: 'machineinput:' + actionId,
           target: session.id,
-          parentActionId: session.actionId || null
+          parentActionId: session.actionId || null,
+          repository: session.repository || null
         })
       };
     }
@@ -761,7 +762,8 @@ export class MachineActionService {
         receipt: receipt({
           resultIdentity: 'machinestop:' + actionId,
           target: session.id,
-          parentActionId: session.actionId || null
+          parentActionId: session.actionId || null,
+          repository: session.repository || null
         })
       };
     }
