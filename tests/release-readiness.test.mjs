@@ -97,3 +97,15 @@ test('validation runtimes use explicit interpreter and runner labels', () => {
   assert.ok(workflows.skill.includes('python-version: "3.12.14"'));
   assert.ok(workflows.package.includes('python-version: "3.12.14"'));
 });
+
+
+test('release push concurrency is exact-SHA scoped', () => {
+  const release = fs.readFileSync(path.join(root, '.github', 'workflows', 'release.yml'), 'utf8');
+  assert.ok(
+    release.includes(
+      "group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}"
+    )
+  );
+  assert.ok(release.includes("cancel-in-progress: ${{ github.event_name == 'pull_request' }}"));
+  assert.equal(release.includes("group: ${{ github.workflow }}-${{ github.ref }}"), false);
+});
