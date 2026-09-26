@@ -284,6 +284,9 @@ export async function createVeteranApp({
     let result;
     try {
       result = await handler(payload);
+      if (name === 'machine_act' && result?.receipt && typeof result.receipt === 'object') {
+        result = { ...result, receipt: { ...result.receipt, requestId } };
+      }
     } catch (error) {
       if (isStateCommitAuditOutcomeUnknown(error)) {
         await tryReconcileStateCommit(store);

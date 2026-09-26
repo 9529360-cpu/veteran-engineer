@@ -4,6 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { MachineActionService } from '../src/machine-action-service.mjs';
+import { git } from '../src/git.mjs';
+import { createGitRepo, cleanup } from './helpers.mjs';
 
 async function tempRoot() {
   return fs.mkdtemp(path.join(os.tmpdir(), 'veteran-machine-actions-'));
@@ -28,15 +30,48 @@ test('machine actions enforce workspace policy and support bounded files plus on
     const dir = path.join(root, 'src');
     await service.act({ operation: 'fs.mkdir', path: dir });
     const file = path.join(dir, 'hello.txt');
-    await service.act({ operation: 'fs.write', path: file, content: 'alpha\nbeta\n' });
+    const write = await service.act({ operation: 'fs.write', path: file, content: 'alpha\nbeta\n', requireAbsent: true });
+    assert.equal(write.created, true);
+    assert.match(write.afterSha256, /^[0-9a-f]{64}$/);
+    assert.equal(write.receipt.contract, 'veteran-machine-action-receipt-v1');
+    assert.match(write.receipt.actionId, /^machineaction_/);
+    assert.equal(write.receipt.resultIdentity, 'sha256:' + write.afterSha256);
+
+    const digest = await service.inspect({ operation: 'fs.digest', path: file });
+    assert.equal(digest.algorithm, 'sha256');
+    assert.equal(digest.digest, write.afterSha256);
+
+    await assert.rejects(
+      service.act({ operation: 'fs.write', path: file, content: 'stale\n', expectedSha256: '0'.repeat(64) }),
+      (error) => error?.code === 'MACHINE_FILE_PRECONDITION_FAILED'
+    );
+
+    const append = await service.act({
+      operation: 'fs.append',
+      path: file,
+      content: 'gamma\n',
+      expectedSha256: write.afterSha256
+    });
+    assert.equal(append.beforeSha256, write.afterSha256);
+    assert.notEqual(append.afterSha256, write.afterSha256);
+
     const read = await service.inspect({ operation: 'fs.read', path: file });
-    assert.equal(read.data, 'alpha\nbeta\n');
+    assert.equal(read.data, 'alpha\nbeta\ngamma\n');
 
     const search = await service.inspect({ operation: 'fs.search', path: root, query: 'beta' });
     assert.equal(search.matches.some((item) => item.path === file && item.kind === 'content'), true);
 
     const moved = path.join(dir, 'moved.txt');
-    await service.act({ operation: 'fs.move', path: file, destination: moved });
+    const move = await service.act({
+      operation: 'fs.move',
+      path: file,
+      destination: moved,
+      expectedSha256: append.afterSha256,
+      requireAbsent: true
+    });
+    assert.equal(move.beforeSha256, append.afterSha256);
+    assert.equal(move.afterSha256, append.afterSha256);
+    assert.equal(move.receipt.resultIdentity, 'sha256:' + append.afterSha256);
     assert.equal((await service.inspect({ operation: 'fs.stat', path: moved })).stat.type, 'file');
 
     const run = await service.act({
@@ -48,6 +83,9 @@ test('machine actions enforce workspace policy and support bounded files plus on
     });
     assert.equal(run.exitCode, 0);
     assert.equal(run.stdout, 'machine-ok');
+    assert.match(run.outputSha256, /^[0-9a-f]{64}$/);
+    assert.equal(run.receipt.contract, 'veteran-machine-action-receipt-v1');
+    assert.equal(run.receipt.resultIdentity, 'process-action:' + run.receipt.actionId);
 
     await assert.rejects(
       service.inspect({ operation: 'fs.read', path: path.join(outside, 'nope.txt') }),
@@ -82,9 +120,15 @@ test('machine actions preserve interactive process sessions and bounded output r
       timeoutMs: 30_000
     });
     const sessionId = started.session.id;
-    await service.act({ operation: 'process.input', sessionId, input: 'hello\n' });
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    let output = await service.inspect({ operation: 'process.output', sessionId });
+    assert.equal(started.session.actionId, started.receipt.actionId);
+    const inputReceipt = await service.act({ operation: 'process.input', sessionId, input: 'hello\n' });
+    assert.equal(inputReceipt.receipt.parentActionId, started.receipt.actionId);
+    let output = null;
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      output = await service.inspect({ operation: 'process.output', sessionId });
+      if (output.events.some((item) => item.text.includes('echo:hello'))) break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
     assert.equal(output.events.some((item) => item.text.includes('echo:hello')), true);
 
     await service.act({ operation: 'process.input', sessionId, input: 'bye\n' });
@@ -100,5 +144,59 @@ test('machine actions preserve interactive process sessions and bounded output r
   } finally {
     await service.shutdown();
     await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('machine repo.status binds local repository truth before and after a guarded edit', async () => {
+  const fixture = await createGitRepo();
+  const service = new MachineActionService({
+    enabled: true,
+    allowedLocalRoots: [fixture.repo],
+    deviceId: 'device-repo',
+    deviceName: 'repo-fixture'
+  });
+  try {
+    const initial = await service.inspect({ operation: 'repo.status', path: fixture.repo });
+    assert.equal(initial.contract, 'veteran-machine-action-v2');
+    assert.equal(initial.repository.head, fixture.head);
+    assert.equal(initial.repository.dirty, false);
+    assert.equal(initial.repository.detached, false);
+
+    const readme = path.join(fixture.repo, 'README.md');
+    const before = await service.inspect({ operation: 'fs.digest', path: readme });
+    const write = await service.act({
+      operation: 'fs.write',
+      path: readme,
+      content: 'hello\nchanged\n',
+      expectedSha256: before.digest,
+      expectedRepoHead: initial.repository.head
+    });
+    assert.equal(write.beforeSha256, before.digest);
+
+    const after = await service.inspect({ operation: 'repo.status', path: readme });
+    assert.equal(after.repository.root, await fs.realpath(fixture.repo));
+    assert.equal(after.repository.head, fixture.head);
+    assert.equal(after.repository.dirty, true);
+    assert.equal(after.repository.unstaged >= 1, true);
+
+    await git(fixture.repo, ['add', 'README.md']);
+    await git(fixture.repo, ['commit', '-q', '-m', 'advance repository head']);
+    const advanced = await service.inspect({ operation: 'repo.status', path: fixture.repo });
+    assert.notEqual(advanced.repository.head, initial.repository.head);
+    const currentDigest = await service.inspect({ operation: 'fs.digest', path: readme });
+    await assert.rejects(
+      service.act({
+        operation: 'fs.append',
+        path: readme,
+        content: 'should-not-land\n',
+        expectedSha256: currentDigest.digest,
+        expectedRepoHead: initial.repository.head
+      }),
+      (error) => error?.code === 'MACHINE_REPOSITORY_PRECONDITION_FAILED'
+    );
+    assert.equal((await service.inspect({ operation: 'fs.digest', path: readme })).digest, currentDigest.digest);
+  } finally {
+    await service.shutdown();
+    await cleanup(fixture.root);
   }
 });

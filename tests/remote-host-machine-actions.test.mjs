@@ -50,12 +50,35 @@ test('Remote Host exposes opt-in machine inspect/action through the real MCP sur
     assert.equal(status.structuredContent.enabled, true);
     assert.equal(status.structuredContent.device.id, initialized.config.deviceId);
 
-    const target = path.join(fixture.root, 'machine.txt');
-    const write = await client.callTool({
-      name: 'machine_act',
-      arguments: { requestId: crypto.randomUUID(), operation: 'fs.write', path: target, content: 'remote-machine-ok\n' }
+    const repoStatus = await client.callTool({
+      name: 'machine_inspect',
+      arguments: { operation: 'repo.status', path: fixture.repo }
     });
+    assert.equal(repoStatus.isError, undefined, JSON.stringify(repoStatus));
+    assert.equal(repoStatus.structuredContent.repository.head, fixture.head);
+    assert.equal(repoStatus.structuredContent.repository.dirty, false);
+
+    const target = path.join(fixture.repo, 'machine.txt');
+    const writeRequestId = crypto.randomUUID();
+    const writeArguments = {
+      requestId: writeRequestId,
+      operation: 'fs.write',
+      path: target,
+      content: 'remote-machine-ok\n',
+      requireAbsent: true,
+      expectedRepoHead: repoStatus.structuredContent.repository.head
+    };
+    const write = await client.callTool({ name: 'machine_act', arguments: writeArguments });
     assert.equal(write.isError, undefined, JSON.stringify(write));
+    assert.equal(write.structuredContent.receipt.contract, 'veteran-machine-action-receipt-v1');
+    assert.equal(write.structuredContent.receipt.requestId, writeRequestId);
+    assert.equal(write.structuredContent.receipt.repository.head, fixture.head);
+    assert.match(write.structuredContent.afterSha256, /^[0-9a-f]{64}$/);
+
+    const replay = await client.callTool({ name: 'machine_act', arguments: writeArguments });
+    assert.equal(replay.isError, undefined, JSON.stringify(replay));
+    assert.equal(replay.structuredContent.receipt.actionId, write.structuredContent.receipt.actionId);
+    assert.equal(replay.structuredContent.afterSha256, write.structuredContent.afterSha256);
 
     const read = await client.callTool({ name: 'machine_inspect', arguments: { operation: 'fs.read', path: target } });
     assert.equal(read.isError, undefined, JSON.stringify(read));
@@ -68,13 +91,15 @@ test('Remote Host exposes opt-in machine inspect/action through the real MCP sur
         operation: 'process.start',
         command: 'node',
         args: ['-e', 'process.stdout.write("remote-process-ok")'],
-        cwd: fixture.root,
+        cwd: fixture.repo,
+        expectedRepoHead: fixture.head,
         timeoutMs: 10_000
       }
     });
     assert.equal(run.isError, undefined, JSON.stringify(run));
     assert.equal(run.structuredContent.exitCode, 0);
     assert.equal(run.structuredContent.stdout, 'remote-process-ok');
+    assert.equal(run.structuredContent.receipt.contract, 'veteran-machine-action-receipt-v1');
 
     const outside = path.join(path.dirname(fixture.root), 'outside-machine-actions.txt');
     await fs.writeFile(outside, 'outside');

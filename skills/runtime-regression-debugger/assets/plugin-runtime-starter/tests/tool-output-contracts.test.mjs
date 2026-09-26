@@ -61,6 +61,14 @@ test('flagship output contracts expose fields needed to chain the engineering wo
   assert.ok(health.required.includes('toolCount'));
   assert.ok(health.properties.mcp);
 
+  const machineInspect = toolOutputJsonSchema('machine_inspect');
+  assert.ok(machineInspect.properties.repository);
+  assert.ok(machineInspect.properties.digest);
+  const machineAct = toolOutputJsonSchema('machine_act');
+  assert.ok(machineAct.properties.receipt);
+  assert.ok(machineAct.properties.afterSha256);
+  assert.ok(machineAct.properties.outputSha256);
+
   const handoff = toolOutputJsonSchema('handoff_export');
   assert.deepEqual(handoff.required, ['id', 'artifactPointer', 'handoff']);
   assert.equal(handoff.properties.handoff.properties.schema.type, 'string');

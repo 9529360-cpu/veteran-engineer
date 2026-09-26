@@ -47,7 +47,7 @@ Advance only the **decision frontier** needed for the next safe action. Freeze s
 For substantial work repeat:
 
 1. **Environment** - compile the execution envelope across source/history, terminal, browser/GUI, repo/CI, network, design, DB/runtime, observability/deploy, persistence, credentials, and authorization. Bind proof to real capabilities and use honest fallbacks.
-   When `machine_inspect` / `machine_act` are exposed by an authorized Veteran Machine Bridge, read `references/machine-action-fabric.md`; inspect device/policy/path/session state before machine mutation, and never infer host reachability from a client-side path alone.
+   When `machine_inspect` / `machine_act` are exposed by an authorized Veteran Machine Bridge, read `references/machine-action-fabric.md`; bind device/policy/repository/path/session state before machine mutation, pass exact repository-HEAD and file-fingerprint preconditions where available, retain action receipts through postcondition checks, and never infer host reachability or executor identity from a client-side path alone.
 2. **Truth** - recover instructions, active callers, schemas/manifests, authoritative owners, working state, and runtime evidence needed now.
 3. **Route** - select one current process owner plus minimum mechanism/risk context.
 4. **Contract/design** - close only decisions required before mutation.

@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -6,7 +8,8 @@ import { assertLocalPathAllowed } from './workspace-policy.mjs';
 import { signalProcessTree } from './process-lifecycle-authority.mjs';
 import { randomId } from './util.mjs';
 
-export const MACHINE_ACTION_CONTRACT = 'veteran-machine-action-v1';
+export const MACHINE_ACTION_CONTRACT = 'veteran-machine-action-v2';
+export const MACHINE_ACTION_RECEIPT_CONTRACT = 'veteran-machine-action-receipt-v1';
 
 const DEFAULT_LIMITS = Object.freeze({
   maxReadBytes: 256 * 1024,
@@ -72,6 +75,162 @@ function appendBounded(current, chunk, maxBytes) {
   const joined = Buffer.from(current + String(chunk), 'utf8');
   if (joined.length <= maxBytes) return { text: joined.toString('utf8'), truncated: false };
   return { text: joined.subarray(Math.max(0, joined.length - maxBytes)).toString('utf8'), truncated: true };
+}
+
+function sha256Buffer(value) {
+  return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+function normalizedSha256(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const digest = String(value).trim().toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(digest)) {
+    throw codedError('MACHINE_SHA256_INVALID', 'expectedSha256 must be a lowercase or uppercase 64-character SHA-256 hex digest');
+  }
+  return digest;
+}
+
+function normalizedGitObjectId(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const objectId = String(value).trim().toLowerCase();
+  if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(objectId)) {
+    throw codedError('MACHINE_GIT_OBJECT_ID_INVALID', 'expectedRepoHead must be a 40- or 64-character Git object id');
+  }
+  return objectId;
+}
+
+async function fileFingerprint(target) {
+  try {
+    const stat = await fs.stat(target);
+    if (!stat.isFile()) {
+      return { exists: true, type: stat.isDirectory() ? 'directory' : 'other', bytes: stat.size, sha256: null, mtime: stat.mtime.toISOString() };
+    }
+    const hash = crypto.createHash('sha256');
+    await new Promise((resolve, reject) => {
+      const stream = createReadStream(target);
+      stream.on('data', (chunk) => hash.update(chunk));
+      stream.once('error', reject);
+      stream.once('end', resolve);
+    });
+    return { exists: true, type: 'file', bytes: stat.size, sha256: hash.digest('hex'), mtime: stat.mtime.toISOString() };
+  } catch (error) {
+    if (error?.code === 'ENOENT') return { exists: false, type: null, bytes: 0, sha256: null, mtime: null };
+    throw error;
+  }
+}
+
+function assertMutationPrecondition(state, args, target, { requireRegularFile = false } = {}) {
+  const expectedSha256 = normalizedSha256(args.expectedSha256);
+  if (args.requireAbsent === true && state.exists) {
+    throw codedError('MACHINE_FILE_PRECONDITION_FAILED', 'Machine action expected the target to be absent before mutation', {
+      path: target, requireAbsent: true, actualSha256: state.sha256, actualType: state.type
+    });
+  }
+  if (expectedSha256 !== null) {
+    if (!state.exists || state.sha256 !== expectedSha256) {
+      throw codedError('MACHINE_FILE_PRECONDITION_FAILED', 'Machine action file fingerprint no longer matches expectedSha256', {
+        path: target, expectedSha256, actualSha256: state.sha256, actualType: state.type, exists: state.exists
+      });
+    }
+  }
+  if (requireRegularFile && state.exists && state.type !== 'file') {
+    throw codedError('MACHINE_FILE_REQUIRED', 'Machine action requires a regular file for this fingerprint precondition', {
+      path: target, actualType: state.type
+    });
+  }
+  return expectedSha256;
+}
+
+async function runBoundedProcess(command, args, cwd, { timeoutMs = 5_000, maxOutputBytes = 256 * 1024, allowExitCodes = [0] } = {}) {
+  const child = spawn(command, args, {
+    cwd, env: safeChildEnvironment(), shell: false, windowsHide: true,
+    detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe']
+  });
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  let stdout = '', stderr = '', stdoutTruncated = false, stderrTruncated = false, timedOut = false;
+  child.stdout.on('data', (chunk) => {
+    const next = appendBounded(stdout, chunk, maxOutputBytes);
+    stdout = next.text;
+    stdoutTruncated ||= next.truncated;
+  });
+  child.stderr.on('data', (chunk) => {
+    const next = appendBounded(stderr, chunk, maxOutputBytes);
+    stderr = next.text;
+    stderrTruncated ||= next.truncated;
+  });
+  const startedAt = Date.now();
+  let spawnError = null;
+  child.once('error', (error) => { spawnError = error; });
+  const timeoutHandle = setTimeout(() => {
+    timedOut = true;
+    if (Number.isInteger(child.pid)) signalProcessTree(child.pid, 'SIGKILL');
+  }, timeoutMs);
+  timeoutHandle.unref?.();
+  const exit = await new Promise((resolve) => child.once('close', (code, signal) => resolve({ code, signal })));
+  clearTimeout(timeoutHandle);
+  if (spawnError) throw spawnError;
+  if (timedOut) {
+    throw codedError('MACHINE_INSPECT_TIMEOUT', 'Read-only machine inspection process timed out', {
+      command, args, timeoutMs, durationMs: Date.now() - startedAt
+    });
+  }
+  if (!allowExitCodes.includes(exit.code)) {
+    const error = codedError('MACHINE_INSPECT_PROCESS_FAILED', 'Read-only machine inspection process failed', {
+      command, args, exitCode: exit.code, signal: exit.signal || null,
+      stderr: stderr.slice(-4000), stdout: stdout.slice(-4000)
+    });
+    error.exitCode = exit.code;
+    throw error;
+  }
+  return {
+    stdout, stderr, exitCode: exit.code, signal: exit.signal || null,
+    durationMs: Date.now() - startedAt,
+    truncated: { stdout: stdoutTruncated, stderr: stderrTruncated }
+  };
+}
+
+function parseGitStatusPorcelainV2(raw) {
+  const summary = {
+    branch: null, upstream: null, ahead: 0, behind: 0,
+    staged: 0, unstaged: 0, untracked: 0, conflicts: 0, dirty: false
+  };
+  const rows = String(raw || '').split(/\0|\r?\n/).filter(Boolean);
+  for (const row of rows) {
+    if (row.startsWith('# branch.head ')) {
+      const value = row.slice('# branch.head '.length).trim();
+      summary.branch = value === '(detached)' ? null : value;
+      continue;
+    }
+    if (row.startsWith('# branch.upstream ')) {
+      summary.upstream = row.slice('# branch.upstream '.length).trim() || null;
+      continue;
+    }
+    if (row.startsWith('# branch.ab ')) {
+      const match = row.match(/\+(\d+)\s+-(\d+)/);
+      if (match) {
+        summary.ahead = Number(match[1]);
+        summary.behind = Number(match[2]);
+      }
+      continue;
+    }
+    if (row.startsWith('? ')) {
+      summary.untracked += 1;
+      continue;
+    }
+    if (row.startsWith('! ')) continue;
+    if (row.startsWith('u ')) {
+      summary.conflicts += 1;
+      continue;
+    }
+    if (row.startsWith('1 ') || row.startsWith('2 ')) {
+      const xy = row.split(' ', 3)[1] || '..';
+      if (xy[0] && xy[0] !== '.') summary.staged += 1;
+      if (xy[1] && xy[1] !== '.') summary.unstaged += 1;
+    }
+  }
+  summary.dirty = summary.staged > 0 || summary.unstaged > 0 || summary.untracked > 0 || summary.conflicts > 0;
+  return summary;
 }
 
 async function nearestExistingParent(candidate) {
@@ -142,6 +301,41 @@ export class MachineActionService {
     return resolved;
   }
 
+  async #assertExpectedRepoHead(candidate, expectedRepoHead) {
+    const expected = normalizedGitObjectId(expectedRepoHead);
+    if (expected === null) return null;
+    const existing = await nearestExistingParent(candidate);
+    const allowed = await this.#allowedReadPath(existing, 'repository precondition path');
+    const stat = await fs.stat(allowed);
+    const cwd = stat.isDirectory() ? allowed : path.dirname(allowed);
+    let rootProbe;
+    try {
+      rootProbe = await runBoundedProcess('git', ['rev-parse', '--show-toplevel'], cwd, {
+        timeoutMs: Math.min(this.limits.defaultTimeoutMs, 10_000),
+        maxOutputBytes: this.limits.maxReadBytes
+      });
+    } catch (error) {
+      if (error?.code === 'ENOENT') {
+        throw codedError('MACHINE_GIT_UNAVAILABLE', 'expectedRepoHead requires git on the machine PATH');
+      }
+      throw codedError('MACHINE_REPOSITORY_PRECONDITION_FAILED', 'Machine action expected a Git checkout but the mutation path is not inside one', {
+        path: candidate, expectedRepoHead: expected
+      });
+    }
+    const root = await this.#allowedReadPath(rootProbe.stdout.trim(), 'repository precondition root');
+    const headResult = await runBoundedProcess('git', ['rev-parse', 'HEAD'], root, {
+      timeoutMs: Math.min(this.limits.defaultTimeoutMs, 10_000),
+      maxOutputBytes: this.limits.maxReadBytes
+    });
+    const actual = headResult.stdout.trim().toLowerCase();
+    if (actual !== expected) {
+      throw codedError('MACHINE_REPOSITORY_PRECONDITION_FAILED', 'Machine action repository HEAD no longer matches expectedRepoHead', {
+        repositoryRoot: root, expectedRepoHead: expected, actualRepoHead: actual
+      });
+    }
+    return { root, head: actual };
+  }
+
   #assertExecutable(command) {
     this.#assertEnabled();
     const key = executableKey(command);
@@ -169,9 +363,26 @@ export class MachineActionService {
 
   #sessionSummary(session) {
     return {
-      id: session.id, pid: session.pid, status: session.status, command: session.command, args: session.args, cwd: session.cwd,
+      id: session.id, actionId: session.actionId || null, pid: session.pid, status: session.status,
+      command: session.command, args: session.args, cwd: session.cwd,
       startedAt: session.startedAt, endedAt: session.endedAt || null, exitCode: session.exitCode ?? null,
       signal: session.signal || null, timedOut: session.timedOut === true, droppedEvents: session.droppedEvents || 0
+    };
+  }
+
+  #actionReceipt({ actionId, operation, startedAt, outcome = 'completed', resultIdentity = null, target = null, parentActionId = null, repository = null, endedAt = null } = {}) {
+    return {
+      contract: MACHINE_ACTION_RECEIPT_CONTRACT,
+      actionId,
+      operation,
+      device: { id: this.deviceId, name: this.deviceName, platform: process.platform, arch: process.arch },
+      startedAt,
+      endedAt: endedAt ?? (outcome === 'running' ? null : new Date().toISOString()),
+      outcome,
+      ...(resultIdentity ? { resultIdentity } : {}),
+      ...(target ? { target } : {}),
+      ...(parentActionId ? { parentActionId } : {}),
+      ...(repository ? { repository } : {})
     };
   }
 
@@ -243,6 +454,73 @@ export class MachineActionService {
       } finally { await handle.close(); }
     }
 
+    if (operation === 'fs.digest') {
+      const target = await this.#allowedReadPath(args.path, 'file path');
+      const fingerprint = await fileFingerprint(target);
+      if (!fingerprint.exists || fingerprint.type !== 'file') {
+        throw codedError('MACHINE_FILE_REQUIRED', 'fs.digest requires a regular file', { path: target, actualType: fingerprint.type });
+      }
+      return { operation, path: target, algorithm: 'sha256', digest: fingerprint.sha256, bytes: fingerprint.bytes, mtime: fingerprint.mtime };
+    }
+
+    if (operation === 'repo.status') {
+      const target = await this.#allowedReadPath(args.path || this.allowedLocalRoots[0], 'repository path');
+      const targetStat = await fs.stat(target);
+      const cwd = targetStat.isDirectory() ? target : path.dirname(target);
+      let rootProbe;
+      try {
+        rootProbe = await runBoundedProcess('git', ['rev-parse', '--show-toplevel'], cwd, {
+          timeoutMs: Math.min(this.limits.defaultTimeoutMs, 10_000),
+          maxOutputBytes: this.limits.maxReadBytes
+        });
+      } catch (error) {
+        if (error?.code === 'ENOENT') {
+          throw codedError('MACHINE_GIT_UNAVAILABLE', 'repo.status requires git on the machine PATH');
+        }
+        if (error?.code === 'MACHINE_INSPECT_PROCESS_FAILED') {
+          throw codedError('MACHINE_GIT_REPOSITORY_REQUIRED', 'repo.status path is not inside a readable Git worktree', { path: target });
+        }
+        throw error;
+      }
+      const repositoryRoot = await this.#allowedReadPath(rootProbe.stdout.trim(), 'repository root');
+      const [headResult, branchResult, statusResult, originResult] = await Promise.all([
+        runBoundedProcess('git', ['rev-parse', 'HEAD'], repositoryRoot, {
+          timeoutMs: Math.min(this.limits.defaultTimeoutMs, 10_000), maxOutputBytes: this.limits.maxReadBytes
+        }),
+        runBoundedProcess('git', ['symbolic-ref', '--quiet', '--short', 'HEAD'], repositoryRoot, {
+          timeoutMs: Math.min(this.limits.defaultTimeoutMs, 10_000), maxOutputBytes: this.limits.maxReadBytes, allowExitCodes: [0, 1]
+        }),
+        runBoundedProcess('git', ['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=normal'], repositoryRoot, {
+          timeoutMs: Math.min(this.limits.defaultTimeoutMs, 10_000), maxOutputBytes: this.limits.maxReadBytes
+        }),
+        runBoundedProcess('git', ['remote', 'get-url', 'origin'], repositoryRoot, {
+          timeoutMs: Math.min(this.limits.defaultTimeoutMs, 10_000), maxOutputBytes: this.limits.maxReadBytes, allowExitCodes: [0, 2]
+        })
+      ]);
+      const parsed = parseGitStatusPorcelainV2(statusResult.stdout);
+      const branch = branchResult.exitCode === 0 ? branchResult.stdout.trim() || parsed.branch : parsed.branch;
+      return {
+        operation,
+        contract: MACHINE_ACTION_CONTRACT,
+        observedAt: new Date().toISOString(),
+        repository: {
+          root: repositoryRoot,
+          head: headResult.stdout.trim(),
+          branch: branch || null,
+          detached: !branch,
+          upstream: parsed.upstream,
+          ahead: parsed.ahead,
+          behind: parsed.behind,
+          dirty: parsed.dirty,
+          staged: parsed.staged,
+          unstaged: parsed.unstaged,
+          untracked: parsed.untracked,
+          conflicts: parsed.conflicts,
+          origin: originResult.exitCode === 0 ? originResult.stdout.trim() || null : null
+        }
+      };
+    }
+
     if (operation === 'fs.search') {
       const root = await this.#allowedReadPath(args.path, 'search root');
       const query = String(args.query || '').trim().toLowerCase();
@@ -304,6 +582,9 @@ export class MachineActionService {
   async act(args = {}) {
     const operation = String(args.operation || '');
     this.#assertEnabled();
+    const actionId = randomId('machineaction');
+    const startedAt = new Date().toISOString();
+    const receipt = (options = {}) => this.#actionReceipt({ actionId, operation, startedAt, ...options });
 
     if (operation === 'fs.write' || operation === 'fs.append') {
       const target = await this.#allowedWritePath(args.path, 'file write path');
@@ -312,24 +593,63 @@ export class MachineActionService {
       if (data.length > this.limits.maxWriteBytes) {
         throw codedError('MACHINE_WRITE_TOO_LARGE', 'Machine file write exceeds configured maxWriteBytes', { bytes: data.length, maxWriteBytes: this.limits.maxWriteBytes });
       }
+      const repository = await this.#assertExpectedRepoHead(target, args.expectedRepoHead);
+      const before = await fileFingerprint(target);
+      assertMutationPrecondition(before, args, target, { requireRegularFile: operation === 'fs.append' });
       if (args.createParents !== false) await fs.mkdir(path.dirname(target), { recursive: true });
       if (operation === 'fs.append') await fs.appendFile(target, data);
       else await fs.writeFile(target, data);
-      return { operation, path: target, bytes: data.length, encoding };
+      const after = await fileFingerprint(target);
+      return {
+        operation, path: target, bytes: data.length, encoding,
+        created: !before.exists,
+        ...(before.sha256 ? { beforeSha256: before.sha256, beforeBytes: before.bytes } : {}),
+        ...(after.sha256 ? { afterSha256: after.sha256, afterBytes: after.bytes } : {}),
+        receipt: receipt({ resultIdentity: after.sha256 ? 'sha256:' + after.sha256 : 'action:' + actionId, target, repository })
+      };
     }
 
     if (operation === 'fs.mkdir') {
       const target = await this.#allowedWritePath(args.path, 'directory create path');
+      const repository = await this.#assertExpectedRepoHead(target, args.expectedRepoHead);
+      const before = await fileFingerprint(target);
+      if (args.requireAbsent === true && before.exists) {
+        throw codedError('MACHINE_FILE_PRECONDITION_FAILED', 'Machine action expected the directory path to be absent before mkdir', {
+          path: target, actualType: before.type
+        });
+      }
       await fs.mkdir(target, { recursive: true });
-      return { operation, path: target, created: true };
+      return {
+        operation, path: target, created: !before.exists,
+        receipt: receipt({ resultIdentity: 'action:' + actionId, target, repository })
+      };
     }
 
     if (operation === 'fs.move') {
       const source = await this.#allowedReadPath(args.path, 'move source');
       const destination = await this.#allowedWritePath(args.destination, 'move destination');
+      const repository = await this.#assertExpectedRepoHead(source, args.expectedRepoHead);
+      const sourceBefore = await fileFingerprint(source);
+      assertMutationPrecondition(sourceBefore, { expectedSha256: args.expectedSha256 }, source, { requireRegularFile: args.expectedSha256 != null });
+      const destinationBefore = await fileFingerprint(destination);
+      if (args.requireAbsent === true && destinationBefore.exists) {
+        throw codedError('MACHINE_FILE_PRECONDITION_FAILED', 'Machine action expected the move destination to be absent', {
+          path: destination, actualSha256: destinationBefore.sha256, actualType: destinationBefore.type
+        });
+      }
       if (args.createParents !== false) await fs.mkdir(path.dirname(destination), { recursive: true });
       await fs.rename(source, destination);
-      return { operation, path: source, destination };
+      const destinationAfter = await fileFingerprint(destination);
+      return {
+        operation, path: source, destination,
+        ...(sourceBefore.sha256 ? { beforeSha256: sourceBefore.sha256, beforeBytes: sourceBefore.bytes } : {}),
+        ...(destinationAfter.sha256 ? { afterSha256: destinationAfter.sha256, afterBytes: destinationAfter.bytes } : {}),
+        receipt: receipt({
+          resultIdentity: destinationAfter.sha256 ? 'sha256:' + destinationAfter.sha256 : 'action:' + actionId,
+          target: destination,
+          repository
+        })
+      };
     }
 
     if (operation === 'process.start') {
@@ -340,6 +660,7 @@ export class MachineActionService {
         throw codedError('MACHINE_COMMAND_ARGUMENTS_INVALID', 'Machine process arguments exceed bounded count/length limits');
       }
       const cwd = await this.#allowedReadPath(args.cwd || this.allowedLocalRoots[0], 'process cwd');
+      const repository = await this.#assertExpectedRepoHead(cwd, args.expectedRepoHead);
       const persistent = args.persistent === true;
       const maxTimeout = persistent ? this.limits.maxPersistentMs : this.limits.maxTimeoutMs;
       const timeoutMs = positiveInteger(args.timeoutMs, persistent ? Math.min(30 * 60 * 1000, maxTimeout) : this.limits.defaultTimeoutMs, maxTimeout);
@@ -358,24 +679,28 @@ export class MachineActionService {
 
       if (!persistent) {
         let stdout = '', stderr = '', stdoutTruncated = false, stderrTruncated = false, timedOut = false;
-        const startedAt = Date.now();
+        const processStartedAt = Date.now();
         child.stdout.on('data', (chunk) => { const next = appendBounded(stdout, chunk, this.limits.maxSessionOutputBytes); stdout = next.text; stdoutTruncated ||= next.truncated; });
         child.stderr.on('data', (chunk) => { const next = appendBounded(stderr, chunk, this.limits.maxSessionOutputBytes); stderr = next.text; stderrTruncated ||= next.truncated; });
         const timeoutHandle = setTimeout(() => { timedOut = true; signalProcessTree(child.pid, 'SIGKILL'); }, timeoutMs);
         timeoutHandle.unref?.();
         const exit = await new Promise((resolve, reject) => { child.once('error', reject); child.once('close', (code, signal) => resolve({ code, signal })); });
         clearTimeout(timeoutHandle);
+        const outputSha256 = sha256Buffer(Buffer.from(stdout + '\0' + stderr, 'utf8'));
         return {
           operation, persistent: false, pid: child.pid, command, args: argv, cwd,
           ...(Number.isInteger(exit.code) ? { exitCode: exit.code } : {}),
           ...(exit.signal ? { signal: exit.signal } : {}),
-          timedOut, durationMs: Date.now() - startedAt, stdout, stderr, truncated: { stdout: stdoutTruncated, stderr: stderrTruncated }
+          timedOut, durationMs: Date.now() - processStartedAt, stdout, stderr,
+          outputSha256,
+          truncated: { stdout: stdoutTruncated, stderr: stderrTruncated },
+          receipt: receipt({ resultIdentity: 'process-action:' + actionId, target: cwd, repository })
         };
       }
 
       const session = {
-        id: randomId('machinesession'), pid: child.pid, command, args: argv, cwd, child, status: 'running',
-        startedAt: new Date().toISOString(), endedAt: null, exitCode: null, signal: null, timedOut: false,
+        id: randomId('machinesession'), actionId, pid: child.pid, command, args: argv, cwd, repository, child, status: 'running',
+        startedAt, endedAt: null, exitCode: null, signal: null, timedOut: false,
         events: [], eventBytes: 0, droppedEvents: 0, nextSeq: 0, timeoutHandle: null
       };
       child.stdout.on('data', (chunk) => this.#recordEvent(session, 'stdout', chunk));
@@ -393,7 +718,10 @@ export class MachineActionService {
       }, timeoutMs);
       session.timeoutHandle.unref?.();
       this.sessions.set(session.id, session);
-      return { operation, persistent: true, session: this.#sessionSummary(session) };
+      return {
+        operation, persistent: true, session: this.#sessionSummary(session),
+        receipt: receipt({ outcome: 'running', resultIdentity: 'machinesession:' + session.id, target: cwd, repository, endedAt: null })
+      };
     }
 
     if (operation === 'process.input') {
@@ -402,17 +730,42 @@ export class MachineActionService {
       if (session.status !== 'running' || !session.child.stdin?.writable) throw codedError('MACHINE_SESSION_NOT_WRITABLE', 'Machine process session is not accepting input', { sessionId: session.id, status: session.status });
       const input = String(args.input ?? '');
       session.child.stdin.write(input);
-      return { operation, sessionId: session.id, acceptedBytes: Buffer.byteLength(input) };
+      return {
+        operation, sessionId: session.id, acceptedBytes: Buffer.byteLength(input),
+        receipt: receipt({
+          resultIdentity: 'machineinput:' + actionId,
+          target: session.id,
+          parentActionId: session.actionId || null,
+          repository: session.repository || null
+        })
+      };
     }
 
     if (operation === 'process.stop') {
       const session = this.sessions.get(String(args.sessionId || ''));
       if (!session) throw codedError('MACHINE_SESSION_NOT_FOUND', 'Unknown machine process session', { sessionId: args.sessionId || null });
-      if (session.status !== 'running') return { operation, session: this.#sessionSummary(session), signalled: false, reason: 'already-exited' };
+      if (session.status !== 'running') {
+        return {
+          operation, session: this.#sessionSummary(session), signalled: false, reason: 'already-exited',
+          receipt: receipt({
+            resultIdentity: 'machinestop:' + actionId,
+            target: session.id,
+            parentActionId: session.actionId || null
+          })
+        };
+      }
       const signal = args.signal === 'SIGKILL' ? 'SIGKILL' : 'SIGTERM';
       const result = signalProcessTree(session.pid, signal);
       this.#recordEvent(session, 'system', 'Process stop requested with ' + signal + '.');
-      return { operation, session: this.#sessionSummary(session), ...result };
+      return {
+        operation, session: this.#sessionSummary(session), ...result,
+        receipt: receipt({
+          resultIdentity: 'machinestop:' + actionId,
+          target: session.id,
+          parentActionId: session.actionId || null,
+          repository: session.repository || null
+        })
+      };
     }
     throw codedError('MACHINE_ACT_OPERATION_UNSUPPORTED', 'Unsupported machine_act operation: ' + operation);
   }
