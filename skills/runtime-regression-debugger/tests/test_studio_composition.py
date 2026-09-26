@@ -167,14 +167,19 @@ def test_studio_composition_contract():
     assert "do not retry by merely substituting the newer release ID" in distribution_contract
     assert "Workspace updates are overlays" in distribution_contract
     assert "scripts/workspace_release_gate.py --publication" in distribution_contract
-    assert "installed plugin version/release and full source inventory" in distribution_contract
+    assert "follow every `next_offset` until it is `null`" in distribution_contract
+    assert "installed-state snapshot" in distribution_contract
+    assert "expected_release_id" in distribution_contract
     assert "immutable GitHub artifact SHA-256 digest" in distribution_contract
     assert "overlay updates cannot delete it" in distribution_contract
     assert (SKILL_ROOT / "scripts" / "workspace_release_gate.py").is_file()
     assert (SKILL_ROOT / "tests" / "test_workspace_release_gate.py").is_file()
     workspace_gate = (SKILL_ROOT / "scripts" / "workspace_release_gate.py").read_text()
     assert "--publication" in workspace_gate
-    assert "--installed-inventory" in workspace_gate
+    assert "--installed-state" in workspace_gate
+    assert "veteran-workspace-installed-state-v1" in workspace_gate
+    assert "inventory_complete" in workspace_gate
+    assert "expected_release_id" in workspace_gate
     assert "overlay publication cannot delete" in workspace_gate
 
     autonomous = (SKILL_ROOT / "references" / "autonomous-repository-engineering.md").read_text()
