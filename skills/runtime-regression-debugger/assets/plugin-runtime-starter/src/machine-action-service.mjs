@@ -614,6 +614,10 @@ export class MachineActionService {
       ];
       if (staged) diffArgs.push('--cached');
       diffArgs.push('--');
+      const relativeScope = path.relative(repositoryRoot, target);
+      if (relativeScope && relativeScope !== '.' && !relativeScope.startsWith('..' + path.sep) && !path.isAbsolute(relativeScope)) {
+        diffArgs.push(relativeScope.split(path.sep).join('/'));
+      }
       const diffResult = await runReadOnlyGit(diffArgs, repositoryRoot, {
         timeoutMs: Math.min(this.limits.defaultTimeoutMs, 15_000),
         maxOutputBytes: maxBytes,
@@ -624,6 +628,7 @@ export class MachineActionService {
         contract: MACHINE_ACTION_CONTRACT,
         observedAt: new Date().toISOString(),
         repository: { root: repositoryRoot, head: headResult.stdout.trim() },
+        scope: relativeScope ? relativeScope.split(path.sep).join('/') : '.',
         staged,
         contextLines,
         patch: diffResult.stdout,
@@ -710,6 +715,13 @@ export class MachineActionService {
         throw codedError('MACHINE_REPLACE_COUNT_INVALID', 'fs.replace expectedOccurrences must be an integer from 1 to 100');
       }
       const repository = await this.#assertExpectedRepoHead(target, args.expectedRepoHead);
+      const targetEntry = await fs.lstat(target).catch((error) => {
+        if (error?.code === 'ENOENT') return null;
+        throw error;
+      });
+      if (targetEntry?.isSymbolicLink()) {
+        throw codedError('MACHINE_REPLACE_SYMLINK_UNSUPPORTED', 'fs.replace refuses symlink targets because atomic replacement would change link identity', { path: target });
+      }
       const before = await fileFingerprint(target);
       assertMutationPrecondition(before, args, target, { requireRegularFile: true });
       if (!before.exists || before.type !== 'file') throw codedError('MACHINE_FILE_REQUIRED', 'fs.replace requires an existing regular file', { path: target });
