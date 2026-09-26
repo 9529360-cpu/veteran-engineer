@@ -78,6 +78,9 @@ jobs:
           fi
       - name: Run full validation
         run: npm run check
+
+      - name: Run GitHub release control-plane regressions
+        run: node --test .github/tests/*.test.mjs
       - name: Build reproducible release candidate
         run: node scripts/release-candidate.mjs --output dist --commit "$GITHUB_SHA"
       - name: Verify release candidate checksums
