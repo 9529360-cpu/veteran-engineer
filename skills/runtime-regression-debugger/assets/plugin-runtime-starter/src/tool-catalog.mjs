@@ -273,7 +273,7 @@ const TOOL_INPUT_CONTRACTS = Object.freeze({
       path: stringField('Workspace-bounded source/target path.', { minLength: null }),
       destination: stringField('Workspace-bounded move destination.', { minLength: null }),
       content: stringField('Text or base64 file payload.', { minLength: null }),
-      oldText: stringField('Exact non-empty UTF-8 text to replace for fs.replace.', { minLength: null }),
+      oldText: stringField('Exact non-empty UTF-8 text to replace for fs.replace.'),
       newText: stringField('Replacement UTF-8 text for fs.replace; may be empty.', { minLength: null }),
       expectedOccurrences: integerField('Exact non-overlapping match count required by fs.replace.', 1, 100),
       encoding: stringField('File payload encoding.', { enumValues: ['utf8', 'base64'] }),
