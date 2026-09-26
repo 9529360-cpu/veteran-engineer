@@ -64,8 +64,12 @@ test('flagship output contracts expose fields needed to chain the engineering wo
   const machineInspect = toolOutputJsonSchema('machine_inspect');
   assert.ok(machineInspect.properties.repository);
   assert.ok(machineInspect.properties.digest);
+  assert.ok(machineInspect.properties.patch);
+  assert.ok(machineInspect.properties.scope);
+  assert.ok(machineInspect.properties.staged);
   const machineAct = toolOutputJsonSchema('machine_act');
   assert.ok(machineAct.properties.receipt);
+  assert.ok(machineAct.properties.replacements);
   assert.ok(machineAct.properties.afterSha256);
   assert.ok(machineAct.properties.outputSha256);
 

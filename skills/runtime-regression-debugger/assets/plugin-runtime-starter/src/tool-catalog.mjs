@@ -251,7 +251,7 @@ const TOOL_INPUT_CONTRACTS = Object.freeze({
   machine_inspect: {
     description: 'Read-only inspection of an explicitly enabled Veteran Machine Bridge.',
     properties: {
-      operation: stringField('Machine inspection operation.', { enumValues: ['status', 'fs.list', 'fs.stat', 'fs.read', 'fs.digest', 'fs.search', 'repo.status', 'process.list', 'process.status', 'process.output'] }),
+      operation: stringField('Machine inspection operation.', { enumValues: ['status', 'fs.list', 'fs.stat', 'fs.read', 'fs.digest', 'fs.search', 'repo.status', 'repo.diff', 'process.list', 'process.status', 'process.output'] }),
       path: stringField('Workspace-bounded filesystem or repository path.', { minLength: null }),
       query: stringField('Literal case-insensitive search query for fs.search.', { minLength: null }),
       includeContent: booleanField('For fs.search, also search bounded text-file contents. Defaults true.'),
@@ -260,20 +260,25 @@ const TOOL_INPUT_CONTRACTS = Object.freeze({
       encoding: stringField('fs.read result encoding.', { enumValues: ['utf8', 'base64'] }),
       sessionId: stringField('Managed process session id.', { minLength: null }),
       offset: integerField('Event offset for process.output.', 0, Number.MAX_SAFE_INTEGER),
-      limit: integerField('Bounded result count for list/search/output.', 1, 2000)
+      limit: integerField('Bounded result count for list/search/output.', 1, 2000),
+      staged: booleanField('For repo.diff, inspect the staged/index diff instead of the working-tree diff.'),
+      contextLines: integerField('For repo.diff, unified context lines from 0 to 20.', 0, 20)
     },
     required: ['operation']
   },
   machine_act: {
     description: 'Workspace-bounded file mutation or allowlisted process action through an explicitly enabled Veteran Machine Bridge.',
     properties: {
-      operation: stringField('Machine action operation.', { enumValues: ['fs.write', 'fs.append', 'fs.mkdir', 'fs.move', 'process.start', 'process.input', 'process.stop'] }),
+      operation: stringField('Machine action operation.', { enumValues: ['fs.write', 'fs.append', 'fs.replace', 'fs.mkdir', 'fs.move', 'process.start', 'process.input', 'process.stop'] }),
       path: stringField('Workspace-bounded source/target path.', { minLength: null }),
       destination: stringField('Workspace-bounded move destination.', { minLength: null }),
       content: stringField('Text or base64 file payload.', { minLength: null }),
+      oldText: stringField('Exact non-empty UTF-8 text to replace for fs.replace.'),
+      newText: stringField('Replacement UTF-8 text for fs.replace; may be empty.', { minLength: null }),
+      expectedOccurrences: integerField('Exact non-overlapping match count required by fs.replace.', 1, 100),
       encoding: stringField('File payload encoding.', { enumValues: ['utf8', 'base64'] }),
       createParents: booleanField('Create parent directories for file writes/moves. Defaults true.'),
-      expectedSha256: stringField('Optimistic SHA-256 precondition for fs.write/fs.append or the fs.move source.', { minLength: null }),
+      expectedSha256: stringField('Optimistic SHA-256 precondition for fs.write/fs.append/fs.replace or the fs.move source. fs.replace requires it.', { minLength: null }),
       expectedRepoHead: stringField('Optional exact Git HEAD precondition for filesystem mutations and process.start.', { minLength: null }),
       requireAbsent: booleanField('Require the target/destination path to be absent before mutation.'),
       command: stringField('Allowlisted executable name; arbitrary executable paths and shell interpolation are rejected.', { minLength: null }),

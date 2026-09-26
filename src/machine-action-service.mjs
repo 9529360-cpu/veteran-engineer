@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { TextDecoder } from 'node:util';
 import { assertLocalPathAllowed } from './workspace-policy.mjs';
 import { signalProcessTree } from './process-lifecycle-authority.mjs';
 import { randomId } from './util.mjs';
@@ -71,10 +72,47 @@ function decodeContent(content, encoding) {
   return encoding === 'base64' ? Buffer.from(text, 'base64') : Buffer.from(text, 'utf8');
 }
 
+function decodeUtf8Strict(buffer, label = 'file') {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+  } catch {
+    throw codedError('MACHINE_TEXT_ENCODING_INVALID', label + ' must be valid UTF-8 for fs.replace');
+  }
+}
+
+async function atomicReplaceFile(target, data, mode = null) {
+  const temp = path.join(path.dirname(target), '.' + path.basename(target) + '.' + randomId('machinewrite') + '.tmp');
+  try {
+    await fs.writeFile(temp, data, mode == null ? undefined : { mode: mode & 0o777 });
+    await fs.rename(temp, target);
+  } finally {
+    await fs.rm(temp, { force: true }).catch(() => {});
+  }
+}
+
 function appendBounded(current, chunk, maxBytes) {
   const joined = Buffer.from(current + String(chunk), 'utf8');
   if (joined.length <= maxBytes) return { text: joined.toString('utf8'), truncated: false };
   return { text: joined.subarray(Math.max(0, joined.length - maxBytes)).toString('utf8'), truncated: true };
+}
+
+function appendBoundedHead(current, chunk, maxBytes) {
+  if (Buffer.byteLength(current, 'utf8') >= maxBytes) return { text: current, truncated: true };
+  const joined = Buffer.from(current + String(chunk), 'utf8');
+  if (joined.length <= maxBytes) return { text: joined.toString('utf8'), truncated: false };
+  return { text: joined.subarray(0, maxBytes).toString('utf8'), truncated: true };
+}
+
+function countOccurrences(text, needle) {
+  if (!needle) return 0;
+  let count = 0;
+  let offset = 0;
+  for (;;) {
+    const next = text.indexOf(needle, offset);
+    if (next === -1) return count;
+    count += 1;
+    offset = next + needle.length;
+  }
 }
 
 function sha256Buffer(value) {
@@ -141,21 +179,28 @@ function assertMutationPrecondition(state, args, target, { requireRegularFile = 
   return expectedSha256;
 }
 
-async function runBoundedProcess(command, args, cwd, { timeoutMs = 5_000, maxOutputBytes = 256 * 1024, allowExitCodes = [0] } = {}) {
+async function runBoundedProcess(command, args, cwd, {
+  timeoutMs = 5_000,
+  maxOutputBytes = 256 * 1024,
+  allowExitCodes = [0],
+  retain = 'tail',
+  env = null
+} = {}) {
   const child = spawn(command, args, {
-    cwd, env: safeChildEnvironment(), shell: false, windowsHide: true,
+    cwd, env: { ...safeChildEnvironment(), ...(env || {}) }, shell: false, windowsHide: true,
     detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe']
   });
   child.stdout.setEncoding('utf8');
   child.stderr.setEncoding('utf8');
   let stdout = '', stderr = '', stdoutTruncated = false, stderrTruncated = false, timedOut = false;
+  const append = retain === 'head' ? appendBoundedHead : appendBounded;
   child.stdout.on('data', (chunk) => {
-    const next = appendBounded(stdout, chunk, maxOutputBytes);
+    const next = append(stdout, chunk, maxOutputBytes);
     stdout = next.text;
     stdoutTruncated ||= next.truncated;
   });
   child.stderr.on('data', (chunk) => {
-    const next = appendBounded(stderr, chunk, maxOutputBytes);
+    const next = append(stderr, chunk, maxOutputBytes);
     stderr = next.text;
     stderrTruncated ||= next.truncated;
   });
@@ -188,6 +233,23 @@ async function runBoundedProcess(command, args, cwd, { timeoutMs = 5_000, maxOut
     durationMs: Date.now() - startedAt,
     truncated: { stdout: stdoutTruncated, stderr: stderrTruncated }
   };
+}
+
+async function runReadOnlyGit(args, cwd, options = {}) {
+  return runBoundedProcess(
+    'git',
+    ['-c', 'core.fsmonitor=false', '-c', 'core.untrackedCache=false', ...args],
+    cwd,
+    {
+      retain: 'head',
+      ...options,
+      env: {
+        GIT_OPTIONAL_LOCKS: '0',
+        GIT_TERMINAL_PROMPT: '0',
+        ...(options.env || {})
+      }
+    }
+  );
 }
 
 function parseGitStatusPorcelainV2(raw) {
@@ -310,7 +372,7 @@ export class MachineActionService {
     const cwd = stat.isDirectory() ? allowed : path.dirname(allowed);
     let rootProbe;
     try {
-      rootProbe = await runBoundedProcess('git', ['rev-parse', '--show-toplevel'], cwd, {
+      rootProbe = await runReadOnlyGit(['rev-parse', '--show-toplevel'], cwd, {
         timeoutMs: Math.min(this.limits.defaultTimeoutMs, 10_000),
         maxOutputBytes: this.limits.maxReadBytes
       });
@@ -323,7 +385,7 @@ export class MachineActionService {
       });
     }
     const root = await this.#allowedReadPath(rootProbe.stdout.trim(), 'repository precondition root');
-    const headResult = await runBoundedProcess('git', ['rev-parse', 'HEAD'], root, {
+    const headResult = await runReadOnlyGit(['rev-parse', 'HEAD'], root, {
       timeoutMs: Math.min(this.limits.defaultTimeoutMs, 10_000),
       maxOutputBytes: this.limits.maxReadBytes
     });
@@ -469,7 +531,7 @@ export class MachineActionService {
       const cwd = targetStat.isDirectory() ? target : path.dirname(target);
       let rootProbe;
       try {
-        rootProbe = await runBoundedProcess('git', ['rev-parse', '--show-toplevel'], cwd, {
+        rootProbe = await runReadOnlyGit(['rev-parse', '--show-toplevel'], cwd, {
           timeoutMs: Math.min(this.limits.defaultTimeoutMs, 10_000),
           maxOutputBytes: this.limits.maxReadBytes
         });
@@ -484,16 +546,16 @@ export class MachineActionService {
       }
       const repositoryRoot = await this.#allowedReadPath(rootProbe.stdout.trim(), 'repository root');
       const [headResult, branchResult, statusResult, originResult] = await Promise.all([
-        runBoundedProcess('git', ['rev-parse', 'HEAD'], repositoryRoot, {
+        runReadOnlyGit(['rev-parse', 'HEAD'], repositoryRoot, {
           timeoutMs: Math.min(this.limits.defaultTimeoutMs, 10_000), maxOutputBytes: this.limits.maxReadBytes
         }),
-        runBoundedProcess('git', ['symbolic-ref', '--quiet', '--short', 'HEAD'], repositoryRoot, {
+        runReadOnlyGit(['symbolic-ref', '--quiet', '--short', 'HEAD'], repositoryRoot, {
           timeoutMs: Math.min(this.limits.defaultTimeoutMs, 10_000), maxOutputBytes: this.limits.maxReadBytes, allowExitCodes: [0, 1]
         }),
-        runBoundedProcess('git', ['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=normal'], repositoryRoot, {
+        runReadOnlyGit(['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=normal'], repositoryRoot, {
           timeoutMs: Math.min(this.limits.defaultTimeoutMs, 10_000), maxOutputBytes: this.limits.maxReadBytes
         }),
-        runBoundedProcess('git', ['remote', 'get-url', 'origin'], repositoryRoot, {
+        runReadOnlyGit(['remote', 'get-url', 'origin'], repositoryRoot, {
           timeoutMs: Math.min(this.limits.defaultTimeoutMs, 10_000), maxOutputBytes: this.limits.maxReadBytes, allowExitCodes: [0, 2]
         })
       ]);
@@ -518,6 +580,60 @@ export class MachineActionService {
           conflicts: parsed.conflicts,
           origin: originResult.exitCode === 0 ? originResult.stdout.trim() || null : null
         }
+      };
+    }
+
+    if (operation === 'repo.diff') {
+      const target = await this.#allowedReadPath(args.path || this.allowedLocalRoots[0], 'repository path');
+      const targetStat = await fs.stat(target);
+      const cwd = targetStat.isDirectory() ? target : path.dirname(target);
+      let rootProbe;
+      try {
+        rootProbe = await runReadOnlyGit(['rev-parse', '--show-toplevel'], cwd, {
+          timeoutMs: Math.min(this.limits.defaultTimeoutMs, 10_000),
+          maxOutputBytes: this.limits.maxReadBytes
+        });
+      } catch (error) {
+        if (error?.code === 'ENOENT') throw codedError('MACHINE_GIT_UNAVAILABLE', 'repo.diff requires git on the machine PATH');
+        if (error?.code === 'MACHINE_INSPECT_PROCESS_FAILED') {
+          throw codedError('MACHINE_GIT_REPOSITORY_REQUIRED', 'repo.diff path is not inside a readable Git worktree', { path: target });
+        }
+        throw error;
+      }
+      const repositoryRoot = await this.#allowedReadPath(rootProbe.stdout.trim(), 'repository root');
+      const maxBytes = positiveInteger(args.maxBytes, this.limits.maxReadBytes, this.limits.maxReadBytes);
+      const contextLines = Math.min(nonNegativeInteger(args.contextLines, 3), 20);
+      const staged = args.staged === true;
+      const headResult = await runReadOnlyGit(['rev-parse', 'HEAD'], repositoryRoot, {
+        timeoutMs: Math.min(this.limits.defaultTimeoutMs, 10_000),
+        maxOutputBytes: this.limits.maxReadBytes
+      });
+      const diffArgs = [
+        'diff', '--no-ext-diff', '--no-textconv', '--no-color', '--src-prefix=a/', '--dst-prefix=b/',
+        '--unified=' + contextLines
+      ];
+      if (staged) diffArgs.push('--cached');
+      diffArgs.push('--');
+      const relativeScope = path.relative(repositoryRoot, target);
+      if (relativeScope && relativeScope !== '.' && !relativeScope.startsWith('..' + path.sep) && !path.isAbsolute(relativeScope)) {
+        diffArgs.push(relativeScope.split(path.sep).join('/'));
+      }
+      const diffResult = await runReadOnlyGit(diffArgs, repositoryRoot, {
+        timeoutMs: Math.min(this.limits.defaultTimeoutMs, 15_000),
+        maxOutputBytes: maxBytes,
+        retain: 'head'
+      });
+      return {
+        operation,
+        contract: MACHINE_ACTION_CONTRACT,
+        observedAt: new Date().toISOString(),
+        repository: { root: repositoryRoot, head: headResult.stdout.trim() },
+        scope: relativeScope ? relativeScope.split(path.sep).join('/') : '.',
+        staged,
+        contextLines,
+        patch: diffResult.stdout,
+        bytes: Buffer.byteLength(diffResult.stdout, 'utf8'),
+        truncated: diffResult.truncated.stdout
       };
     }
 
@@ -585,6 +701,75 @@ export class MachineActionService {
     const actionId = randomId('machineaction');
     const startedAt = new Date().toISOString();
     const receipt = (options = {}) => this.#actionReceipt({ actionId, operation, startedAt, ...options });
+
+    if (operation === 'fs.replace') {
+      const target = await this.#allowedWritePath(args.path, 'file replace path');
+      if (args.expectedSha256 === undefined || args.expectedSha256 === null || args.expectedSha256 === '') {
+        throw codedError('MACHINE_FILE_PRECONDITION_REQUIRED', 'fs.replace requires expectedSha256 from a fresh fs.digest/read boundary');
+      }
+      const oldText = String(args.oldText ?? '');
+      if (!oldText) throw codedError('MACHINE_REPLACE_OLD_TEXT_REQUIRED', 'fs.replace requires non-empty oldText');
+      const newText = String(args.newText ?? '');
+      const expectedOccurrences = Number(args.expectedOccurrences ?? 1);
+      if (!Number.isInteger(expectedOccurrences) || expectedOccurrences <= 0 || expectedOccurrences > 100) {
+        throw codedError('MACHINE_REPLACE_COUNT_INVALID', 'fs.replace expectedOccurrences must be an integer from 1 to 100');
+      }
+      const repository = await this.#assertExpectedRepoHead(target, args.expectedRepoHead);
+      const targetEntry = await fs.lstat(target).catch((error) => {
+        if (error?.code === 'ENOENT') return null;
+        throw error;
+      });
+      if (targetEntry?.isSymbolicLink()) {
+        throw codedError('MACHINE_REPLACE_SYMLINK_UNSUPPORTED', 'fs.replace refuses symlink targets because atomic replacement would change link identity', { path: target });
+      }
+      const before = await fileFingerprint(target);
+      assertMutationPrecondition(before, args, target, { requireRegularFile: true });
+      if (!before.exists || before.type !== 'file') throw codedError('MACHINE_FILE_REQUIRED', 'fs.replace requires an existing regular file', { path: target });
+      if (before.bytes > this.limits.maxWriteBytes) {
+        throw codedError('MACHINE_REPLACE_FILE_TOO_LARGE', 'fs.replace file exceeds configured maxWriteBytes', {
+          bytes: before.bytes, maxWriteBytes: this.limits.maxWriteBytes
+        });
+      }
+      const raw = await fs.readFile(target);
+      const rawSha256 = sha256Buffer(raw);
+      if (rawSha256 !== before.sha256) {
+        throw codedError('MACHINE_FILE_PRECONDITION_FAILED', 'fs.replace source changed between fingerprint and read; no write was performed', {
+          path: target, expectedSha256: before.sha256, actualSha256: rawSha256
+        });
+      }
+      const text = decodeUtf8Strict(raw, target);
+      const actualOccurrences = countOccurrences(text, oldText);
+      if (actualOccurrences !== expectedOccurrences) {
+        throw codedError('MACHINE_REPLACE_MATCH_COUNT_MISMATCH', 'fs.replace match count did not equal expectedOccurrences; no write was performed', {
+          path: target, expectedOccurrences, actualOccurrences
+        });
+      }
+      const updated = text.split(oldText).join(newText);
+      const data = Buffer.from(updated, 'utf8');
+      if (data.length > this.limits.maxWriteBytes) {
+        throw codedError('MACHINE_WRITE_TOO_LARGE', 'fs.replace result exceeds configured maxWriteBytes', {
+          bytes: data.length, maxWriteBytes: this.limits.maxWriteBytes
+        });
+      }
+      if (args.expectedRepoHead !== undefined && args.expectedRepoHead !== null && args.expectedRepoHead !== '') {
+        await this.#assertExpectedRepoHead(target, args.expectedRepoHead);
+      }
+      const current = await fileFingerprint(target);
+      if (!current.exists || current.sha256 !== before.sha256) {
+        throw codedError('MACHINE_FILE_PRECONDITION_FAILED', 'fs.replace source changed before commit; no write was performed', {
+          path: target, expectedSha256: before.sha256, actualSha256: current.sha256, exists: current.exists
+        });
+      }
+      const stat = await fs.stat(target);
+      await atomicReplaceFile(target, data, stat.mode);
+      const after = await fileFingerprint(target);
+      return {
+        operation, path: target, replacements: actualOccurrences,
+        beforeSha256: before.sha256, beforeBytes: before.bytes,
+        afterSha256: after.sha256, afterBytes: after.bytes,
+        receipt: receipt({ resultIdentity: 'sha256:' + after.sha256, target, repository })
+      };
+    }
 
     if (operation === 'fs.write' || operation === 'fs.append') {
       const target = await this.#allowedWritePath(args.path, 'file write path');

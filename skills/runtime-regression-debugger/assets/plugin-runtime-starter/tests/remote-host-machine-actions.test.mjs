@@ -80,9 +80,56 @@ test('Remote Host exposes opt-in machine inspect/action through the real MCP sur
     assert.equal(replay.structuredContent.receipt.actionId, write.structuredContent.receipt.actionId);
     assert.equal(replay.structuredContent.afterSha256, write.structuredContent.afterSha256);
 
+    const replace = await client.callTool({
+      name: 'machine_act',
+      arguments: {
+        requestId: crypto.randomUUID(),
+        operation: 'fs.replace',
+        path: target,
+        oldText: 'remote-machine-ok\n',
+        newText: 'remote-machine-edited\n',
+        expectedOccurrences: 1,
+        expectedSha256: write.structuredContent.afterSha256,
+        expectedRepoHead: fixture.head
+      }
+    });
+    assert.equal(replace.isError, undefined, JSON.stringify(replace));
+    assert.equal(replace.structuredContent.replacements, 1);
+    assert.equal(replace.structuredContent.receipt.repository.head, fixture.head);
+
     const read = await client.callTool({ name: 'machine_inspect', arguments: { operation: 'fs.read', path: target } });
     assert.equal(read.isError, undefined, JSON.stringify(read));
-    assert.equal(read.structuredContent.data, 'remote-machine-ok\n');
+    assert.equal(read.structuredContent.data, 'remote-machine-edited\n');
+
+    const trackedReadme = path.join(fixture.repo, 'README.md');
+    const trackedDigest = await client.callTool({
+      name: 'machine_inspect',
+      arguments: { operation: 'fs.digest', path: trackedReadme }
+    });
+    assert.equal(trackedDigest.isError, undefined, JSON.stringify(trackedDigest));
+    const trackedEdit = await client.callTool({
+      name: 'machine_act',
+      arguments: {
+        requestId: crypto.randomUUID(),
+        operation: 'fs.replace',
+        path: trackedReadme,
+        oldText: 'machine bridge\n',
+        newText: 'machine bridge edited\n',
+        expectedOccurrences: 1,
+        expectedSha256: trackedDigest.structuredContent.digest,
+        expectedRepoHead: fixture.head
+      }
+    });
+    assert.equal(trackedEdit.isError, undefined, JSON.stringify(trackedEdit));
+
+    const diff = await client.callTool({
+      name: 'machine_inspect',
+      arguments: { operation: 'repo.diff', path: trackedReadme }
+    });
+    assert.equal(diff.isError, undefined, JSON.stringify(diff));
+    assert.equal(diff.structuredContent.scope, 'README.md');
+    assert.match(diff.structuredContent.patch, /\+machine bridge edited/);
+    assert.doesNotMatch(diff.structuredContent.patch, /remote-machine-edited/);
 
     const run = await client.callTool({
       name: 'machine_act',

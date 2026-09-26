@@ -55,10 +55,67 @@ test('machine actions enforce workspace policy and support bounded files plus on
     assert.equal(append.beforeSha256, write.afterSha256);
     assert.notEqual(append.afterSha256, write.afterSha256);
 
-    const read = await service.inspect({ operation: 'fs.read', path: file });
-    assert.equal(read.data, 'alpha\nbeta\ngamma\n');
+    const replace = await service.act({
+      operation: 'fs.replace',
+      path: file,
+      oldText: 'beta\n',
+      newText: 'beta-edited\n',
+      expectedOccurrences: 1,
+      expectedSha256: append.afterSha256
+    });
+    assert.equal(replace.replacements, 1);
+    assert.equal(replace.beforeSha256, append.afterSha256);
+    assert.notEqual(replace.afterSha256, replace.beforeSha256);
 
-    const search = await service.inspect({ operation: 'fs.search', path: root, query: 'beta' });
+    await assert.rejects(
+      service.act({
+        operation: 'fs.replace',
+        path: file,
+        oldText: 'beta-edited\n',
+        newText: 'should-not-land\n',
+        expectedOccurrences: 2,
+        expectedSha256: replace.afterSha256
+      }),
+      (error) => error?.code === 'MACHINE_REPLACE_MATCH_COUNT_MISMATCH'
+    );
+    assert.equal((await service.inspect({ operation: 'fs.digest', path: file })).digest, replace.afterSha256);
+
+    const binary = path.join(dir, 'binary.dat');
+    await fs.writeFile(binary, Buffer.from([0xff, 0xfe, 0xfd]));
+    const binaryDigest = await service.inspect({ operation: 'fs.digest', path: binary });
+    await assert.rejects(
+      service.act({
+        operation: 'fs.replace',
+        path: binary,
+        oldText: 'x',
+        newText: 'y',
+        expectedSha256: binaryDigest.digest
+      }),
+      (error) => error?.code === 'MACHINE_TEXT_ENCODING_INVALID'
+    );
+    assert.equal((await service.inspect({ operation: 'fs.digest', path: binary })).digest, binaryDigest.digest);
+
+    if (process.platform !== 'win32') {
+      const symlink = path.join(dir, 'linked.txt');
+      await fs.symlink(file, symlink);
+      const symlinkDigest = await service.inspect({ operation: 'fs.digest', path: symlink });
+      await assert.rejects(
+        service.act({
+          operation: 'fs.replace',
+          path: symlink,
+          oldText: 'beta-edited\n',
+          newText: 'should-not-replace-link\n',
+          expectedSha256: symlinkDigest.digest
+        }),
+        (error) => error?.code === 'MACHINE_REPLACE_SYMLINK_UNSUPPORTED'
+      );
+      assert.equal((await service.inspect({ operation: 'fs.digest', path: symlink })).digest, symlinkDigest.digest);
+    }
+
+    const read = await service.inspect({ operation: 'fs.read', path: file });
+    assert.equal(read.data, 'alpha\nbeta-edited\ngamma\n');
+
+    const search = await service.inspect({ operation: 'fs.search', path: root, query: 'beta-edited' });
     assert.equal(search.matches.some((item) => item.path === file && item.kind === 'content'), true);
 
     const moved = path.join(dir, 'moved.txt');
@@ -66,12 +123,12 @@ test('machine actions enforce workspace policy and support bounded files plus on
       operation: 'fs.move',
       path: file,
       destination: moved,
-      expectedSha256: append.afterSha256,
+      expectedSha256: replace.afterSha256,
       requireAbsent: true
     });
-    assert.equal(move.beforeSha256, append.afterSha256);
-    assert.equal(move.afterSha256, append.afterSha256);
-    assert.equal(move.receipt.resultIdentity, 'sha256:' + append.afterSha256);
+    assert.equal(move.beforeSha256, replace.afterSha256);
+    assert.equal(move.afterSha256, replace.afterSha256);
+    assert.equal(move.receipt.resultIdentity, 'sha256:' + replace.afterSha256);
     assert.equal((await service.inspect({ operation: 'fs.stat', path: moved })).stat.type, 'file');
 
     const run = await service.act({
@@ -148,7 +205,7 @@ test('machine actions preserve interactive process sessions and bounded output r
 });
 
 test('machine repo.status binds local repository truth before and after a guarded edit', async () => {
-  const fixture = await createGitRepo();
+  const fixture = await createGitRepo({ files: { 'README.md': 'hello\n', 'other.txt': 'other\n' } });
   const service = new MachineActionService({
     enabled: true,
     allowedLocalRoots: [fixture.repo],
@@ -179,7 +236,20 @@ test('machine repo.status binds local repository truth before and after a guarde
     assert.equal(after.repository.dirty, true);
     assert.equal(after.repository.unstaged >= 1, true);
 
+    await fs.writeFile(path.join(fixture.repo, 'other.txt'), 'other\nunrelated\n');
+    const diff = await service.inspect({ operation: 'repo.diff', path: readme, contextLines: 1 });
+    assert.equal(diff.repository.head, fixture.head);
+    assert.equal(diff.scope, 'README.md');
+    assert.equal(diff.staged, false);
+    assert.equal(diff.contextLines, 1);
+    assert.match(diff.patch, /\+changed/);
+    assert.doesNotMatch(diff.patch, /unrelated/);
+    assert.equal(diff.truncated, false);
+
     await git(fixture.repo, ['add', 'README.md']);
+    const stagedDiff = await service.inspect({ operation: 'repo.diff', path: fixture.repo, staged: true });
+    assert.equal(stagedDiff.staged, true);
+    assert.match(stagedDiff.patch, /\+changed/);
     await git(fixture.repo, ['commit', '-q', '-m', 'advance repository head']);
     const advanced = await service.inspect({ operation: 'repo.status', path: fixture.repo });
     assert.notEqual(advanced.repository.head, initial.repository.head);
