@@ -312,18 +312,6 @@ jobs:
           print(f"plugin_bytes={bundle.stat().st_size}")
           PY
 
-      - name: Gate Workspace publication candidate
-        if: matrix.profile == 'workspace'
-        shell: bash
-        run: |
-          set -euo pipefail
-          STUDIO_VERSION="$(python3 - <<'PY'
-          import json
-          print(json.load(open("plugin.json", encoding="utf-8"))["version"])
-          PY
-          )"
-          python3 skills/runtime-regression-debugger/scripts/workspace_release_gate.py             dist/veteran-engineer-workspace.zip             --expected-revision "$SOURCE_REVISION"             --expected-version "$STUDIO_VERSION"             --json
-
       - name: Run packaged Workspace Skill regressions
         if: matrix.profile == 'workspace'
         shell: bash
@@ -511,6 +499,23 @@ jobs:
           if missing:
               raise SystemExit("workspace install staging missing: " + ", ".join(missing))
           PY
+
+      - name: Gate staged Workspace publication candidate
+        if: matrix.profile == 'workspace' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.studio-delta.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          STUDIO_VERSION="$(python3 - <<'PY'
+          import json
+          print(json.load(open("plugin.json", encoding="utf-8"))["version"])
+          PY
+          )"
+          rm -f dist/workspace-install-candidate.zip
+          (
+            cd dist/workspace-install
+            zip -q -r ../workspace-install-candidate.zip .
+          )
+          python3 skills/runtime-regression-debugger/scripts/workspace_release_gate.py             dist/workspace-install-candidate.zip             --expected-revision "$SOURCE_REVISION"             --expected-version "$STUDIO_VERSION"             --json
 
       - name: Upload workspace install artifact
         if: matrix.profile == 'workspace' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.studio-delta.outputs.changed == 'true'
