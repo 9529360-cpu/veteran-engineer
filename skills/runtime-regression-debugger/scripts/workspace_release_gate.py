@@ -119,46 +119,90 @@ def load_installed_state(path: pathlib.Path) -> dict:
         raise RuntimeError(f"invalid installed state JSON: {path}") from exc
     if not isinstance(value, dict):
         raise RuntimeError("installed state must be a JSON object")
-    if value.get("schema") != "veteran-workspace-installed-state-v1":
+    if value.get("schema") != "veteran-workspace-installed-state-v2":
         raise RuntimeError("installed state schema mismatch")
     if value.get("plugin_id") != "Plugin_8d9c7648269081918d366e3d9e9a43e2":
         raise RuntimeError("installed state plugin identity mismatch")
     release_id = value.get("release_id")
-    if not isinstance(release_id, str) or not release_id.startswith("pluginrel_"):
+    if not isinstance(release_id, str) or not re.fullmatch(r"pluginrel_[A-Za-z0-9]+", release_id):
         raise RuntimeError("installed state release_id is missing or invalid")
     version = value.get("version")
     parse_semver(version, "installed state version")
     if value.get("inventory_complete") is not True:
         raise RuntimeError("installed state inventory_complete must be true")
-    if value.get("next_offset", "__missing__") is not None:
-        raise RuntimeError("installed state must be captured through the final page with next_offset=null")
-    paths_value = value.get("paths")
-    if not isinstance(paths_value, list) or not all(isinstance(item, str) and item for item in paths_value):
-        raise RuntimeError("installed state paths must be a JSON array of non-empty strings")
-    if value.get("path_count") != len(paths_value):
-        raise RuntimeError("installed state path_count does not match paths")
-    paths = set(paths_value)
-    if len(paths) != len(paths_value):
+
+    pages = value.get("pages")
+    if not isinstance(pages, list) or not pages:
+        raise RuntimeError("installed state pages must be a non-empty array")
+
+    flattened_paths: list[str] = []
+    expected_offset = 0
+    page_offsets: list[int] = []
+    for index, page in enumerate(pages):
+        if not isinstance(page, dict):
+            raise RuntimeError(f"installed state pages[{index}] must be an object")
+        offset = page.get("offset")
+        count = page.get("count")
+        next_offset = page.get("next_offset")
+        page_paths = page.get("paths")
+        if offset != expected_offset:
+            raise RuntimeError(
+                f"installed state page chain is not contiguous at page {index}: "
+                f"expected offset {expected_offset}, got {offset}"
+            )
+        if not isinstance(count, int) or count < 1:
+            raise RuntimeError(f"installed state pages[{index}].count must be a positive integer")
+        if not isinstance(page_paths, list) or len(page_paths) != count:
+            raise RuntimeError(f"installed state pages[{index}] paths/count mismatch")
+        if not all(isinstance(item, str) and item for item in page_paths):
+            raise RuntimeError(f"installed state pages[{index}] paths must be non-empty strings")
+        if index < len(pages) - 1:
+            if not isinstance(next_offset, int) or next_offset <= offset:
+                raise RuntimeError(
+                    f"installed state pages[{index}].next_offset must advance to the next page"
+                )
+        elif next_offset is not None:
+            raise RuntimeError("installed state final page must have next_offset=null")
+        page_offsets.append(offset)
+        flattened_paths.extend(page_paths)
+        expected_offset = next_offset if next_offset is not None else offset + count
+        if index < len(pages) - 1 and pages[index + 1].get("offset") != next_offset:
+            raise RuntimeError(
+                f"installed state page chain next_offset mismatch at page {index}"
+            )
+
+    path_count = value.get("path_count")
+    if path_count != len(flattened_paths):
+        raise RuntimeError("installed state path_count does not match flattened page paths")
+    paths = set(flattened_paths)
+    if len(paths) != len(flattened_paths):
         raise RuntimeError("installed state contains duplicate paths")
-    for item in paths:
+
+    normalized_keys: dict[str, str] = {}
+    for item in flattened_paths:
+        reject_control_characters(item, "installed state path")
         pure = pathlib.PurePosixPath(item)
         if pure.is_absolute() or ".." in pure.parts or "\\" in item or pure.as_posix() != item:
             raise RuntimeError(f"installed state contains unsafe/non-canonical path: {item}")
-    page_offsets = value.get("page_offsets")
-    if not isinstance(page_offsets, list) or not page_offsets or page_offsets[0] != 0:
-        raise RuntimeError("installed state page_offsets must start at 0")
-    if any(not isinstance(item, int) or item < 0 for item in page_offsets):
-        raise RuntimeError("installed state page_offsets must contain non-negative integers")
-    if page_offsets != sorted(set(page_offsets)):
-        raise RuntimeError("installed state page_offsets must be unique and increasing")
+        normalized = unicodedata.normalize("NFC", item)
+        if normalized != item:
+            raise RuntimeError(f"installed state path is not Unicode NFC-normalized: {item!r}")
+        key = normalized.casefold()
+        previous = normalized_keys.get(key)
+        if previous is not None and previous != item:
+            raise RuntimeError(
+                f"installed state contains Unicode/case-colliding paths: {previous!r} and {item!r}"
+            )
+        normalized_keys[key] = item
+
     return {
         "release_id": release_id,
         "version": version,
         "paths": paths,
         "path_count": len(paths),
         "page_offsets": page_offsets,
+        "pages": pages,
     }
-
 
 def validate(
     archive_path: pathlib.Path,
