@@ -175,9 +175,11 @@ def test_studio_composition_contract():
     assert "GitHub actor, commit author/committer, workflow triggering actor" in runtime_text
     assert "host-local uncommitted or unpushed work as provisional" in runtime_text
     assert "Do not publish a plugin, package, release, deployment, or completion claim from an unpushed/unreconciled machine tree" in autonomous
-    assert "Current-execution receipt" in autonomous
-    assert "Causal descendant" in autonomous
+    assert "Live current-execution tool return" in autonomous
+    assert "Platform-bound causal descendant" in autonomous
+    assert "Historical mission receipt" in autonomous
     assert "Account/principal evidence" in autonomous
+    assert "replayable claim, not session identity proof" in autonomous
     assert "mutation-receipt" in autonomous
 
     batch = (SKILL_ROOT / "references" / "batch-mission-orchestration.md").read_text()
@@ -189,12 +191,17 @@ def test_studio_composition_contract():
     assert "it does not prove a different human, model, session, or host performed the change" in distribution_contract
 
     release_patterns = (SKILL_ROOT / "references" / "release-promotion-patterns.md").read_text()
-    assert "Treat the initiator as unknown until current-execution receipts" in release_patterns
-    assert "the changed state, account-level actor, or timing alone does not prove another actor/session caused it" in release_patterns
+    assert "Treat the initiator as unknown until a live current-execution tool return" in release_patterns
+    assert "persisted journal receipt is only a historical mission claim" in release_patterns
+    assert "journal entry alone does not prove another actor/session caused it" in release_patterns
 
     journal = (SKILL_ROOT / "scripts" / "engineering_journal.py").read_text()
     assert 'sub.add_parser("mutation-receipt")' in journal
     assert '"mutation_receipts"' in journal
+    assert '"tool-return", "platform-binding", "manual-observation"' in journal
+    assert "mutation receipt result identity already recorded" in journal
+    assert "historical-mission-record" in journal
+    assert "requires_live_revalidation_for_session_attribution" in journal
 
     eval_rows = json.loads((SKILL_ROOT / "evals" / "evals.json").read_text())
     eval_names = {row["name"] for row in eval_rows}
@@ -251,6 +258,28 @@ def test_studio_composition_contract():
         release_workflow = (REPO_ROOT / ".github" / "workflows" / "release.yml").read_text()
         assert '- "plugin.json"' in release_workflow
         assert '- "skills/frontend-design-builder/**"' in release_workflow
+
+        workflow_texts = {
+            name: (REPO_ROOT / ".github" / "workflows" / name).read_text()
+            for name in (
+                "ci.yml",
+                "release.yml",
+                "skill-engineering-tools.yml",
+                "cross-platform-host-smoke.yml",
+                "package-plugin-artifact.yml",
+            )
+        }
+        immutable_action_pattern = re.compile(r"uses:\s+actions/[A-Za-z0-9_.-]+@[0-9a-f]{40}(?:\s+#\s+v\d+)?")
+        floating_action_pattern = re.compile(r"uses:\s+actions/[A-Za-z0-9_.-]+@v\d+\b")
+        for name, workflow_text in workflow_texts.items():
+            assert not floating_action_pattern.search(workflow_text), f"{name} uses a floating GitHub Action tag"
+            for line in workflow_text.splitlines():
+                if "uses: actions/" in line:
+                    assert immutable_action_pattern.search(line), f"{name} action is not commit-pinned: {line}"
+        assert "pytest==9.1.1" in workflow_texts["skill-engineering-tools.yml"]
+        assert "pytest==9.1.1" in workflow_texts["package-plugin-artifact.yml"]
+        assert "pip install --disable-pip-version-check pytest\n" not in workflow_texts["skill-engineering-tools.yml"]
+        assert "pip install --disable-pip-version-check pytest\n" not in workflow_texts["package-plugin-artifact.yml"]
 
         readme = (REPO_ROOT / "README.md").read_text()
         assert "implicit-invocation policy" not in readme
