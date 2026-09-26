@@ -391,7 +391,11 @@ jobs:
           import urllib.parse
           import urllib.request
 
-          required = {"CI", "Skill Engineering Tools", "Cross-platform host smoke"}
+          required = {
+              356929464: "CI",
+              358643055: "Skill Engineering Tools",
+              358628814: "Cross-platform host smoke",
+          }
           repo = os.environ["REPOSITORY"]
           sha = os.environ["HEAD_SHA"]
           token = os.environ["GITHUB_TOKEN"]
@@ -420,31 +424,44 @@ jobs:
                   time.sleep(10)
                   continue
 
-              by_name = {}
+              by_workflow = {}
               for run in payload.get("workflow_runs", []):
                   if run.get("head_sha") != sha or run.get("event") != "push":
                       continue
-                  name = run.get("name")
-                  if name not in required:
+                  workflow_id = run.get("workflow_id")
+                  if workflow_id not in required:
                       continue
-                  previous = by_name.get(name)
+                  if run.get("name") != required[workflow_id]:
+                      raise SystemExit(
+                          f"trusted workflow identity/name mismatch: "
+                          f"{workflow_id} expected={required[workflow_id]!r} got={run.get('name')!r}"
+                      )
+                  previous = by_workflow.get(workflow_id)
                   if previous is None or str(run.get("created_at", "")) > str(previous.get("created_at", "")):
-                      by_name[name] = run
+                      by_workflow[workflow_id] = run
 
-              missing = sorted(required.difference(by_name))
+              missing = sorted(
+                  f"{workflow_id}:{name}"
+                  for workflow_id, name in required.items()
+                  if workflow_id not in by_workflow
+              )
               failed = {
-                  name: run.get("conclusion")
-                  for name, run in by_name.items()
+                  f"{workflow_id}:{required[workflow_id]}": run.get("conclusion")
+                  for workflow_id, run in by_workflow.items()
                   if run.get("status") == "completed" and run.get("conclusion") != "success"
               }
               if failed:
                   raise SystemExit(f"exact-main validation workflow failed for {sha}: {failed}")
               pending = sorted(
-                  name for name, run in by_name.items()
+                  f"{workflow_id}:{required[workflow_id]}"
+                  for workflow_id, run in by_workflow.items()
                   if run.get("status") != "completed"
               )
               if not missing and not pending:
-                  print(f"exact-main validation workflows passed for {sha}: {sorted(required)}")
+                  print(
+                      f"exact-main validation workflows passed for {sha}: "
+                      f"{[f'{workflow_id}:{name}' for workflow_id, name in required.items()]}"
+                  )
                   break
               if time.time() >= deadline:
                   raise SystemExit(
