@@ -310,6 +310,18 @@ jobs:
           print(f"plugin_bytes={bundle.stat().st_size}")
           PY
 
+      - name: Gate Workspace publication candidate
+        if: matrix.profile == 'workspace'
+        shell: bash
+        run: |
+          set -euo pipefail
+          STUDIO_VERSION="$(python3 - <<'PY'
+          import json
+          print(json.load(open("plugin.json", encoding="utf-8"))["version"])
+          PY
+          )"
+          python3 skills/runtime-regression-debugger/scripts/workspace_release_gate.py             dist/veteran-engineer-workspace.zip             --expected-revision "$SOURCE_REVISION"             --expected-version "$STUDIO_VERSION"             --json
+
       - name: Run packaged Workspace Skill regressions
         if: matrix.profile == 'workspace'
         shell: bash
