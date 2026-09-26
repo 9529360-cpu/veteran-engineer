@@ -26,7 +26,7 @@ def forbid(text: str, needle: str, label: str) -> None:
 def main() -> int:
     package = read("package-plugin-artifact.yml")
     ci = read("ci.yml")
-    release = read("release.yml")
+    release = read("runtime-release-v2.yml")
     skill = read("skill-engineering-tools.yml")
     cross = read("cross-platform-host-smoke.yml")
 
@@ -38,7 +38,7 @@ def main() -> int:
         '356929464: "CI"',
         '358643055: "Skill Engineering Tools"',
         '358628814: "Cross-platform host smoke"',
-        '358757508: "Release"',
+        '367487813: "Runtime Release V2"',
         "Require sibling package profiles",
         '"Export desktop plugin artifact"',
         '"Export codex plugin artifact"',
@@ -58,7 +58,8 @@ def main() -> int:
         ".github/workflows/skill-engineering-tools.yml",
         ".github/workflows/cross-platform-host-smoke.yml",
         ".github/workflows/package-plugin-artifact.yml",
-        ".github/workflows/release.yml",
+        ".github/workflows/runtime-release-v2.yml",
+        ".github/scripts/release_monotonicity_gate.mjs",
         "skills/runtime-regression-debugger/scripts/workspace_release_gate.py",
         "skills/runtime-regression-debugger/scripts/export_plugin_bundle.py",
         "skills/runtime-regression-debugger/tests/requirements-ci.txt",

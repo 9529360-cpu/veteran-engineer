@@ -35,6 +35,9 @@ jobs:
       - name: Run full validation
         run: npm run check
 
+      - name: Run GitHub release control-plane regressions
+        run: node --test .github/tests/*.test.mjs
+
   browser-smoke:
     name: Chromium full-stack smoke
     needs: test

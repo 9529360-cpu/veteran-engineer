@@ -4,31 +4,394 @@ on:
   pull_request:
     paths:
       - ".github/workflows/runtime-release-v2.yml"
+      - ".github/release-intent.json"
+      - "plugin.json"
+      - ".codex-plugin/plugin.json"
+      - "package.json"
+      - "package-lock.json"
+      - "src/constants.mjs"
+      - "scripts/release-contract.mjs"
+      - "scripts/release-candidate.mjs"
+      - ".github/scripts/release_monotonicity_gate.mjs"
+      - "scripts/release-bootstrap.mjs"
+      - "tests/release-contract.test.mjs"
+      - "tests/release-bootstrap.test.mjs"
+      - "skills/runtime-regression-debugger/**"
+      - "skills/frontend-design-builder/**"
   push:
     branches:
       - main
     paths:
       - ".github/workflows/runtime-release-v2.yml"
-
-permissions:
-  contents: read
+      - ".github/release-intent.json"
+      - "plugin.json"
+      - ".codex-plugin/plugin.json"
+      - "package.json"
+      - "package-lock.json"
+      - "src/constants.mjs"
+      - "scripts/release-contract.mjs"
+      - "scripts/release-candidate.mjs"
+      - ".github/scripts/release_monotonicity_gate.mjs"
+      - "scripts/release-bootstrap.mjs"
+      - "tests/release-contract.test.mjs"
+      - "tests/release-bootstrap.test.mjs"
+      - "skills/runtime-regression-debugger/**"
+      - "skills/frontend-design-builder/**"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  register:
-    name: Register Runtime Release V2
+  dry-run:
+    name: Release candidate dry run
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Prove validation-only registration
+        with:
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "20.20.2"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --include=optional
+      - name: Validate release authorities
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         shell: bash
         run: |
           set -euo pipefail
-          test "$GITHUB_WORKFLOW" = "Runtime Release V2"
-          echo "runtime_release_v2_registration=ok"
-          echo "sha=$GITHUB_SHA"
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            node scripts/release-contract.mjs
+          elif git diff --quiet "$BASE_SHA"...HEAD -- .github/release-intent.json; then
+            node scripts/release-contract.mjs
+          else
+            test -f .github/release-intent.json
+            node scripts/release-contract.mjs --intent .github/release-intent.json
+          fi
+      - name: Run full validation
+        run: npm run check
+
+      - name: Run GitHub release control-plane regressions
+        run: node --test .github/tests/*.test.mjs
+      - name: Build reproducible release candidate
+        run: node scripts/release-candidate.mjs --output dist --commit "$GITHUB_SHA"
+      - name: Verify release candidate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          for checksum in veteran-engineer-*.sha256; do
+            sha256sum -c "$checksum"
+          done
+
+  classify-push:
+    name: Classify release push
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      publish: ${{ steps.classify.outputs.publish }}
+    steps:
+      - name: Checkout release trigger source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Classify push
+        id: classify
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RELEASE_TRUST_ROOTS=(
+            .github/workflows/runtime-release-v2.yml
+            scripts/release-contract.mjs
+            scripts/release-candidate.mjs
+            .github/scripts/release_monotonicity_gate.mjs
+          )
+
+          TRUST_BASE="$BEFORE_SHA"
+
+          if [ -z "$TRUST_BASE" ] || [ "$TRUST_BASE" = "0000000000000000000000000000000000000000" ]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "reason=missing-trust-base" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! git diff --quiet "$TRUST_BASE" "$GITHUB_SHA" -- "${RELEASE_TRUST_ROOTS[@]}"; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "reason=release-trust-root-validation-only" >> "$GITHUB_OUTPUT"
+            echo "Runtime release trust root changed; land it first, then publish from a later clean release revision."
+            exit 0
+          fi
+
+          if [ "$GITHUB_REF" = "refs/heads/main" ] \
+            && ! git diff --quiet "$BEFORE_SHA" "$GITHUB_SHA" -- .github/release-intent.json; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "reason=release-intent" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "reason=validation-only" >> "$GITHUB_OUTPUT"
+          fi
+
+  authorize-release-source:
+    name: Authorize release source
+    needs:
+      - classify-push
+    if: needs.classify-push.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout exact release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "20.20.2"
+      - name: Prove merged-main provenance
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          HEAD_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --force
+          if ! git merge-base --is-ancestor "$HEAD_SHA" origin/main; then
+            echo "Release source $HEAD_SHA is not in current main lineage" >&2
+            exit 1
+          fi
+          python3 - <<'PY'
+          import json
+          import os
+          import time
+          import urllib.request
+
+          repo = os.environ["REPOSITORY"]
+          sha = os.environ["HEAD_SHA"]
+          token = os.environ["GITHUB_TOKEN"]
+          url = f"https://api.github.com/repos/{repo}/commits/{sha}/pulls"
+          deadline = time.time() + 2 * 60
+
+          while True:
+              request = urllib.request.Request(
+                  url,
+                  headers={
+                      "Accept": "application/vnd.github+json",
+                      "Authorization": f"Bearer {token}",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                      "User-Agent": "veteran-runtime-release-provenance-gate",
+                  },
+              )
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  pulls = json.load(response)
+              merged = [
+                  pr for pr in pulls
+                  if pr.get("merged_at")
+                  and pr.get("base", {}).get("ref") == "main"
+                  and pr.get("merge_commit_sha") == sha
+              ]
+              if len(merged) == 1:
+                  print(
+                      f"runtime release source authorized by merged PR "
+                      f"#{merged[0].get('number')} at {sha}"
+                  )
+                  break
+              if len(merged) > 1 or time.time() >= deadline:
+                  summary = [
+                      {
+                          "number": pr.get("number"),
+                          "merged_at": pr.get("merged_at"),
+                          "base": pr.get("base", {}).get("ref"),
+                          "merge_commit_sha": pr.get("merge_commit_sha"),
+                      }
+                      for pr in pulls[:20]
+                  ]
+                  raise SystemExit(
+                      f"runtime release source must map to exactly one merged main PR "
+                      f"with merge_commit_sha={sha}; matches={len(merged)} associated={summary}"
+                  )
+              print("runtime release PR association not visible yet; retrying")
+              time.sleep(5)
+          PY
+
+      - name: Require monotonic public stable release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p 'require("./package.json").version')"
+          node .github/scripts/release_monotonicity_gate.mjs \
+            --candidate "$VERSION" \
+            --repository "$REPOSITORY"
+
+  publish:
+    name: Publish release
+    needs:
+      - dry-run
+      - classify-push
+      - authorize-release-source
+    if: needs.dry-run.result == 'success' && needs.classify-push.outputs.publish == 'true' && needs.authorize-release-source.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    concurrency:
+      group: veteran-runtime-release-publication
+      cancel-in-progress: false
+      queue: max
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout exact release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "20.20.2"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --include=optional
+      - name: Resolve release trigger
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test -f .github/release-intent.json
+          VERSION="$(node -e "const fs=require('fs'); const v=JSON.parse(fs.readFileSync('.github/release-intent.json','utf8')).version; if(typeof v!=='string'||!v) process.exit(1); process.stdout.write(v)")"
+          echo "VETERAN_RELEASE_TAG=v$VERSION" >> "$GITHUB_ENV"
+          echo "VETERAN_RELEASE_INTENT=.github/release-intent.json" >> "$GITHUB_ENV"
+          echo "VETERAN_RELEASE_CREATE_TAG=true" >> "$GITHUB_ENV"
+      - name: Validate tag and release authorities
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "$VETERAN_RELEASE_INTENT" ]; then
+            node scripts/release-contract.mjs --tag "$VETERAN_RELEASE_TAG" --intent "$VETERAN_RELEASE_INTENT"
+          else
+            node scripts/release-contract.mjs --tag "$VETERAN_RELEASE_TAG"
+          fi
+      - name: Run full validation
+        run: npm run check
+      - name: Build reproducible release candidate
+        run: node scripts/release-candidate.mjs --output dist --tag "$VETERAN_RELEASE_TAG" --commit "$GITHUB_SHA"
+      - name: Verify local candidate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          for checksum in veteran-engineer-*.sha256; do
+            sha256sum -c "$checksum"
+          done
+      - name: Create or repair draft release
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="$VETERAN_RELEASE_TAG"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            test "$(gh release view "$TAG" --json isDraft --jq '.isDraft')" = "true"
+            git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+            test "$(git rev-list -n 1 "$TAG")" = "$GITHUB_SHA"
+            gh release upload "$TAG" dist/* --clobber
+          elif git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+            test "$(git rev-list -n 1 "$TAG")" = "$GITHUB_SHA"
+            gh release create "$TAG" dist/* \
+              --verify-tag \
+              --draft \
+              --generate-notes \
+              --title "Veteran Engineer ${TAG#v}"
+          elif [ "$VETERAN_RELEASE_CREATE_TAG" = "true" ]; then
+            gh release create "$TAG" dist/* \
+              --target "$GITHUB_SHA" \
+              --draft \
+              --generate-notes \
+              --title "Veteran Engineer ${TAG#v}"
+          else
+            echo "Expected release tag $TAG does not exist" >&2
+            exit 1
+          fi
+      - name: Require exact draft asset inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED="$(find dist -maxdepth 1 -type f -printf '%f\n' | sort)"
+          ACTUAL="$(gh release view "$VETERAN_RELEASE_TAG" --json assets --jq '.assets[].name' | sort)"
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "Draft release asset inventory differs from reproducible candidate" >&2
+            diff -u <(printf '%s\n' "$EXPECTED") <(printf '%s\n' "$ACTUAL") >&2 || true
+            exit 1
+          fi
+      - name: Verify draft assets before publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf verify-release
+          mkdir verify-release
+          gh release download "$VETERAN_RELEASE_TAG" --dir verify-release --pattern 'veteran-engineer-*'
+          cd verify-release
+          for checksum in veteran-engineer-*.sha256; do
+            sha256sum -c "$checksum"
+          done
+          cmp veteran-engineer-release-manifest.json ../dist/veteran-engineer-release-manifest.json
+      - name: Revalidate stable release monotonicity immediately before publication
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p 'require("./package.json").version')"
+          node .github/scripts/release_monotonicity_gate.mjs \
+            --candidate "$VERSION" \
+            --repository "$REPOSITORY"
+      - name: Publish release
+        run: gh release edit "$VETERAN_RELEASE_TAG" --draft=false --latest
+      - name: Verify public release bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          verify_public() {
+            local release_json
+            release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VETERAN_RELEASE_TAG")"
+            jq -e '.draft == false and .prerelease == false' <<<"$release_json" >/dev/null
+            local expected_assets actual_assets
+            expected_assets="$(find dist -maxdepth 1 -type f -printf '%f\n' | sort)"
+            actual_assets="$(jq -r '.assets[].name' <<<"$release_json" | sort)"
+            test "$expected_assets" = "$actual_assets"
+            rm -rf public-release
+            mkdir public-release
+            while IFS=$'\t' read -r name url; do
+              curl --fail --silent --show-error --location --retry 5 --retry-delay 2 "$url" -o "public-release/$name"
+            done < <(jq -r '.assets[] | select(.name | startswith("veteran-engineer-")) | [.name, .browser_download_url] | @tsv' <<<"$release_json")
+            (
+              cd public-release
+              for checksum in veteran-engineer-*.sha256; do
+                sha256sum -c "$checksum"
+              done
+            )
+            cmp public-release/veteran-engineer-release-manifest.json dist/veteran-engineer-release-manifest.json
+          }
+          if ! verify_public; then
+            gh release edit "$VETERAN_RELEASE_TAG" --draft || true
+            exit 1
+          fi

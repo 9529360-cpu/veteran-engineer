@@ -350,7 +350,8 @@ jobs:
             .github/workflows/skill-engineering-tools.yml
             .github/workflows/cross-platform-host-smoke.yml
             .github/workflows/package-plugin-artifact.yml
-            .github/workflows/release.yml
+            .github/workflows/runtime-release-v2.yml
+            .github/scripts/release_monotonicity_gate.mjs
             skills/runtime-regression-debugger/scripts/workspace_release_gate.py
             skills/runtime-regression-debugger/scripts/export_plugin_bundle.py
             skills/runtime-regression-debugger/tests/requirements-ci.txt
@@ -476,7 +477,7 @@ jobs:
               356929464: "CI",
               358643055: "Skill Engineering Tools",
               358628814: "Cross-platform host smoke",
-              358757508: "Release",
+              367487813: "Runtime Release V2",
           }
           repo = os.environ["REPOSITORY"]
           sha = os.environ["HEAD_SHA"]
