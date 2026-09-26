@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { MachineActionService, machinePackageManagerExecutionSupport } from '../src/machine-action-service.mjs';
+import { MachineActionService, machineExecutablePresence, machinePackageManagerExecutionSupport } from '../src/machine-action-service.mjs';
 import { git } from '../src/git.mjs';
 import { createGitRepo, cleanup } from './helpers.mjs';
 
@@ -30,6 +30,40 @@ test('machine package-manager execution support stays shell-free and platform ho
     machinePackageManagerExecutionSupport('npm', { platform: 'linux', allowedExecutables: ['node'] }),
     { available: false, reason: 'package-manager-not-allowlisted' }
   );
+});
+
+test('machine executable presence distinguishes authorization from actual PATH availability', async () => {
+  const seen = [];
+  const present = await machineExecutablePresence('npm', {
+    platform: 'linux',
+    environment: { PATH: '/missing:/tools with spaces' },
+    access: async (candidate, mode) => {
+      seen.push({ candidate, mode });
+      if (candidate === path.join('/tools with spaces', 'npm')) return;
+      const error = new Error('missing');
+      error.code = 'ENOENT';
+      throw error;
+    }
+  });
+  assert.deepEqual(present, { available: true, reason: 'executable-present-on-path' });
+  assert.equal(seen.at(-1).candidate, path.join('/tools with spaces', 'npm'));
+
+  const missing = await machineExecutablePresence('pnpm', {
+    platform: 'linux',
+    environment: { PATH: '/missing' },
+    access: async () => {
+      const error = new Error('missing');
+      error.code = 'ENOENT';
+      throw error;
+    }
+  });
+  assert.deepEqual(missing, { available: false, reason: 'executable-not-found-on-path' });
+
+  const noPath = await machineExecutablePresence('npm', { platform: 'linux', environment: {} });
+  assert.deepEqual(noPath, { available: false, reason: 'executable-path-unavailable' });
+
+  const invalid = await machineExecutablePresence('../npm', { platform: 'linux', environment: { PATH: '/bin' } });
+  assert.deepEqual(invalid, { available: false, reason: 'executable-name-invalid' });
 });
 
 test('machine repo.commands derives a source-bound minimal validation plan without script bodies', async () => {
