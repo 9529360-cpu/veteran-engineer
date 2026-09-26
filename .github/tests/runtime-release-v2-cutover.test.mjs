@@ -9,11 +9,6 @@ const packageWorkflow = fs.readFileSync(
   path.join(root, '.github', 'workflows', 'package-plugin-artifact.yml'),
   'utf8',
 );
-const migration = fs.readFileSync(
-  path.join(root, '.github', 'workflows', 'disable-legacy-runtime-release.yml'),
-  'utf8',
-);
-
 test('Runtime Release V2 has no tag publication trigger or branch', () => {
   assert.equal(v2.includes('\n    tags:\n'), false);
   assert.equal(v2.includes('GITHUB_REF" == refs/tags/*'), false);
@@ -44,19 +39,11 @@ test('Workspace readiness trusts the fresh V2 workflow identity', () => {
   assert.ok(packageWorkflow.includes('.github/scripts/release_monotonicity_gate.mjs'));
 });
 
-test('legacy workflow disable migration is narrowly scoped', () => {
-  assert.ok(migration.includes('actions: write'));
-  assert.ok(migration.includes('V2_ID="367487813"'));
-  assert.ok(migration.includes('LEGACY_ID="358757508"'));
-  assert.ok(migration.includes('/disable'));
-  assert.ok(migration.includes('disabled_manually'));
-  assert.ok(migration.includes('HEAD_SHA: ${{ github.sha }}'));
-  assert.ok(migration.includes('actions/workflows/$V2_ID/runs?head_sha=$HEAD_SHA&event=push'));
-  assert.ok(migration.includes('Timed out waiting for Runtime Release V2 exact-main success'));
-  assert.ok(
-    migration.indexOf('test "$CONCLUSION" = "success"') <
-      migration.indexOf('actions/workflows/$LEGACY_ID/disable'),
+test('legacy release control plane stays retired after V2 cutover', () => {
+  assert.equal(fs.existsSync(path.join(root, '.github', 'workflows', 'release.yml')), false);
+  assert.equal(
+    fs.existsSync(path.join(root, '.github', 'workflows', 'disable-legacy-runtime-release.yml')),
+    false,
   );
-  assert.equal(migration.includes('actions/checkout'), false);
-  assert.equal(migration.includes('contents: write'), false);
 });
+
