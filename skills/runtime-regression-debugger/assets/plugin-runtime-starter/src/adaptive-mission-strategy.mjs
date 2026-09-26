@@ -282,7 +282,13 @@ export function plannerProjectAwareness(project, continuity) {
       contract: project.environmentProfile?.contract || null,
       runtimeFamilies: project.environmentProfile?.runtimeFamilies || [],
       readiness: project.environmentReadiness?.status || null,
-      bootstrap: project.bootstrapPlan?.status || null
+      bootstrap: project.bootstrapPlan?.status || null,
+      commands: {
+        status: project.commandPlan?.status || null,
+        packageManager: project.commandPlan?.packageManager || null,
+        start: (project.commandPlan?.start || []).map((item) => ({ id: item.id, command: item.command })),
+        minimalValidation: (project.commandPlan?.validation?.minimal || []).map((item) => ({ id: item.id, command: item.command }))
+      }
     },
     validation: {
       capabilities: (project.validationCapabilities || []).map((capability) => capability?.name).filter(Boolean),
