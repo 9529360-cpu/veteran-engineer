@@ -1317,5 +1317,22 @@
       "ignores a plausible causal chain from the active execution",
       "turns saved memory or a handoff note into session-level provenance"
     ]
+  },
+  {
+    "name": "stale-workspace-artifact-after-newer-main-change",
+    "prompt": "A valid Workspace install artifact for main commit A/version 1.14.10 is ready and production still runs 1.14.8. Before publishing, main advanced to commit B. Decide whether artifact A can still be published.",
+    "expected_decisions": [
+      "refresh current main HEAD and Studio version rather than comparing only against the installed plugin",
+      "prove candidate sourceRevision A remains in current main lineage",
+      "compare A..B for packaged-Skill and Workspace publication trust-root changes",
+      "reject artifact A if main now carries a newer/different Studio package or changed publication trust root even though 1.14.10 is newer than installed 1.14.8",
+      "allow A to remain eligible only when main advanced through unrelated changes and current main Studio bytes/version remain equivalent"
+    ],
+    "red_flags": [
+      "publishes solely because candidate version exceeds installed version",
+      "ignores newer main commits",
+      "treats sourceRevision provenance as proof of freshness forever",
+      "requires rebuilding for unrelated docs/runtime-only changes without checking whether Studio bytes changed"
+    ]
   }
 ]
