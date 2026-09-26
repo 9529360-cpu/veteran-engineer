@@ -124,6 +124,7 @@ A veteran-quality answer does not need maximal ceremony; it needs the right mech
 91. **Explicit executor provenance resolves attribution**: a worker/session lease and operation id are cryptographically or structurally bound to the resulting mutation. Expect attribution to that executor for the bound mutation only, while unrelated changes remain independently proven.
 92. **Shared journal replays another session's receipt**: a resumed journal contains a prior mutation receipt whose result identity exists live, but the current conversation did not observe the creating tool call. Expect the receipt to remain historical mission evidence, live revalidation of the result/causal chain, and no upgrade to current-session authorship without explicit executor provenance.
 93. **Predicted descendant mismatches platform identity**: a receipt predicted workflow W as a descendant, but W's platform metadata binds it to a different head/source revision. Expect the prediction to be rejected as causal proof and the live platform binding to win.
+94. **Known parallel agent becomes an attribution shortcut**: prior memory/handoff says another agent regularly works on the repository, then an unexpected mutation appears without a bound operation/session identity. Expect that memory to widen the hypothesis set only; exact live tool/platform provenance must still decide the mutation, otherwise actor identity remains unknown.
 
 ## Failure conditions
 
