@@ -316,9 +316,11 @@ def test_studio_composition_contract():
         ):
             assert tombstone_path in package_workflow
 
-        release_workflow = (REPO_ROOT / ".github" / "workflows" / "release.yml").read_text()
+        release_workflow = (REPO_ROOT / ".github" / "workflows" / "runtime-release-v2.yml").read_text()
         assert '- "plugin.json"' in release_workflow
         assert '- "skills/frontend-design-builder/**"' in release_workflow
+        assert not (REPO_ROOT / ".github" / "workflows" / "release.yml").exists()
+        assert not (REPO_ROOT / ".github" / "workflows" / "disable-legacy-runtime-release.yml").exists()
 
         cross_platform_workflow = (REPO_ROOT / ".github" / "workflows" / "cross-platform-host-smoke.yml").read_text()
         assert "push:\n    branches:\n      - main" in cross_platform_workflow
@@ -327,7 +329,7 @@ def test_studio_composition_contract():
             name: (REPO_ROOT / ".github" / "workflows" / name).read_text()
             for name in (
                 "ci.yml",
-                "release.yml",
+                "runtime-release-v2.yml",
                 "skill-engineering-tools.yml",
                 "cross-platform-host-smoke.yml",
                 "package-plugin-artifact.yml",
