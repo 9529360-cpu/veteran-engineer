@@ -62,3 +62,38 @@ test('publishable Workspace install remains main-push, clean-trust-root only', (
   assert.ok(workflow.split(publishable).length - 1 >= 5);
   assert.equal(workflow.includes("github.event_name != 'pull_request'"), false);
 });
+
+
+test('validation runtimes use explicit interpreter and runner labels', () => {
+  const workflows = {
+    ci: fs.readFileSync(path.join(root, '.github', 'workflows', 'ci.yml'), 'utf8'),
+    release: fs.readFileSync(path.join(root, '.github', 'workflows', 'release.yml'), 'utf8'),
+    skill: fs.readFileSync(path.join(root, '.github', 'workflows', 'skill-engineering-tools.yml'), 'utf8'),
+    cross: fs.readFileSync(path.join(root, '.github', 'workflows', 'cross-platform-host-smoke.yml'), 'utf8'),
+    package: workflow,
+  };
+
+  for (const name of ['ci', 'release', 'package']) {
+    assert.equal(workflows[name].includes('runs-on: ubuntu-latest'), false, `${name} still floats ubuntu-latest`);
+  }
+  assert.ok(workflows.ci.includes('runs-on: ubuntu-24.04'));
+  assert.ok(workflows.release.includes('runs-on: ubuntu-24.04'));
+  assert.ok(workflows.package.includes('runs-on: ubuntu-24.04'));
+
+  assert.ok(workflows.cross.includes('- ubuntu-24.04'));
+  assert.ok(workflows.cross.includes('- macos-26-arm64'));
+  assert.ok(workflows.cross.includes('- windows-2025-vs2026'));
+  for (const floating of ['ubuntu-latest', 'macos-latest', 'windows-latest']) {
+    assert.equal(workflows.cross.includes(floating), false, `cross-platform matrix still floats ${floating}`);
+  }
+
+  assert.equal(workflows.ci.includes('node-version: 20\n'), false);
+  assert.equal(workflows.ci.includes('node-version: 22\n'), false);
+  assert.ok(workflows.ci.includes('node-version: "20.20.2"'));
+  assert.ok(workflows.ci.includes('node-version: "22.23.2"'));
+  assert.ok(workflows.release.includes('node-version: "20.20.2"'));
+  assert.ok(workflows.cross.includes('node-version: "20.20.2"'));
+
+  assert.ok(workflows.skill.includes('python-version: "3.12.14"'));
+  assert.ok(workflows.package.includes('python-version: "3.12.14"'));
+});
