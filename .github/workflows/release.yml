@@ -112,12 +112,37 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          RELEASE_TRUST_ROOTS=(
+            .github/workflows/release.yml
+            scripts/release-contract.mjs
+            scripts/release-candidate.mjs
+            scripts/release-monotonicity.mjs
+          )
+
+          TRUST_BASE=""
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            TRUST_BASE="$(git rev-parse "$GITHUB_SHA^1" 2>/dev/null || true)"
+          elif [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            TRUST_BASE="$BEFORE_SHA"
+          fi
+
+          if [ -z "$TRUST_BASE" ] || [ "$TRUST_BASE" = "0000000000000000000000000000000000000000" ]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "reason=missing-trust-base" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! git diff --quiet "$TRUST_BASE" "$GITHUB_SHA" -- "${RELEASE_TRUST_ROOTS[@]}"; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "reason=release-trust-root-validation-only" >> "$GITHUB_OUTPUT"
+            echo "Runtime release trust root changed; land it first, then publish from a later clean release revision."
+            exit 0
+          fi
+
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
             echo "publish=true" >> "$GITHUB_OUTPUT"
             echo "reason=tag" >> "$GITHUB_OUTPUT"
           elif [ "$GITHUB_REF" = "refs/heads/main" ] \
-            && [ -n "$BEFORE_SHA" ] \
-            && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ] \
             && ! git diff --quiet "$BEFORE_SHA" "$GITHUB_SHA" -- .github/release-intent.json; then
             echo "publish=true" >> "$GITHUB_OUTPUT"
             echo "reason=release-intent" >> "$GITHUB_OUTPUT"
@@ -141,6 +166,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "20.20.2"
       - name: Prove merged-main provenance
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -207,6 +236,18 @@ jobs:
               print("runtime release PR association not visible yet; retrying")
               time.sleep(5)
           PY
+
+      - name: Require monotonic public stable release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p 'require("./package.json").version')"
+          node scripts/release-monotonicity.mjs \
+            --candidate "$VERSION" \
+            --repository "$REPOSITORY"
 
   publish:
     name: Publish release
