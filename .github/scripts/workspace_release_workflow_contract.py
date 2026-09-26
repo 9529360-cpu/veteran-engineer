@@ -129,6 +129,10 @@ def main() -> int:
         "reason=validation-only",
         "needs.dry-run.result == 'success'",
         "needs.classify-push.outputs.publish == 'true'",
+        "name: Authorize release source",
+        "git merge-base --is-ancestor",
+        "runtime release source must map to exactly one merged main PR",
+        "pull-requests: read",
         'BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}',
     ):
         require(release, needle, "release validation/publish split")
@@ -140,9 +144,10 @@ def main() -> int:
     publish_block = release.split("\n  publish:\n", 1)[1]
     require(
         publish_block,
-        "if: needs.dry-run.result == 'success' && needs.classify-push.outputs.publish == 'true'",
+        "if: needs.dry-run.result == 'success' && needs.classify-push.outputs.publish == 'true' && needs.authorize-release-source.result == 'success'",
         "release publish authority",
     )
+    require(publish_block, "- authorize-release-source", "release publish authority")
     forbid(publish_block, "if: github.event_name == 'push'", "release publish authority")
 
     print("workspace_release_workflow_contract=pass")
