@@ -60,6 +60,9 @@ jobs:
         with:
           python-version: "3.12.14"
 
+      - name: Verify Workspace release workflow contract
+        run: python3 .github/scripts/workspace_release_workflow_contract.py
+
       - name: Export profile
         shell: bash
         env:
@@ -351,6 +354,7 @@ jobs:
             skills/runtime-regression-debugger/scripts/workspace_release_gate.py
             skills/runtime-regression-debugger/scripts/export_plugin_bundle.py
             skills/runtime-regression-debugger/tests/requirements-ci.txt
+            .github/scripts/workspace_release_workflow_contract.py
           )
           if git diff --quiet "$BEFORE_SHA" "$GITHUB_SHA" -- "${TRUST_ROOTS[@]}"; then
             echo "trust_root_changed=false" >> "$GITHUB_OUTPUT"
@@ -451,6 +455,7 @@ jobs:
           PY
 
       - name: Require exact-main validation workflows
+        id: release-ready
         if: matrix.profile == 'workspace' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.studio-delta.outputs.changed == 'true' && steps.studio-delta.outputs.trust_root_changed == 'false'
         shell: bash
         env:
@@ -550,7 +555,7 @@ jobs:
           PY
 
       - name: Require sibling package profiles
-        if: matrix.profile == 'workspace' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.studio-delta.outputs.changed == 'true' && steps.studio-delta.outputs.trust_root_changed == 'false'
+        if: steps.release-ready.outcome == 'success'
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
