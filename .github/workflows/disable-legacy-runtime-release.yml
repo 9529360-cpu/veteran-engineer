@@ -1,0 +1,46 @@
+name: Disable Legacy Runtime Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/disable-legacy-runtime-release.yml"
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: veteran-disable-legacy-runtime-release
+  cancel-in-progress: false
+
+jobs:
+  disable:
+    name: Disable legacy Release workflow identity
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPOSITORY: ${{ github.repository }}
+    steps:
+      - name: Verify V2 and disable legacy workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          V2_ID="367487813"
+          LEGACY_ID="358757508"
+
+          V2_STATE="$(gh api "repos/$REPOSITORY/actions/workflows/$V2_ID" --jq '.state')"
+          V2_PATH="$(gh api "repos/$REPOSITORY/actions/workflows/$V2_ID" --jq '.path')"
+          test "$V2_STATE" = "active"
+          test "$V2_PATH" = ".github/workflows/runtime-release-v2.yml"
+
+          LEGACY_STATE="$(gh api "repos/$REPOSITORY/actions/workflows/$LEGACY_ID" --jq '.state')"
+          if [ "$LEGACY_STATE" != "disabled_manually" ]; then
+            gh api --method PUT "repos/$REPOSITORY/actions/workflows/$LEGACY_ID/disable"
+          fi
+
+          FINAL_STATE="$(gh api "repos/$REPOSITORY/actions/workflows/$LEGACY_ID" --jq '.state')"
+          test "$FINAL_STATE" = "disabled_manually"
+          echo "legacy_runtime_release_workflow=disabled"
