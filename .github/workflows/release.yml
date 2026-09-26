@@ -12,6 +12,7 @@ on:
       - "src/constants.mjs"
       - "scripts/release-contract.mjs"
       - "scripts/release-candidate.mjs"
+      - "scripts/release-monotonicity.mjs"
       - "scripts/release-bootstrap.mjs"
       - "tests/release-contract.test.mjs"
       - "tests/release-bootstrap.test.mjs"
