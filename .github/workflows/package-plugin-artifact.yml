@@ -32,6 +32,7 @@ on:
 permissions:
   contents: read
   actions: read
+  pull-requests: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
@@ -375,6 +376,63 @@ jobs:
           print(f"publishable Studio delta: {previous} -> {current}")
           PY
           echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Require merged PR provenance
+        if: matrix.profile == 'workspace' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.studio-delta.outputs.changed == 'true' && steps.studio-delta.outputs.trust_root_changed == 'false'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          repo = os.environ["REPOSITORY"]
+          sha = os.environ["HEAD_SHA"]
+          token = os.environ["GITHUB_TOKEN"]
+          url = f"https://api.github.com/repos/{repo}/commits/{sha}/pulls"
+          request = urllib.request.Request(
+              url,
+              headers={
+                  "Accept": "application/vnd.github+json",
+                  "Authorization": f"Bearer {token}",
+                  "X-GitHub-Api-Version": "2022-11-28",
+                  "User-Agent": "veteran-workspace-pr-provenance-gate",
+              },
+          )
+          with urllib.request.urlopen(request, timeout=30) as response:
+              pulls = json.load(response)
+
+          merged = [
+              pr for pr in pulls
+              if pr.get("merged_at")
+              and pr.get("base", {}).get("ref") == "main"
+              and pr.get("merge_commit_sha") == sha
+          ]
+          if len(merged) != 1:
+              summary = [
+                  {
+                      "number": pr.get("number"),
+                      "merged_at": pr.get("merged_at"),
+                      "base": pr.get("base", {}).get("ref"),
+                      "merge_commit_sha": pr.get("merge_commit_sha"),
+                  }
+                  for pr in pulls[:20]
+              ]
+              raise SystemExit(
+                  f"publishable Workspace revision must map to exactly one merged PR "
+                  f"whose merge_commit_sha is {sha}; matches={len(merged)} associated={summary}"
+              )
+          pr = merged[0]
+          print(
+              f"merged PR provenance verified: #{pr.get('number')} "
+              f"merge_commit_sha={sha} base=main"
+          )
+          PY
 
       - name: Require exact-main validation workflows
         if: matrix.profile == 'workspace' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.studio-delta.outputs.changed == 'true' && steps.studio-delta.outputs.trust_root_changed == 'false'
