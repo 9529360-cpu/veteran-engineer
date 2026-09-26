@@ -290,11 +290,23 @@ def test_studio_composition_contract():
         }
         immutable_action_pattern = re.compile(r"uses:\s+actions/[A-Za-z0-9_.-]+@[0-9a-f]{40}(?:\s+#\s+v\d+)?")
         floating_action_pattern = re.compile(r"uses:\s+actions/[A-Za-z0-9_.-]+@v\d+\b")
+        trusted_action_pins = {
+            "actions/checkout": "3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "actions/setup-node": "820762786026740c76f36085b0efc47a31fe5020",
+            "actions/setup-python": "ece7cb06caefa5fff74198d8649806c4678c61a1",
+            "actions/upload-artifact": "ea165f8d65b6e75b540449e92b4886f43607fa02",
+        }
         for name, workflow_text in workflow_texts.items():
             assert not floating_action_pattern.search(workflow_text), f"{name} uses a floating GitHub Action tag"
             for line in workflow_text.splitlines():
-                if "uses: actions/" in line:
-                    assert immutable_action_pattern.search(line), f"{name} action is not commit-pinned: {line}"
+                if "uses: actions/" not in line:
+                    continue
+                assert immutable_action_pattern.search(line), f"{name} action is not commit-pinned: {line}"
+                action_ref = line.strip().split()[1]
+                action_name, action_sha = action_ref.split("@", 1)
+                assert trusted_action_pins.get(action_name) == action_sha, (
+                    f"{name} action pin is outside the trusted set: {action_ref}"
+                )
         assert "pytest==9.1.1" in workflow_texts["skill-engineering-tools.yml"]
         assert "pytest==9.1.1" in workflow_texts["package-plugin-artifact.yml"]
         assert "pip install --disable-pip-version-check pytest\n" not in workflow_texts["skill-engineering-tools.yml"]
