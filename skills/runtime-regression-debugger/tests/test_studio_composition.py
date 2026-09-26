@@ -168,6 +168,8 @@ def test_studio_composition_contract():
     assert "merge_commit_sha" in distribution_contract
     assert "Direct pushes may run validation" in distribution_contract
     assert "later clean Studio version bump" in distribution_contract
+    assert "current-main `plugin.json.version` must equal the candidate Studio version" in distribution_contract
+    assert "packaged-Skill change and no Workspace publication trust-root change" in distribution_contract
     assert "do not retry by merely substituting the newer release ID" in distribution_contract
     assert "Workspace updates are overlays" in distribution_contract
     assert "scripts/workspace_release_gate.py --publication" in distribution_contract
@@ -235,6 +237,7 @@ def test_studio_composition_contract():
         "historical-journal-receipt-is-not-current-session-proof",
         "expected-descendant-label-is-not-causal-proof",
         "shared-journal-cannot-transfer-executor-identity",
+        "stale-workspace-artifact-after-newer-main-change",
         "known-parallel-agent-is-not-specific-mutation-provenance",
     }.issubset(eval_names)
 
@@ -243,6 +246,7 @@ def test_studio_composition_contract():
     assert "89. **Own delayed side effect looks foreign**" in benchmark_text
     assert "90. **Release conflict with ambiguous initiator**" in benchmark_text
     assert "91. **Explicit executor provenance resolves attribution**" in benchmark_text
+    assert "94. **Valid artifact becomes stale after main advances**" in benchmark_text
     assert "92. **Shared journal replays another session's receipt**" in benchmark_text
     assert "93. **Predicted descendant mismatches platform identity**" in benchmark_text
     assert "94. **Known parallel agent becomes an attribution shortcut**" in benchmark_text
