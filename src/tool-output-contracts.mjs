@@ -62,7 +62,8 @@ const OUTPUT_PROJECT = openObject('Opened project record. Its id is the projectI
   remoteUrl: nullable(stringField('Sanitized origin URL when available.', { minLength: null })),
   sourceIdentity: openObject('Authoritative repository source identity.'),
   environmentReadiness: anyField('Environment readiness projection.'),
-  bootstrapPlan: anyField('Repository-derived bootstrap plan.')
+  bootstrapPlan: anyField('Repository-derived bootstrap plan.'),
+  commandPlan: anyField('Repository-derived command discovery and bounded minimal-validation recommendation.')
 }, ['id']);
 
 const OUTPUT_MISSION = openObject('Mission record. Its id is the missionId for execution, status, validation, candidate, and handoff tools.', {
