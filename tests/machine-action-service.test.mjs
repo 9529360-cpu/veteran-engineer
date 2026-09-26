@@ -3,13 +3,84 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { MachineActionService } from '../src/machine-action-service.mjs';
+import { MachineActionService, machinePackageManagerExecutionSupport } from '../src/machine-action-service.mjs';
 import { git } from '../src/git.mjs';
 import { createGitRepo, cleanup } from './helpers.mjs';
 
 async function tempRoot() {
   return fs.mkdtemp(path.join(os.tmpdir(), 'veteran-machine-actions-'));
 }
+
+test('machine package-manager execution support stays shell-free and platform honest', () => {
+  assert.deepEqual(
+    machinePackageManagerExecutionSupport('npm', { platform: 'linux', allowedExecutables: ['npm'] }),
+    { available: true, reason: 'allowlisted-direct-executable' }
+  );
+  for (const manager of ['npm', 'pnpm', 'yarn']) {
+    assert.deepEqual(
+      machinePackageManagerExecutionSupport(manager, { platform: 'win32', allowedExecutables: [manager] }),
+      { available: false, reason: 'windows-command-shim-requires-shell' }
+    );
+  }
+  assert.deepEqual(
+    machinePackageManagerExecutionSupport('bun', { platform: 'win32', allowedExecutables: ['bun'] }),
+    { available: true, reason: 'allowlisted-direct-executable' }
+  );
+  assert.deepEqual(
+    machinePackageManagerExecutionSupport('npm', { platform: 'linux', allowedExecutables: ['node'] }),
+    { available: false, reason: 'package-manager-not-allowlisted' }
+  );
+});
+
+test('machine repo.commands derives a source-bound minimal validation plan without script bodies', async () => {
+  const scriptBody = 'node -e "process.exit(0)"';
+  const fixture = await createGitRepo({ files: {
+    'package.json': `${JSON.stringify({
+      private: true,
+      scripts: {
+        check: scriptBody,
+        dev: 'node -e "setInterval(() => {}, 1000)"'
+      }
+    }, null, 2)}\n`,
+    'package-lock.json': `${JSON.stringify({ lockfileVersion: 3 })}\n`,
+    'src/app.mjs': 'export const value = 1;\n'
+  } });
+  const service = new MachineActionService({
+    enabled: true,
+    allowedLocalRoots: [fixture.repo],
+    allowedExecutables: ['npm'],
+    deviceId: 'device-command-plan',
+    deviceName: 'command-plan-fixture'
+  });
+  try {
+    const clean = await service.inspect({ operation: 'repo.commands', path: fixture.repo });
+    assert.equal(clean.contract, 'veteran-machine-action-v2');
+    assert.equal(clean.repository.head, fixture.head);
+    assert.equal(clean.commandPlan.contract, 'veteran-project-command-plan-v1');
+    assert.deepEqual(clean.commandPlan.changedPaths, []);
+    assert.deepEqual(clean.commandPlan.validation.minimal, []);
+    assert.doesNotMatch(JSON.stringify(clean.commandPlan), /process\.exit|setInterval/);
+
+    await fs.writeFile(path.join(fixture.repo, 'src/app.mjs'), 'export const value = 2;\n');
+    const changed = await service.inspect({ operation: 'repo.commands', path: path.join(fixture.repo, 'src/app.mjs') });
+    assert.equal(changed.repository.head, fixture.head);
+    assert.deepEqual(changed.commandPlan.changedPaths, ['src/app.mjs']);
+    assert.doesNotMatch(JSON.stringify(changed.commandPlan), /process\.exit|setInterval/);
+    if (process.platform === 'win32') {
+      assert.equal(changed.commandPlan.status, 'blocked');
+      assert.deepEqual(changed.commandPlan.validation.minimal, []);
+      assert.equal(changed.commandPlan.commands.every((item) => item.runnable === false), true);
+      assert.equal(changed.commandPlan.commands.every((item) => item.readinessReason === 'windows-command-shim-requires-shell'), true);
+    } else {
+      assert.equal(changed.commandPlan.status, 'ready');
+      assert.deepEqual(changed.commandPlan.validation.minimal.map((item) => item.command), [['npm', 'run', 'check']]);
+      assert.equal(changed.commandPlan.validation.minimal[0].runnable, true);
+    }
+  } finally {
+    await service.shutdown();
+    await cleanup(fixture.root);
+  }
+});
 
 test('machine actions enforce workspace policy and support bounded files plus one-shot execution', async () => {
   const root = await tempRoot();
