@@ -147,3 +147,57 @@ def test_workspace_release_gate_rejects_wrong_artifact_digest(tmp_path: Path):
 
     assert proc.returncode != 0
     assert "archive SHA-256 mismatch" in proc.stderr
+
+
+def test_workspace_release_gate_rejects_extra_skill(tmp_path: Path):
+    archive = tmp_path / "candidate.zip"
+    build_candidate(archive)
+    with zipfile.ZipFile(archive, "a") as handle:
+        handle.writestr(
+            "skills/unexpected-skill/SKILL.md",
+            "---\nname: unexpected-skill\ndescription: test\n---\n",
+        )
+
+    proc = run_gate(
+        archive,
+        "--expected-revision",
+        "abc1234",
+        check=False,
+    )
+
+    assert proc.returncode != 0
+    assert "Skill entrypoints mismatch" in proc.stderr
+
+
+def test_workspace_release_gate_rejects_case_colliding_path(tmp_path: Path):
+    archive = tmp_path / "candidate.zip"
+    build_candidate(archive)
+    with zipfile.ZipFile(archive, "a") as handle:
+        handle.writestr("Plugin.json", "{}")
+
+    proc = run_gate(
+        archive,
+        "--expected-revision",
+        "abc1234",
+        check=False,
+    )
+
+    assert proc.returncode != 0
+    assert "case-colliding file paths" in proc.stderr
+
+
+def test_workspace_release_gate_rejects_unexpected_top_level_surface(tmp_path: Path):
+    archive = tmp_path / "candidate.zip"
+    build_candidate(archive)
+    with zipfile.ZipFile(archive, "a") as handle:
+        handle.writestr("src/hidden-runtime.mjs", "export {}\n")
+
+    proc = run_gate(
+        archive,
+        "--expected-revision",
+        "abc1234",
+        check=False,
+    )
+
+    assert proc.returncode != 0
+    assert "unexpected top-level surfaces" in proc.stderr
