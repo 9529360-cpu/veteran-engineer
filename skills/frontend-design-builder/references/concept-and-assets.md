@@ -2,6 +2,22 @@
 
 Use this reference for visually significant new surfaces, redesigns, games, or work where image-generated concepts/assets will materially improve fidelity.
 
+## Image-first art direction mode
+
+Use image/Figma-first exploration when the visual world itself is a major part of the requested outcome: premium marketing sites, portfolios, editorial/brand pages, launch pages, immersive product storytelling, game/entertainment surfaces, or a major redesign whose current weakness is primarily art direction.
+
+Do **not** force this mode onto every UI task. Dense operational dashboards, admin tools, settings, tables, workflow screens, and mature design-system work should usually stay code/Figma/component-native unless an image concept can answer a real unresolved visual question.
+
+When image-first mode is active:
+
+1. generate enough visual evidence to make typography, spacing, hierarchy, imagery, controls, and section rhythm readable;
+2. prefer fresh section/state-specific concepts over one compressed board whose text and geometry cannot be inspected;
+3. when a concept is unclear, regenerate that region at useful scale rather than cropping a weak source and guessing;
+4. keep application text/controls/data code-native even when imagery establishes the art direction;
+5. extract the design contract before coding, then let the real code-native render become implementation truth.
+
+The image is a design proposal, not a shippable interface and not final evidence.
+
 ## Concept-first rule
 
 When there is no accepted visual reference and the task is visually significant, create enough concept material to specify the whole requested surface before deep implementation.
