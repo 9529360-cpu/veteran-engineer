@@ -54,6 +54,8 @@ For long or dense surfaces, implement and compare in slices:
 
 This prevents small visual errors from compounding across a large page.
 
+For visually consequential fixes, compare the same region/state before and after the source change. A whole-page screenshot can hide a local contradiction; zoom or crop only for **comparison evidence** after the authoritative target/implementation has already been captured at the correct viewport. Do not use a cropped old concept as a substitute for a proper section-specific design source.
+
 ## Normalize before judging
 
 Before filing visual mismatches, align the comparison state:
@@ -71,7 +73,7 @@ Do not report drift caused only by browser chrome, canvas padding, device framin
 
 Every substantial comparison must explicitly inspect:
 
-1. typography — family/fallback, weight, size, line height, letter spacing, wrapping;
+1. typography — family/fallback, weight, size, line height, letter spacing, wrapping, text measure, intentional line breaks, baseline/optical alignment;
 2. spacing/layout — container size, alignment, margins, padding, gaps, radii, vertical rhythm;
 3. color/tokens — surfaces, foregrounds, gradients, opacity, semantic state colors;
 4. assets/media — correct subject, crop, scale, sharpness, icon family, imagery treatment;
