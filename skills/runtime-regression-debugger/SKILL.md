@@ -133,6 +133,8 @@ When behavior, a public API/config, an operator workflow, release semantics, or 
 
 When live smoke/runtime validation exposes a stable reproducible failure path that materially guards the requested outcome and no equivalent regression exists, preserve the smallest reliable automated regression at the cheapest layer before discarding investigation scaffolding. Prefer a deterministic unit/integration/browser oracle over replaying a fragile manual trajectory; do not fossilize volatile vendor behavior, timing accidents, or subjective visual judgment into flaky E2E ceremony.
 
+Preserve the repository's **active quality floor** while making a candidate green. Do not buy completion by adding unjustified suppressions, skips, deleted assertions/tests, weaker coverage/performance/accessibility/security thresholds, or disabled required gates. When the inherited baseline is already red, do not turn the task into unrelated cleanup; hold the affected dimensions no worse than the bound base unless the user explicitly authorizes a quality-contract change.
+
 ## 7. Scale execution without multiplying authority
 
 For broad programs compile `goal -> done definition -> work graph -> dependency waves -> integration gates -> final evidence`. Create independence before parallelism; fan out only across disjoint owners/write sets with independent oracles under one integration authority.
