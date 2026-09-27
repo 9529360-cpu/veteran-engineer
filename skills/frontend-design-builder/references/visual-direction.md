@@ -73,6 +73,16 @@ Select based on task clarity, product specificity, hierarchy, coherence, design-
 
 Typography is structural. Define display/heading, body, UI/control, caption/metadata, and data/mono roles as needed. Set explicit size, weight, line-height, and tracking for controls as well as content.
 
+Treat type as composition, not just tokens:
+- control headline measure and intentional line breaks; do not let a hero wrap accidentally into an awkward orphan;
+- keep body measure readable instead of stretching text across the container;
+- create visible contrast between display, section heading, body, control, and metadata roles without making every level loud;
+- inspect cap height/baseline relationships between text, icons, inputs, and buttons;
+- use tighter leading/tracking only where the actual face/size supports it;
+- keep microcopy legible enough to function; tiny text is not sophistication.
+
+Use **optical alignment** when pure geometry looks wrong. A play triangle, chevron, icon-with-label pair, badge text, or button glyph may need a small visual offset to appear centered. Make such corrections bounded and intentional; do not scatter arbitrary 1px nudges without a visible reason.
+
 Avoid falling back to generic default fonts when typography is a core part of the requested aesthetic. However, preserve an existing product's established type system instead of swapping fonts for novelty.
 
 ## Density and composition
@@ -80,6 +90,20 @@ Avoid falling back to generic default fonts when typography is a core part of th
 Use deliberate whitespace. Avoid repetitive centered sections, endless bento grids, nested cards, and rounded containers around everything.
 
 Prefer open layouts, bands, rails, tables, lists, canvases, split views, or focused framing when appropriate to the product type. Vary section rhythm without breaking the shared design system.
+
+## Component grammar
+
+A polished interface needs recurring visual rules, not a collection of individually pretty widgets.
+
+Define a small component grammar from the active design system:
+- which surfaces are open, bordered, elevated, inset, or truly card-like;
+- where radius changes with hierarchy instead of one universal rounded rectangle;
+- how primary, secondary, tertiary, destructive, and quiet actions differ;
+- how icons are sized, stroked/filled, aligned, and given breathing room;
+- how selected, hover, focus, disabled, loading, success, error, and destructive states inherit the same visual language;
+- how repeated list/table/row structures align labels, metadata, controls, and baselines.
+
+If every component requires a unique visual trick, the system is not coherent. If every component looks identical regardless of role, the system is not expressive enough.
 
 ## Motion
 
