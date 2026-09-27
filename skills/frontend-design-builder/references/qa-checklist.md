@@ -23,7 +23,8 @@ Compare the implementation with the accepted reference or declared design direct
 - icon metaphor, stroke/fill, size, alignment, state;
 - imagery crop, aspect ratio, blending, masks/overlays;
 - whitespace and density;
-- motion and state transitions.
+- motion and state transitions;
+- calibration-vector coherence across structure variance, motion energy, and information density when the active design contract declared one.
 
 Fix visible drift rather than explaining it away when the source is available and the mismatch is correctable.
 
