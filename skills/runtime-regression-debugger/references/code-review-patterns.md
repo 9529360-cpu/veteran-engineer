@@ -247,6 +247,7 @@ Also inspect the entire candidate for change hygiene:
 - local-only caches, snapshots, fixtures, or artifacts that should not ship;
 - secrets, tokens, user content, or sensitive traces;
 - temporary compatibility paths lacking an owner/removal condition.
+- candidate-introduced quality-floor weakening: new suppressions/ignores, skipped or deleted protections, removed assertions, lowered thresholds, disabled gates, or narrowed check applicability without a proven replacement.
 
 Distinguish candidate-introduced churn from pre-existing user work. Never reset or delete unrelated existing changes merely to make the diff look clean.
 
