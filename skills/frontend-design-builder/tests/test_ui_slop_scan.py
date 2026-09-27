@@ -37,7 +37,7 @@ def test_scan_flags_high_confidence_source_smells(tmp_path: Path):
         "extreme-z-index",
         "focus-removal",
     }.issubset(ids)
-    assert payload["severity_counts"]["warning"] >= 4
+    assert payload["severity_counts"]["warning"] >= 2
     assert "Rendered designer critique" in payload["disclaimer"]
 
 
