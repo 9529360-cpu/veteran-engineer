@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "purpose": "Regression scenarios for evidence-first product design, blocking Visual Design Authority, implementation-first runtime visual proof, progressive context routing, provider-neutral Design Action Fabric execution, safe design-provider mutation and recovery, Figma design/code/library/motion/assets/Code Connect workflows, evidence-first design-system reuse, resumable design-session state, live URL reconstruction, cross-tool design-system synchronization, component labs, reference research, fidelity, and graceful degradation. It also pressures qualitative visual calibration and bounded product-pattern retrieval so design intelligence stays coherent without turning into a universal style score or a giant always-loaded catalog.",
+  "purpose": "Regression scenarios for evidence-first product design, blocking Visual Design Authority, implementation-first runtime visual proof, progressive context routing, provider-neutral Design Action Fabric execution, safe design-provider mutation and recovery, Figma design/code/library/motion/assets/Code Connect workflows, evidence-first design-system reuse, resumable design-session state, live URL reconstruction, cross-tool design-system synchronization, component labs, reference research, fidelity, and graceful degradation. It also pressures qualitative visual calibration and bounded product-pattern retrieval so design intelligence stays coherent without turning into a universal style score or a giant always-loaded catalog. It also pressures materialized visual-shotgun exploration, first-viewport craft, image-first art direction only where appropriate, iterative designer critique, optical typography, state completeness, and advisory—not authoritative—UI slop scanning.",
   "scenarios": [
     {
       "id": "existing-system-small-change",
@@ -964,6 +964,127 @@
         "retune the whole product because a calibration vector exists",
         "run broad external pattern research for a local state already defined by the system",
         "introduce a second aesthetic direction for the loading state"
+      ]
+    },
+    {
+      "id": "visual-shotgun-comparable-variants",
+      "request": "Create a new premium developer-tool landing page. I want several strong visual directions before you commit, not three recolors of the same SaaS template.",
+      "expected_mode": "visual-authority",
+      "must_load": [
+        "references/visual-design-authority.md",
+        "references/concept-and-assets.md",
+        "references/visual-direction.md"
+      ],
+      "must_do": [
+        "materialize two or three candidates at comparable fidelity under the same content and product constraints",
+        "make candidates differ in hierarchy composition density interaction or typography material language",
+        "compare the candidates side by side and name the strongest idea plus disqualifying risk for each",
+        "select one coherent direction instead of averaging candidates into a compromise"
+      ],
+      "must_not": [
+        "count palette swaps or reordered identical cards as distinct directions",
+        "choose the easiest candidate to code without judging first-viewport and product fit",
+        "block on user approval when the user asked for direct implementation and semantics do not change"
+      ]
+    },
+    {
+      "id": "designer-critique-repair-loop",
+      "request": "The coded redesign builds successfully but still feels cheap. Polish it until the real rendered page looks intentional, and prove the important fixes.",
+      "expected_mode": "visual-authority",
+      "must_load": [
+        "references/qa-checklist.md",
+        "references/visual-direction.md",
+        "references/fidelity-protocol.md"
+      ],
+      "must_do": [
+        "capture the current real render at a bound viewport and state",
+        "prioritize a few high-impact visual failures before low-value micro-polish",
+        "trace findings to the owning token component layout rule asset or source and repair there",
+        "rerender the same viewport and state and compare before after when that materially proves improvement"
+      ],
+      "must_not": [
+        "declare success from build or typecheck",
+        "stack local css overrides without fixing the owning design rule",
+        "compare screenshots from different states or viewports and call the difference improvement"
+      ]
+    },
+    {
+      "id": "image-first-premium-art-direction",
+      "request": "Build a visually premium editorial launch page with no accepted design yet. The art direction matters more than using our usual SaaS layout.",
+      "expected_mode": "concept-first",
+      "must_load": [
+        "references/concept-and-assets.md",
+        "references/visual-design-authority.md",
+        "references/visual-direction.md"
+      ],
+      "must_do": [
+        "use visual concept generation or a design canvas before deep code when capable tools exist",
+        "generate enough readable section or state evidence to extract typography spacing hierarchy imagery and controls",
+        "regenerate unclear sections at useful scale rather than guessing from a compressed board",
+        "keep application text and controls code native and let the real implementation become final evidence"
+      ],
+      "must_not": [
+        "start with generic freeform css when visual tools can establish a stronger target",
+        "ship the generated image as the interactive interface",
+        "crop a blurry full-page concept and treat that crop as a new authoritative section design"
+      ]
+    },
+    {
+      "id": "operational-ui-does-not-force-image-first",
+      "request": "Add a bulk-selection state to an established dense admin table that already has tokens components and Storybook coverage.",
+      "expected_mode": "production",
+      "must_load": [
+        "references/design-system.md",
+        "references/component-lab.md"
+      ],
+      "must_do": [
+        "inherit the existing product and component grammar",
+        "implement the state code natively and verify default selected focus disabled and loading behavior as applicable",
+        "use rendered evidence without opening an unnecessary art-direction exercise"
+      ],
+      "must_not": [
+        "force image generation merely because image-first mode exists",
+        "redesign the table shell or brand language for a local state",
+        "invent visual states that the product cannot enter"
+      ]
+    },
+    {
+      "id": "typography-optical-craft",
+      "request": "The hero and toolbar are technically aligned but still look off. Fix the typography and optical details without changing the product structure.",
+      "expected_mode": "visual-authority",
+      "must_load": [
+        "references/visual-direction.md",
+        "references/qa-checklist.md"
+      ],
+      "must_do": [
+        "inspect headline measure line breaks leading tracking and role contrast",
+        "inspect baseline and optical centering relationships between icons labels buttons and controls",
+        "apply bounded optical corrections only where visible evidence justifies them",
+        "rerender to confirm the corrections rather than relying on numeric geometry alone"
+      ],
+      "must_not": [
+        "scatter arbitrary one-pixel nudges without a visible reason",
+        "swap the established type system merely for novelty",
+        "treat tiny metadata as automatically more premium"
+      ]
+    },
+    {
+      "id": "ui-slop-scanner-is-advisory",
+      "request": "Run the frontend slop scanner on this redesign and use it to help polish the page.",
+      "expected_mode": "validation",
+      "must_load": [
+        "references/qa-checklist.md",
+        "references/visual-direction.md"
+      ],
+      "must_do": [
+        "use scripts/ui_slop_scan.py only as supplemental source evidence when runnable",
+        "review each finding against the real product and design contract before changing code",
+        "keep the rendered designer critique as the visual-quality authority"
+      ],
+      "must_not": [
+        "treat zero scanner findings as proof that the page looks good",
+        "turn every advisory into a mandatory fix",
+        "replace screenshot or runtime review with static regex output"
       ]
     }
   ]
