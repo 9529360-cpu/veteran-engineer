@@ -26,7 +26,7 @@ LINE_RULES = [
      "Text below 12px is easy to make illegible and should be justified by the actual role."),
     ("viewport-height", "advisory", re.compile(r"(?:height\s*:\s*100vh\b|\bh-screen\b)", re.I),
      "100vh/h-screen can be brittle on mobile browser chrome; verify whether dynamic viewport units are safer."),
-    ("extreme-z-index", "warning", re.compile(r"(?:z-index\s*:\s*(?:[2-9]\d{2,}|\d{4,})\b|\bz-\[(?:[2-9]\d{2,}|\d{4,})\])", re.I),
+    ("extreme-z-index", "advisory", re.compile(r"(?:z-index\s*:\s*(?:[2-9]\d{2,}|\d{4,})\b|\bz-\[(?:[2-9]\d{2,}|\d{4,})\])", re.I),
      "Very large z-index often signals an unmanaged layering scale."),
 ]
 
@@ -160,7 +160,7 @@ def scan_path(root: Path, max_files: int = 2000) -> dict:
             if match:
                 findings.append(Finding(
                     rule_id="focus-removal",
-                    severity="warning",
+                    severity="advisory",
                     file=_relative(path, root),
                     line=_line_number(text, match.start()),
                     message="Focus outline is removed in a file with no visible replacement state.",
