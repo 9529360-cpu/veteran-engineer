@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "purpose": "Regression scenarios for evidence-first product design, blocking Visual Design Authority, implementation-first runtime visual proof, progressive context routing, provider-neutral Design Action Fabric execution, safe design-provider mutation and recovery, Figma design/code/library/motion/assets/Code Connect workflows, evidence-first design-system reuse, resumable design-session state, live URL reconstruction, cross-tool design-system synchronization, component labs, reference research, fidelity, and graceful degradation.",
+  "purpose": "Regression scenarios for evidence-first product design, blocking Visual Design Authority, implementation-first runtime visual proof, progressive context routing, provider-neutral Design Action Fabric execution, safe design-provider mutation and recovery, Figma design/code/library/motion/assets/Code Connect workflows, evidence-first design-system reuse, resumable design-session state, live URL reconstruction, cross-tool design-system synchronization, component labs, reference research, fidelity, and graceful degradation. It also pressures qualitative visual calibration and bounded product-pattern retrieval so design intelligence stays coherent without turning into a universal style score or a giant always-loaded catalog.",
   "scenarios": [
     {
       "id": "existing-system-small-change",
@@ -905,6 +905,65 @@
         "submit the same mapping again before read-back",
         "invent mapping success from the timeout response",
         "replace a correct existing mapping merely to make the workflow linear"
+      ]
+    },
+    {
+      "id": "design-calibration-vector-coherence",
+      "request": "Design a multi-section developer-tool landing page with a strong visual point of view. Keep the whole page coherent instead of making each section feel like a different template.",
+      "expected_mode": "visual-authority",
+      "must_load": [
+        "references/visual-direction.md",
+        "references/qa-checklist.md"
+      ],
+      "must_do": [
+        "declare a compact structure-variance motion-energy and information-density calibration before deep implementation",
+        "use the calibration as a consistency check rather than a quality score",
+        "allow local density or motion deviations only when they serve the task hierarchy",
+        "verify the rendered result still belongs to one visual world"
+      ],
+      "must_not": [
+        "assign a universal numeric beauty score",
+        "force every section to identical density or composition",
+        "invent a new visual calibration for a small change inside an already coherent existing product"
+      ]
+    },
+    {
+      "id": "product-pattern-packet-retrieval",
+      "request": "Design onboarding for a regulated fintech product. Research mature patterns first, but do not dump a giant design catalog into the project or copy another app.",
+      "expected_mode": "concept-first",
+      "must_load": [
+        "references/reference-research.md",
+        "references/visual-direction.md"
+      ],
+      "must_do": [
+        "start from the fintech onboarding task audience stakes platform and existing system",
+        "prefer repository and official system evidence before broader inspiration",
+        "return a bounded packet covering IA density trust risk states responsive accessibility and avoid-list evidence",
+        "apply recurring principles through the target product's own design system"
+      ],
+      "must_not": [
+        "load dozens of palettes fonts and style names into working context",
+        "choose a design by popularity ranking",
+        "copy another product's branding taxonomy or regulated interaction blindly"
+      ]
+    },
+    {
+      "id": "existing-system-inherits-calibration",
+      "request": "Add one loading state to an established dashboard whose layout, motion, density, tokens, and component system are already coherent.",
+      "expected_mode": "production",
+      "must_load": [
+        "references/design-system.md",
+        "references/visual-direction.md"
+      ],
+      "must_do": [
+        "infer and inherit the incumbent visual calibration instead of opening a new art-direction exercise",
+        "reuse existing components tokens motion and density conventions",
+        "verify the added state preserves the existing hierarchy and accessibility"
+      ],
+      "must_not": [
+        "retune the whole product because a calibration vector exists",
+        "run broad external pattern research for a local state already defined by the system",
+        "introduce a second aesthetic direction for the loading state"
       ]
     }
   ]
