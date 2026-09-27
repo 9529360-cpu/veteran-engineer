@@ -56,9 +56,21 @@ ALIASES = {
     "desktop-workspace": "product-patterns",
     "agent-workspace": "product-patterns",
     "ide-workspace": "product-patterns",
+    "visual-shotgun": "visual-exploration",
+    "design-shotgun": "visual-exploration",
+    "design-variants": "visual-exploration",
+    "designer-critique": "design-critique",
+    "visual-polish": "design-critique",
+    "ui-slop": "design-critique",
+    "optical-craft": "visual-craft",
+    "typography-craft": "visual-craft",
+    "first-viewport": "visual-craft",
 }
 
 ROUTES = {
+    "visual-exploration": ["references/visual-design-authority.md", "references/concept-and-assets.md", "references/visual-direction.md"],
+    "design-critique": ["references/qa-checklist.md", "references/visual-direction.md", "references/fidelity-protocol.md"],
+    "visual-craft": ["references/visual-direction.md", "references/qa-checklist.md"],
     "product-patterns": ["references/product-ui-pattern-library.md", "references/visual-design-authority.md", "references/visual-direction.md"],
     "visual-authority": ["references/visual-design-authority.md", "references/visual-direction.md", "references/product-design-cycle.md"],
     "product-design": ["references/product-design-cycle.md", "references/design-source-authority.md", "references/visual-direction.md"],
@@ -99,6 +111,9 @@ ROUTES = {
 }
 
 MODE_PRIORITY = [
+    ("visual-exploration", {"visual-exploration"}),
+    ("design-critique", {"design-critique"}),
+    ("visual-craft", {"visual-craft"}),
     ("product-patterns", {"product-patterns"}),
     ("visual-authority", {"visual-authority"}),
     ("design-action", {"design-action"}),

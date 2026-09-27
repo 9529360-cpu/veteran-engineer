@@ -447,6 +447,13 @@ def test_studio_composition_contract():
     probe_tests = FRONTEND_ROOT / "tests" / "test_design_system_probe.py"
     assert probe.is_file()
     assert probe_tests.is_file()
+    slop_scan = FRONTEND_ROOT / "scripts" / "ui_slop_scan.py"
+    slop_scan_tests = FRONTEND_ROOT / "tests" / "test_ui_slop_scan.py"
+    assert slop_scan.is_file()
+    assert slop_scan_tests.is_file()
+    slop_text = slop_scan.read_text()
+    assert "Static advisories only" in slop_text
+    assert "--strict" in slop_text
 
 
 def test_studio_version_domains_are_separate():

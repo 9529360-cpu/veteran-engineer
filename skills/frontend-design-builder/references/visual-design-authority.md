@@ -20,6 +20,8 @@ When visual/design tools are available, text-only design descriptions are not en
 
 When no accepted visual target exists and direction is unresolved, create 2-3 materially different directions before committing.
 
+Treat this as a **visual shotgun**, not three paragraphs describing hypothetical screens. When capable visual tools exist, materialize every candidate at comparable fidelity and under the same content/product constraints so the comparison is fair.
+
 Directions must differ in meaningful structure such as:
 
 - hierarchy or focal point;
@@ -31,6 +33,8 @@ Directions must differ in meaningful structure such as:
 - typography/material language.
 
 Recolors, different gradients, or moving the same cards around are not distinct concepts.
+
+Compare the candidates side by side. For each, name the strongest idea and the failure that could disqualify it. Reject candidates explicitly when they weaken the primary task, first viewport, typography, product specificity, responsive plausibility, or reusable component language. Do not average the candidates into a compromise layout; select one coherent direction.
 
 Do not create a user approval checkpoint unless the user asks for one or the competing directions change product semantics/scope. Otherwise select the strongest direction from evidence and continue.
 
@@ -52,6 +56,20 @@ Prefer evidence of:
 - visual distinction that still serves usability.
 
 Do not reduce this to a numeric beauty score.
+
+## First viewport composition gate
+
+Treat the first viewport as its own design artifact for surfaces where it sets orientation, trust, or conversion.
+
+Inspect:
+- what receives the first, second, and third visual fixation;
+- whether the product itself appears soon enough when product evidence matters;
+- whether headline/copy measure and line breaks create hierarchy rather than noise;
+- whether the primary action is obvious without competing equally loud controls;
+- whether the viewport is overloaded with pills, metadata, badges, fake status, or decorative chrome;
+- whether the composition still works on a small laptop-height viewport, not only a tall design canvas.
+
+A beautiful full page can still fail if the first viewport is generic, cramped, empty in the wrong places, or hides the product behind marketing decoration. Fix the first-view composition before polishing downstream sections.
 
 ## Anti-generic rejection test
 
@@ -152,6 +170,8 @@ Substantial UI work is not design-complete until:
 5. actionable P0/P1/P2 visual or interaction issues are fixed when the environment allows;
 6. concept imagery is not being used as a substitute for implementation evidence;
 7. a structurally failed first render was redesigned rather than cosmetically patched.
+8. the first viewport passed hierarchy/overload review when it materially owns orientation or conversion;
+9. visually material repairs were rerendered after source changes instead of being accepted from explanation alone.
 
 A successful build is engineering evidence, not visual-quality evidence.
 
