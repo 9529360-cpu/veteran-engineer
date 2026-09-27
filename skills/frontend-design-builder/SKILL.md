@@ -49,6 +49,7 @@ For substantial new UI, major redesigns, or work where the current interface is 
 - Design the requested surface as a coherent whole; do not stop at an attractive hero when the task is a full page or app.
 - Prefer one strong visual idea over generic decoration, repetitive card grids, filler badges, fake metrics, or ornamental UI chrome.
 - For substantial unresolved UI, do not let the first plausible layout become production by default. Materialize competing directions when needed, reject generic AI-template patterns, and lock one visual target before deep code.
+- For visually led marketing, portfolio, editorial, premium-brand, or major art-direction work, prefer an image/Figma-first visual exploration when capable tools exist; do not force image generation onto dense operational product UI whose design authority is code/Figma/components.
 - In an existing codebase, generated images, Figma concepts, and standalone surrogate HTML are design evidence only. They never prove that the real product UI is good. Final visual authority must converge on the actual code-native render in the repository stack.
 - A visual redesign is not complete if it only changes palette, border radius, shadows, cards, or column styling while preserving the same weak information architecture and task framing. Treat that as a skin, not a redesign.
 - Establish or discover the design system before producing repeated components.
@@ -103,7 +104,7 @@ For projects that benefit from reuse, populate `references/design-system-referen
 
 If the user provides a screenshot, mockup, Figma design, accepted concept, or strong reference, use it as the active visual spec.
 
-If no adequate spec exists and the task is visually significant, use `references/visual-design-authority.md` and `references/concept-and-assets.md`. When direction is unresolved, materialize 2-3 meaningfully different concepts when capable visual tools are available; do not count recolors or rearranged card grids as distinct directions. Select the strongest product-fit direction without adding a user approval gate unless requested or the choice changes product semantics/scope.
+If no adequate spec exists and the task is visually significant, use `references/visual-design-authority.md` and `references/concept-and-assets.md`. When direction is unresolved, run a **visual shotgun**: materialize 2-3 meaningfully different concepts at comparable fidelity, place them under the same product/content constraints, and compare them side by side. Do not count recolors or rearranged card grids as distinct directions. Reject weak candidates explicitly for hierarchy, first-viewport composition, typography, product specificity, responsive plausibility, or component-language reasons before locking the strongest product-fit direction. Do not add a user approval gate unless requested or the choice changes product semantics/scope.
 
 Deep implementation is blocked until the active direction exists as real visual evidence when the environment can produce it. A text-only description is not a sufficient visual target when Figma, image generation, or rendered prototyping is available.
 
@@ -127,7 +128,7 @@ A successful build/typecheck is necessary but not sufficient. Render and inspect
 
 Check the primary workflow, desktop/current viewport, and at least one mobile-sized viewport when relevant. Prefer the actual application/runtime route and real component tree. A handcrafted static HTML surrogate may help exploration but is not acceptable final visual evidence when the real UI can be run. Compare against the accepted reference for layout, copy, typography, color, spacing, component/container model, icons, imagery, responsive behavior, and motion.
 
-Read `references/fidelity-protocol.md` for reference-led work and `references/qa-checklist.md` for substantial UI work. Keep fixing correctable visual, responsive, interaction, asset, or design-system mismatches before handoff.
+Read `references/fidelity-protocol.md` for reference-led work and `references/qa-checklist.md` for substantial UI work. For visually material changes, use a **designer critique loop** rather than a one-shot QA pass: capture the current real render, identify the few highest-impact visual failures, repair the owning source/system, rerender the same viewport/state, and compare again. Preserve before/after evidence when it materially proves the repair. When source-level UI smells are plausible and the repository can run Python, `scripts/ui_slop_scan.py <frontend-path> --json` may provide advisory findings; it is never the visual-quality oracle. Keep fixing correctable visual, responsive, interaction, asset, or design-system mismatches before handoff.
 
 ## Progressive references
 
@@ -144,6 +145,7 @@ Load only what the task needs:
 - `references/modes-and-architecture.md` — prototype/production modes and technology-specific architecture for web, Angular, MAUI, Unity, Godot, and Unreal.
 - `references/fidelity-protocol.md` — strict source-of-truth implementation, typography/icon/color audits, slice-by-slice comparison, fidelity ledger.
 - `references/qa-checklist.md` — general visual, responsive, functional, and engineering QA.
+- `scripts/ui_slop_scan.py` — optional advisory source scan for a small set of deterministic UI smells; never substitutes for rendered critique.
 - `references/design-system-reference.template.md` — optional living cache for a specific project's discovered system.
 - `references/tool-orchestration.md` — repository, Figma, image generation, browser/preview, research, and graceful-degradation tool policy.
 - `references/design-action-fabric.md` — provider-neutral design capability model, Figma tool binding, fallbacks, design-action evidence ledger, and stop conditions.
