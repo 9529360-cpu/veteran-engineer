@@ -244,3 +244,36 @@ def test_dense_workspace_routes_to_product_patterns(tmp_path):
         "references/visual-design-authority.md",
         "references/visual-direction.md",
     ]
+
+
+def test_visual_shotgun_routes_exploration_before_generic_visual_authority(tmp_path):
+    root = _seed_refs(tmp_path)
+    result = route_signals("visual-shotgun,major-ui", skill_root=root)
+    assert result["primary_mode"] == "visual-exploration"
+    assert paths(result) == [
+        "references/visual-design-authority.md",
+        "references/concept-and-assets.md",
+        "references/visual-direction.md",
+    ]
+
+
+def test_designer_critique_routes_rendered_qa_and_fidelity(tmp_path):
+    root = _seed_refs(tmp_path)
+    result = route_signals("designer-critique,visual-qa", skill_root=root)
+    assert result["primary_mode"] == "design-critique"
+    assert paths(result) == [
+        "references/qa-checklist.md",
+        "references/visual-direction.md",
+        "references/fidelity-protocol.md",
+    ]
+
+
+def test_optical_craft_stays_small_and_does_not_load_concept_pipeline(tmp_path):
+    root = _seed_refs(tmp_path)
+    result = route_signals("optical-craft", skill_root=root)
+    assert result["primary_mode"] == "visual-craft"
+    assert paths(result) == [
+        "references/visual-direction.md",
+        "references/qa-checklist.md",
+    ]
+    assert "references/concept-and-assets.md" not in paths(result)
