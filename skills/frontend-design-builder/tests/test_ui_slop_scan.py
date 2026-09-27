@@ -83,6 +83,7 @@ def test_inline_suppression_is_scoped_to_rule(tmp_path: Path):
     source = tmp_path / "page.html"
     source.write_text(
         '<a href="#">Placeholder</a> <!-- ui-slop-ignore:dead-link -->\n'
+        '<button class="outline-none">Menu</button> <!-- ui-slop-ignore:focus-removal -->\n'
         '<p style="font-size:10px">Metadata</p>\n',
         encoding="utf-8",
     )
@@ -91,6 +92,7 @@ def test_inline_suppression_is_scoped_to_rule(tmp_path: Path):
     ids = [row["rule_id"] for row in payload["findings"]]
 
     assert "dead-link" not in ids
+    assert "focus-removal" not in ids
     assert "tiny-text" in ids
 
 
