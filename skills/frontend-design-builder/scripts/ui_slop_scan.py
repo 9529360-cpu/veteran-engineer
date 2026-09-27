@@ -158,14 +158,17 @@ def scan_path(root: Path, max_files: int = 2000) -> dict:
         if re.search(r"\boutline-none\b|outline\s*:\s*none", text, re.I) and not re.search(r"focus-visible|:focus\b", text, re.I):
             match = re.search(r"\boutline-none\b|outline\s*:\s*none", text, re.I)
             if match:
-                findings.append(Finding(
-                    rule_id="focus-removal",
-                    severity="advisory",
-                    file=_relative(path, root),
-                    line=_line_number(text, match.start()),
-                    message="Focus outline is removed in a file with no visible replacement state.",
-                    evidence=match.group(0),
-                ))
+                line_no = _line_number(text, match.start())
+                line = lines[line_no - 1] if 0 < line_no <= len(lines) else ""
+                if not _suppressed(line, "focus-removal"):
+                    findings.append(Finding(
+                        rule_id="focus-removal",
+                        severity="advisory",
+                        file=_relative(path, root),
+                        line=line_no,
+                        message="Focus outline is removed in a file with no visible replacement state.",
+                        evidence=match.group(0),
+                    ))
 
     by_severity = {"warning": 0, "advisory": 0}
     for finding in findings:
