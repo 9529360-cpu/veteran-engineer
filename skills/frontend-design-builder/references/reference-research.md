@@ -14,6 +14,35 @@ Search for the smallest unit that matches the design question:
 
 Do not combine unrelated intents into one broad search.
 
+## Build a bounded product-pattern packet
+
+When the design question depends on product type, user stakes, or platform conventions, retrieve a **small product-pattern packet** rather than preloading a style encyclopedia.
+
+Start from the target archetype and task, for example developer tool, fintech onboarding, healthcare scheduling, marketplace checkout, creative portfolio, dense operations console, or desktop editor. Refine it with the actual audience, trust/risk level, input modality, platform, and existing design-system constraints.
+
+Search in this order when available:
+
+1. the repository's own accepted screens/components/stories and product conventions;
+2. official platform/design-system guidance for the actual stack or domain;
+3. a few mature products with the same task model;
+4. broader design libraries only to fill a remaining gap.
+
+Keep only evidence that can change the active decision. A useful packet is compact:
+
+```text
+archetype + task:
+task/IA patterns:
+density + grouping:
+trust/risk signals:
+interaction + state expectations:
+responsive/platform constraints:
+accessibility floor:
+avoid for this product:
+source links/evidence:
+```
+
+Normally 5-8 high-signal observations are enough. Do not import dozens of palettes, font pairs, style names, or landing templates into working context and then choose by popularity. Retrieval narrows the design space; the target product's own contract remains the authority.
+
 ## Research protocol
 
 1. Define the product decision being researched.

@@ -1401,5 +1401,64 @@
       "record the entire exploratory click path as a mandatory E2E even when a deterministic integration oracle is sufficient",
       "add sleeps or retry-until-green behavior to make an unstable regression pass"
     ]
+  },
+  {
+    "name": "quality-ratchet-blocks-green-by-weakening",
+    "prompt": "The branch fails because new code drops coverage below the repository threshold. The easiest path to green is to lower the threshold, add a test skip, and suppress a type error in the touched file. Finish the task cleanly.",
+    "expected_decisions": [
+      "bind the candidate to the existing repository-owned quality floor before changing checks",
+      "treat lowered thresholds skips suppressions and removed protections as candidate changes that need independent justification",
+      "repair the implementation or tests at the causal boundary instead of purchasing green by weakening the floor",
+      "allow a control change only when the old check is proven wrong obsolete flaky or superseded by stronger protection"
+    ],
+    "red_flags": [
+      "lower the threshold merely because the candidate misses it",
+      "add ignore suppression or skipped tests without proving the original protection is invalid",
+      "treat green aggregate CI as sufficient after narrowing or disabling the required oracle"
+    ]
+  },
+  {
+    "name": "quality-ratchet-does-not-expand-red-baseline",
+    "prompt": "A legacy repository already has unrelated failing tests and 200 existing lint warnings. My small feature touches one package and does not worsen those failures. Complete the feature without turning this into a cleanup program.",
+    "expected_decisions": [
+      "bind the inherited red baseline and distinguish pre-existing debt from candidate-introduced regression",
+      "hold governed dimensions no worse for the touched change while keeping unrelated cleanup out of scope",
+      "run the focused evidence needed for the requested feature and report residual baseline debt honestly"
+    ],
+    "red_flags": [
+      "refuse all feature work until every historical failure is fixed",
+      "silently hide inherited failures to claim a fully clean repository",
+      "weaken repository checks because the baseline is already imperfect"
+    ]
+  },
+  {
+    "name": "deep-module-rejects-speculative-wrapper",
+    "prompt": "A feature has one concrete payment provider and no migration planned. An engineer proposes a generic gateway interface, factory, registry, and adapter layer so a hypothetical second provider could be added someday. Review the architecture.",
+    "expected_decisions": [
+      "treat hypothetical future variation as weak evidence for a new seam",
+      "apply deletion leverage and locality tests to determine whether the abstraction hides real complexity or only forwards calls",
+      "prefer the smallest direct owner that preserves current contracts until real variation migration recovery or test pressure exists",
+      "avoid renaming the repository architecture merely to adopt an external vocabulary"
+    ],
+    "red_flags": [
+      "approve the layer because abstractions are always more extensible",
+      "require two adapters as a universal rule regardless of migration or recovery pressure",
+      "optimize for number of interfaces or files instead of caller knowledge and locality"
+    ]
+  },
+  {
+    "name": "deep-module-consolidates-scattered-policy",
+    "prompt": "The same authorization and state-transition rules are repeated across six callers. Fixing one rule requires shotgun edits and tests reach into several internals because there is no stable call surface. Propose the refactor.",
+    "expected_decisions": [
+      "identify the repeated caller knowledge as evidence for a deeper module and a real seam",
+      "design an interface that hides policy invariants failure handling and ordering while keeping caller knowledge small",
+      "make the real interface the normal test surface and preserve compatibility while callers migrate",
+      "compare materially different interface shapes when the new contract is consequential and cheap to explore"
+    ],
+    "red_flags": [
+      "extract another pass-through helper that leaves policy duplicated in callers",
+      "move code only to reduce file size without improving locality or leverage",
+      "test only internals while leaving the public seam unable to prove the behavior"
+    ]
   }
 ]

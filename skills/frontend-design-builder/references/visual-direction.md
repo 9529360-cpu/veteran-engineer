@@ -16,6 +16,22 @@ Choose a coherent combination of:
 
 Avoid mixing unrelated design languages just because each looks attractive in isolation.
 
+## Calibrate the visual vector
+
+For a new visual world, major redesign, or multi-section surface, declare three **directional** calibration axes before deep implementation:
+
+- **structure variance** — restrained / balanced / expressive: how much asymmetry, compositional surprise, and layout variation the product can carry;
+- **motion energy** — quiet / responsive / cinematic: how strongly motion participates in hierarchy, feedback, and spatial continuity;
+- **information density** — airy / working / cockpit: how much information and control surface should occupy a viewport.
+
+Write the vector compactly, for example:
+
+`structure=balanced | motion=responsive | density=working`
+
+These are consistency coordinates, **not quality scores** and not fixed aesthetic presets. Do not convert them into a universal numeric beauty rubric. Existing products should inherit their observed vector unless the user authorizes a redesign.
+
+Use the vector to catch drift across the surface. A region may intentionally deviate because its job differs—for example a dense data table inside an otherwise airy product—but the deviation must serve task hierarchy rather than introduce a second visual language. When a representative real render feels wrong, diagnose which axis drifted before piling on decorative fixes.
+
 ## Interpret references by properties
 
 When the user says "like X", extract properties rather than blindly cloning:

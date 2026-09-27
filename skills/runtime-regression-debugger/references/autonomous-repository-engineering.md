@@ -168,6 +168,28 @@ Prefer one thin vertical slice through the riskiest real boundary before broad i
 
 For consequential actions keep three questions separate: **capability** (can the tool do it), **authorization** (was this action class authorized), and **advisability** (does current evidence justify it). A powerful token or connector is not permission. Explicit authorization is required for production traffic/deployments, destructive data changes, credential/access-policy changes, monetary effects, external publication/release, or remote merge/push when not implied by the request. Finish every safe lower-boundary step before surfacing the smallest remaining authorization blocker.
 
+## Protect the project quality floor with a ratchet
+
+Before broad autonomous implementation, recover the **active project quality floor** from current repository authority rather than inventing universal targets. Relevant owners can include CI/rulesets, compiler/type/lint policy, test and coverage config, accessibility/performance budgets, security scanners, architecture dependency rules, package/build warnings, and repository-specific release checks.
+
+Bind the baseline to the exact base revision/config you are changing. Then apply a ratchet:
+
+`candidate quality >= bound baseline on every material governed dimension`
+
+The ratchet is a **no-regression rule**, not a demand to repair all historical debt. If the base already has known failing tests, warnings, debt, or a weak numeric threshold, keep unrelated baseline debt out of scope unless it blocks the requested outcome. The candidate must not worsen the governed dimension or hide the failure.
+
+Treat changes to quality controls as first-class code changes. Challenge any candidate that:
+
+- adds `@ts-ignore`, `eslint-disable`, compiler/linter suppression, warning exemptions, or broad ignore patterns;
+- skips/quarantines/deletes tests or removes assertions that previously protected the changed behavior;
+- lowers coverage, performance, accessibility, security, reliability, or architecture thresholds;
+- disables a required CI/ruleset/status lane or narrows applicability so the real candidate no longer exercises it;
+- changes a failure into a warning, retry-until-green path, or silent best-effort without an explicit contract reason.
+
+A quality-control edit may be valid when the old check is objectively wrong, flaky, obsolete, non-applicable, or superseded by a stronger oracle. Prove that mechanism and preserve or improve the effective protection instead of merely making the signal green. Record temporary exemptions with scope, owner, reason, and removal/freshness condition.
+
+Do not impose arbitrary cross-project numbers such as a universal coverage percentage or performance budget. Prefer repository-owned thresholds; when none exist and a measurable dimension matters, measure the current credible baseline and hold that line until the project deliberately chooses a stronger target.
+
 ## 4. Implement in evidence-producing increments
 
 After each meaningful increment, compare the real result against the still-open clause ledger. If a clause is absent, materially weaker than requested, wired to a dead path, or visible only in source but not in the running product, treat the increment as incomplete and continue while a safe next action exists.

@@ -8,6 +8,7 @@
 - Use ADRs for consequential decisions
 - Prefer reversible boundaries
 - Refactor by seam and vertical slice
+- Prefer deep modules over shallow indirection
 - Scale large refactors mechanically
 - Modernize incrementally
 - Avoid abstraction and rewrite traps
@@ -102,6 +103,26 @@ Good sequence:
 7. verify no second source of truth remains.
 
 Do not mix broad formatting, dependency churn, schema redesign, and behavioral changes unless they are inseparable.
+
+## Prefer deep modules over shallow indirection
+
+Use **module depth** as a diagnostic lens, not as a reason to rename the repository's existing architecture vocabulary.
+
+A useful module gives callers **leverage**: substantial behavior, policy, invariants, failure handling, or coordination behind an interface that is smaller and simpler than the implementation knowledge it hides. It also creates **locality**: when the behavior changes, callers do not all need to relearn or duplicate the mechanism.
+
+Treat the interface as everything callers must know to use the module correctly: operations and types, invariants, ordering, errors, configuration, ownership, and material performance/failure characteristics. A tiny type signature can still be a large interface if every caller must understand hidden sequencing or state rules.
+
+Use these checks before adding or preserving an abstraction:
+
+- **Deletion test** - imagine deleting the module. If its complexity simply disappears, it may be a pass-through. If the same knowledge and branching would spread back across many callers/tests, the module is earning its keep.
+- **Interface-as-test-surface** - important behavior should normally be provable through the same interface real callers use. If every meaningful test must bypass the public seam and reach deeply into internals, reconsider the module shape or the chosen test boundary.
+- **Real variation test** - a new adapter/seam needs current evidence: multiple real implementations/callers, a concrete migration/cutover/recovery boundary, or another present variation pressure. A hypothetical future adapter by itself is weak evidence.
+- **Locality test** - one policy change should not require shotgun edits across callers that conceptually ask for the same outcome.
+- **Leverage test** - adding a method/parameter/type should buy materially more capability or clarity than the caller knowledge it adds.
+
+Do not optimize for implementation-lines/interface-lines ratios, raw file count, or fewer functions. A deep module may have a complex implementation; the point is that callers and tests do not carry that complexity.
+
+For consequential new interfaces, design materially different interface shapes before committing when the decision is cheap to explore. Compare them on caller knowledge, locality, testability, compatibility, error clarity, and migration cost. Do not manufacture alternatives for a tiny private helper or mechanically require multiple designs when the existing project contract already determines the seam.
 
 ## Scale large refactors mechanically
 
