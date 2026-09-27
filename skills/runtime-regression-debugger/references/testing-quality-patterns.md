@@ -196,6 +196,20 @@ At the adapter boundary:
 Playwright explicitly recommends testing what you control and stubbing uncontrolled third parties in normal browser tests:
 https://playwright.dev/docs/best-practices
 
+## Convert stable runtime reproductions into regression evidence
+
+A successful manual or live-runtime reproduction is valuable diagnostic evidence, but it disappears when the session ends. After fixing a material failure, ask whether the reproduced path is **stable, repository-controlled, discriminating, and not already covered**.
+
+When it is, preserve the smallest automated regression that captures the causal postcondition:
+
+1. reduce the live trajectory to the cheapest reliable layer that still fails for the old mechanism;
+2. prove the oracle distinguishes the regression from the repaired behavior when practical;
+3. keep only the state and actions needed to guard the contract;
+4. prefer unit/contract/integration coverage over browser/E2E when the browser is not the causal boundary;
+5. retain a browser/runtime regression when rendering, navigation, host integration, or another real boundary is essential to the failure.
+
+Do not turn every smoke test into permanent E2E. If the path depends on an uncontrolled vendor, nondeterministic timing, unavailable production-only state, or subjective visual judgment without a stable oracle, keep the runtime evidence and add the strongest narrower deterministic test instead. A brittle replay that will be retried until green is negative evidence, not protection.
+
 ## Treat flaky tests as defects
 
 Do not normalize rerunning until green.

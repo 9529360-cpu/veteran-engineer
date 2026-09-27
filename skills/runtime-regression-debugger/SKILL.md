@@ -129,6 +129,10 @@ Run the cheapest discriminating check near each edit; broad green checks never r
 
 Before handoff inspect the complete change, remove diagnostics/unrelated churn, close companion responsibilities, and bind material evidence to exact source/build/runtime/cohort identity. Whenever writing or materially editing tests/assertions, read `references/testing-quality-patterns.md` and perform its test-code semantic self-check before broader CI. Read `references/engineering-evidence-gates.md` and `references/proof-carrying-change-evidence.md` only when deeper proof design is current.
 
+When behavior, a public API/config, an operator workflow, release semantics, or another maintained product contract changes, run a **durable-contract staleness pass** only across repository-authoritative surfaces that can now lie: maintained README/docs/ADRs/runbooks, public exports/examples, meaningful test names/fixtures, changelog/changesets, and generated contract docs. Repair the owning stale surface in the same change or record a deliberate deferral; do not churn unrelated documentation for an internal refactor.
+
+When live smoke/runtime validation exposes a stable reproducible failure path that materially guards the requested outcome and no equivalent regression exists, preserve the smallest reliable automated regression at the cheapest layer before discarding investigation scaffolding. Prefer a deterministic unit/integration/browser oracle over replaying a fragile manual trajectory; do not fossilize volatile vendor behavior, timing accidents, or subjective visual judgment into flaky E2E ceremony.
+
 ## 7. Scale execution without multiplying authority
 
 For broad programs compile `goal -> done definition -> work graph -> dependency waves -> integration gates -> final evidence`. Create independence before parallelism; fan out only across disjoint owners/write sets with independent oracles under one integration authority.

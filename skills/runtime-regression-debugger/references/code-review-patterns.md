@@ -236,6 +236,8 @@ Examples:
 
 Require a companion only when the changed mechanism creates it.
 
+Run a **durable-contract staleness audit** when the candidate changes behavior that maintained repository surfaces promise to users, operators, integrators, or future maintainers. Inspect only owners that can now be false: README/docs, ADRs or runbooks, public exports and examples, contract/schema docs, meaningful test or fixture names that encode the old behavior, and changelog/changeset entries required by repository policy. Repair the actual stale owner or record a deliberate deferral with its consequence. Do not rewrite every nearby document, add an ADR for a local implementation detail, or manufacture changelog noise for an internal refactor whose observable contract did not change.
+
 Also inspect the entire candidate for change hygiene:
 
 - unrelated formatting, renames, or cleanup introduced by the candidate;

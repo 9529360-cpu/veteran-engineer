@@ -1357,5 +1357,49 @@
       "treats a local machine receipt as proof that the remote repository is synchronized",
       "uses the requestId or actionId as proof of which human or ChatGPT conversation initiated the action after session provenance is lost"
     ]
+  },
+  {
+    "name": "durable-contract-staleness-after-behavior-change",
+    "prompt": "We renamed a public config option and changed the operator workflow. The implementation and focused tests are green, but the maintained README example, an operator runbook, and the pending changeset still describe the old option. Finish the change cleanly.",
+    "expected_decisions": [
+      "treat maintained repository promises that now describe the old observable contract as stale owners",
+      "update only the README example, runbook, changeset, or other surfaces whose meaning is actually invalidated",
+      "verify stale public/operator references are repaired or deliberately deferred with consequence",
+      "keep code/test evidence distinct from durable documentation freshness"
+    ],
+    "red_flags": [
+      "declare completion from green code tests while maintained public or operator guidance is known false",
+      "rewrite every nearby document regardless of ownership",
+      "create unrelated ADR or changelog ceremony for surfaces that did not change"
+    ]
+  },
+  {
+    "name": "internal-refactor-does-not-trigger-doc-churn",
+    "prompt": "Extract a private helper and simplify an internal implementation. Public behavior, API, config, operator workflow, examples, and release semantics are unchanged. Finish and validate it.",
+    "expected_decisions": [
+      "treat the change as an internal refactor with no durable public contract delta",
+      "run the focused correctness evidence required by the changed mechanism",
+      "leave README ADR runbook changelog and changeset surfaces alone unless repository policy independently requires one"
+    ],
+    "red_flags": [
+      "edit documentation merely to prove a staleness audit happened",
+      "invent a changeset or ADR for an implementation-only cleanup",
+      "broaden scope into unrelated documentation modernization"
+    ]
+  },
+  {
+    "name": "runtime-smoke-reproduction-becomes-regression",
+    "prompt": "A submit flow intermittently lost a request. In the running app you found a deterministic reproduction, fixed the authoritative race, and the live smoke now passes. No existing automated test covers that failure. Close the bug without leaving a brittle test.",
+    "expected_decisions": [
+      "preserve the stable reproduced failure as the smallest automated regression that still exercises the causal postcondition",
+      "choose the cheapest reliable unit contract integration or browser layer rather than blindly copying the full manual trajectory",
+      "prove the regression would distinguish the old failure from the repaired behavior when practical",
+      "keep volatile vendor timing subjective visual checks or production-only state out of brittle E2E automation"
+    ],
+    "red_flags": [
+      "keep only the successful manual smoke and lose the reproducible regression",
+      "record the entire exploratory click path as a mandatory E2E even when a deterministic integration oracle is sufficient",
+      "add sleeps or retry-until-green behavior to make an unstable regression pass"
+    ]
   }
 ]
