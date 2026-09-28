@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process';
 import { TextDecoder } from 'node:util';
 import { StringDecoder } from 'node:string_decoder';
 import { assertLocalPathAllowed } from './workspace-policy.mjs';
-import { signalProcessTree } from './process-lifecycle-authority.mjs';
+import { PROCESS_LIFECYCLE_STATE, probeProcess, probeProcessGroup, signalProcessTree } from './process-lifecycle-authority.mjs';
 import { inspectProjectEnvironment } from './project-environment.mjs';
 import { assessProjectEnvironmentReadiness } from './project-environment-readiness.mjs';
 import { compileProjectCommandPlan } from './project-command-plan.mjs';
@@ -16,6 +16,8 @@ import { randomId } from './util.mjs';
 export const MACHINE_ACTION_CONTRACT = 'veteran-machine-action-v2';
 export const MACHINE_ACTION_RECEIPT_CONTRACT = 'veteran-machine-action-receipt-v1';
 const PROCESS_OUTPUT_DIGEST_CONTRACT = 'veteran-process-output-digest-v1';
+const DEFAULT_SHUTDOWN_GRACE_MS = 1_000;
+const DEFAULT_SHUTDOWN_FORCE_WAIT_MS = 1_000;
 
 const DEFAULT_LIMITS = Object.freeze({
   maxReadBytes: 256 * 1024,
@@ -504,6 +506,32 @@ export class MachineActionService {
     if (this.sessions.size >= this.limits.maxSessions) {
       throw codedError('MACHINE_SESSION_LIMIT', 'Veteran Machine Actions reached the configured active session limit', { maxSessions: this.limits.maxSessions });
     }
+  }
+
+  #sessionShutdownState(session) {
+    const processProbe = process.platform === 'win32'
+      ? probeProcess(session.pid)
+      : probeProcessGroup(session.pid);
+    const terminal = session.status !== 'running';
+    const processGone = processProbe.state === PROCESS_LIFECYCLE_STATE.MISSING;
+    return {
+      verified: terminal && processGone,
+      terminal,
+      processGone,
+      sessionStatus: session.status,
+      processProbe
+    };
+  }
+
+  async #waitForSessionShutdown(session, timeoutMs, pollIntervalMs) {
+    const startedAt = Date.now();
+    let state = this.#sessionShutdownState(session);
+    while (!state.verified && Date.now() - startedAt < timeoutMs) {
+      const remaining = timeoutMs - (Date.now() - startedAt);
+      await new Promise((resolve) => setTimeout(resolve, Math.max(1, Math.min(pollIntervalMs, remaining))));
+      state = this.#sessionShutdownState(session);
+    }
+    return { ...state, elapsedMs: Date.now() - startedAt };
   }
 
   #sessionSummary(session) {
@@ -1167,12 +1195,69 @@ export class MachineActionService {
     throw codedError('MACHINE_ACT_OPERATION_UNSUPPORTED', 'Unsupported machine_act operation: ' + operation);
   }
 
-  async shutdown() {
+  async shutdown({
+    graceMs = DEFAULT_SHUTDOWN_GRACE_MS,
+    forceWaitMs = DEFAULT_SHUTDOWN_FORCE_WAIT_MS,
+    pollIntervalMs = 25
+  } = {}) {
     const active = [...this.sessions.values()].filter((session) => session.status === 'running');
+    if (active.length === 0) {
+      return { attempted: [], stopped: [], forced: [], remaining: [], results: [] };
+    }
+
+    const boundedGraceMs = positiveInteger(graceMs, DEFAULT_SHUTDOWN_GRACE_MS, 30_000);
+    const boundedForceWaitMs = positiveInteger(forceWaitMs, DEFAULT_SHUTDOWN_FORCE_WAIT_MS, 30_000);
+    const boundedPollIntervalMs = positiveInteger(pollIntervalMs, 25, 250);
+    const resultById = new Map();
+
     for (const session of active) {
       clearTimeout(session.timeoutHandle);
-      signalProcessTree(session.pid, 'SIGKILL');
+      resultById.set(session.id, {
+        sessionId: session.id,
+        pid: session.pid,
+        gracefulSignal: signalProcessTree(session.pid, 'SIGTERM'),
+        forced: false,
+        forceSignal: null,
+        verification: null
+      });
     }
-    return { stopped: active.map((session) => session.id) };
+
+    const gracefulStates = await Promise.all(active.map((session) => (
+      this.#waitForSessionShutdown(session, boundedGraceMs, boundedPollIntervalMs)
+    )));
+    const forceTargets = [];
+    for (let index = 0; index < active.length; index += 1) {
+      const session = active[index];
+      const result = resultById.get(session.id);
+      result.verification = gracefulStates[index];
+      if (!gracefulStates[index].verified) forceTargets.push(session);
+    }
+
+    for (const session of forceTargets) {
+      const result = resultById.get(session.id);
+      result.forced = true;
+      result.forceSignal = signalProcessTree(session.pid, 'SIGKILL');
+    }
+
+    if (forceTargets.length > 0) {
+      const forcedStates = await Promise.all(forceTargets.map((session) => (
+        this.#waitForSessionShutdown(session, boundedForceWaitMs, boundedPollIntervalMs)
+      )));
+      for (let index = 0; index < forceTargets.length; index += 1) {
+        resultById.get(forceTargets[index].id).verification = forcedStates[index];
+      }
+    }
+
+    const results = active.map((session) => resultById.get(session.id));
+    const stopped = results.filter((item) => item.verification?.verified).map((item) => item.sessionId);
+    const remaining = results.filter((item) => !item.verification?.verified).map((item) => item.sessionId);
+    const forced = results.filter((item) => item.forced).map((item) => item.sessionId);
+    return {
+      attempted: active.map((session) => session.id),
+      stopped,
+      forced,
+      remaining,
+      results
+    };
   }
 }
