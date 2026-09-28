@@ -52,6 +52,8 @@ On Windows, keep `process.start` shell-free. npm/pnpm/yarn commonly resolve thro
 
 Reuse one persistent process session when interaction benefits from preserved state. Do not start duplicate shells merely because the chat turn changed.
 
+Host/runtime teardown is not proven by issuing a signal. Machine Bridge shutdown should terminate only its managed persistent sessions, wait a bounded interval for terminal process state, escalate to a forced tree stop only when needed, and re-probe the process boundary before reporting cleanup. Treat any non-empty residual/remaining session set as unverified teardown rather than silently calling the host clean.
+
 ## Cross-host handoff
 
 Before moving mutation authority between GitHub/web and the Machine Bridge, compare:
