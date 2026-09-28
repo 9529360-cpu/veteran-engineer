@@ -77,6 +77,22 @@ Treat pull-request ancestry as another versioned authority. If a stacked PR's ba
 
 Treat branch/PR topology as a managed artifact, not scratch space. When semantics still belong to the same active change, prefer updating/rebasing/retargeting the existing branch or PR and selectively reacquiring invalidated integration proof. Create a replacement remote artifact only when repository policy, unsafe ancestry, ownership separation, or irreconcilable history makes reuse misleading. Close or mark superseded artifacts when a consolidated successor actually owns their delta so the remote topology converges instead of accumulating parallel authority.
 
+### Close task-scoped engineering resources without touching user state
+
+Treat every extra execution resource created for the task as a scoped lease with an owner and a retirement condition. Before creating another worktree, checkout, browser/app profile, dev server, container, tunnel, test database, temporary directory, or long-lived subprocess, note whether equivalent state already exists and whether it belongs to the user, another task, or this mission.
+
+At each durable handoff and before final completion:
+
+1. inventory task-created resources that can outlive the immediate command;
+2. keep resources that still carry active evidence, an unresolved frontier, or an explicit handoff purpose;
+3. stop task-owned process trees and isolated browser/app sessions that are no longer needed;
+4. remove task-owned temporary profiles/directories and clean worktrees only after required evidence is preserved and repository changes are integrated or deliberately retained;
+5. retire local branches whose delta is safely integrated and no longer needed, while preserving dirty/unmerged or user-owned branches;
+6. for remote branches/PRs, first prove current target/head/topology and use the authorization required for that remote mutation rather than treating cleanup as consequence-free;
+7. re-inspect the affected state so teardown is proven, not inferred from a successful stop/delete command.
+
+Do not use blanket process termination, delete all worktrees, prune every branch, reset shared browser profiles, or remove caches/state merely for cosmetic cleanliness. Resource hygiene is successful when the mission leaves no unnecessary task-owned residue **and** preserves unrelated user/session state.
+
 ### Keep one mutation authority across hosts
 
 When ChatGPT web, a GitHub connector, Codex/local shell, a remote development machine, CI automation, or another authorized host can all touch the same repository, do not treat them as one magically synchronized filesystem. Model each mutation surface as a separate observation/write boundary and choose exactly one **active write authority** for the current integration wave.
