@@ -114,6 +114,48 @@ test('remote host exposes authenticated MCP while rejecting untrusted origins an
   }
 });
 
+test('remote host close shuts the listener but surfaces incomplete managed machine teardown', { skip: !officialSdkAvailable }, async () => {
+  const fixture = await createGitRepo({ files: { 'README.md': 'allowed\n' } });
+  let running = null;
+  try {
+    const configPath = path.join(fixture.root, 'remote-host.json');
+    await initRemoteHostConfig({
+      configPath,
+      stateRoot: fixture.stateRoot,
+      workspaces: [fixture.root],
+      port: 0
+    });
+    running = await startRemoteHost({ configPath, port: 0 });
+    const incomplete = {
+      attempted: ['machinesession_test'],
+      stopped: [],
+      forced: ['machinesession_test'],
+      remaining: ['machinesession_test'],
+      results: [{ sessionId: 'machinesession_test', verification: { verified: false } }]
+    };
+    running.app.services.machineActionService.shutdown = async () => incomplete;
+
+    await assert.rejects(
+      running.close(),
+      (error) => {
+        assert.equal(error?.code, 'REMOTE_HOST_MACHINE_SHUTDOWN_INCOMPLETE');
+        assert.deepEqual(error?.details?.remaining, ['machinesession_test']);
+        assert.deepEqual(error?.details?.shutdown, incomplete);
+        return true;
+      }
+    );
+    assert.equal(running.server.listening, false);
+
+    await assert.rejects(
+      running.close(),
+      (error) => error?.code === 'REMOTE_HOST_MACHINE_SHUTDOWN_INCOMPLETE'
+    );
+  } finally {
+    await running?.close().catch(() => {});
+    await cleanup(fixture.root);
+  }
+});
+
 test('running remote host rejects the old pairing token immediately after rotation', { skip: !officialSdkAvailable }, async () => {
   const fixture = await createGitRepo({ files: { 'README.md': 'allowed\n' } });
   let running = null;
