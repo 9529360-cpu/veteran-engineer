@@ -374,6 +374,51 @@ test('machine actions preserve interactive process sessions and bounded output r
   }
 });
 
+test('machine shutdown waits for persistent sessions to reach verified terminal state', async () => {
+  const root = await tempRoot();
+  const service = new MachineActionService({
+    enabled: true,
+    allowedLocalRoots: [root],
+    allowedExecutables: ['node'],
+    maxSessionOutputBytes: 64 * 1024
+  });
+  try {
+    const started = await service.act({
+      operation: 'process.start',
+      command: 'node',
+      args: ['-e', 'setInterval(() => {}, 1000)'],
+      cwd: root,
+      persistent: true,
+      timeoutMs: 30_000
+    });
+    const sessionId = started.session.id;
+
+    const shutdown = await service.shutdown({
+      graceMs: 1_000,
+      forceWaitMs: 1_000,
+      pollIntervalMs: 10
+    });
+    assert.deepEqual(shutdown.attempted, [sessionId]);
+    assert.deepEqual(shutdown.stopped, [sessionId]);
+    assert.deepEqual(shutdown.remaining, []);
+    assert.equal(shutdown.results.length, 1);
+    assert.equal(shutdown.results[0].verification.verified, true);
+    assert.equal(shutdown.results[0].verification.terminal, true);
+    assert.equal(shutdown.results[0].verification.processGone, true);
+    assert.equal(shutdown.results[0].verification.processProbe.state, 'missing');
+
+    const final = await service.inspect({ operation: 'process.status', sessionId });
+    assert.equal(final.session.status, 'exited');
+    assert.equal(final.session.outputComplete, true);
+
+    const repeated = await service.shutdown({ graceMs: 100, forceWaitMs: 100, pollIntervalMs: 10 });
+    assert.deepEqual(repeated, { attempted: [], stopped: [], forced: [], remaining: [], results: [] });
+  } finally {
+    await service.shutdown().catch(() => {});
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('machine repo.status binds local repository truth before and after a guarded edit', async () => {
   const fixture = await createGitRepo({ files: { 'README.md': 'hello\n', 'other.txt': 'other\n' } });
   const service = new MachineActionService({
