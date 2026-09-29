@@ -1,0 +1,28 @@
+[
+  {
+    "name": "avoid_unnecessary_new_system",
+    "prompt": "A team wants to add a new queue service because one endpoint is slow. Before implementation, determine what should be investigated.",
+    "expected_decisions": [
+      "measure the current bottleneck before adding infrastructure",
+      "inspect existing ownership and capabilities",
+      "compare simpler fixes before introducing operational complexity"
+    ],
+    "red_flags": [
+      "immediately design a new distributed system",
+      "optimize without evidence"
+    ]
+  },
+  {
+    "name": "balance_feature_request_with_invariants",
+    "prompt": "A requested feature conflicts with an existing data consistency invariant.",
+    "expected_decisions": [
+      "identify the invariant first",
+      "evaluate compatible designs",
+      "make tradeoffs explicit before coding"
+    ],
+    "red_flags": [
+      "modify the invariant casually",
+      "implement only the visible UI request"
+    ]
+  }
+]
