@@ -18,6 +18,7 @@ Use this for implementation, repair, refactor, migration, or review tasks where 
 - Run a pre-commit adversarial review
 - Preserve continuity and treat tool failure as evidence
 - Use a completion claim ladder
+- Close the authoritative online repository loop
 - Prefer completion over commentary
 
 ## 1. Convert the request into an executable contract
@@ -52,6 +53,69 @@ Rank candidates by `user harm/frequency -> contract completeness -> evidence con
 Do not redesign a coherent interface from subjective taste alone. Preserve established brand/design-system conventions unless they are the defect, and do not invent product policy under the label of polish. An evidence-backed no-change decision is valid when a surface is already coherent or the proposed change would be aesthetic churn.
 
 Read `references/proactive-product-stewardship.md` for the product-quality sweep and `references/frontend-product-patterns.md` for UI/design execution. Use `scripts/product_stewardship_gate.py` when a structured sweep record materially improves a broad self-directed mission.
+
+## Close the authoritative online repository loop
+
+For web/connector-led engineering, the repository host is normally the durable coordination surface. Carry authorized work through the strongest requested remote boundary instead of stopping at the first successful code edit.
+
+Use one live chain:
+
+`repo target -> base/default head -> branch + PR owner -> implementation delta -> focused proof -> exact-head workflows -> review blockers -> merge -> refreshed default branch -> downstream release/package/deploy -> public or installed verification`
+
+### Bind proof to the current head
+
+Treat every branch head as a new candidate identity. If any commit lands after CI, review, package, or release-candidate proof was collected, previous proof does not automatically transfer.
+
+Before merge:
+
+1. fetch current PR metadata and exact head SHA;
+2. bind required checks/workflows to that exact head;
+3. inspect unresolved review threads/blocking reviews when available;
+4. verify base/mergeability and intended diff still match the task;
+5. merge with expected-head protection when the platform supports it.
+
+Do not count canceled/stale workflows from prior heads. Do not infer that a branch is merge-ready because most checks are green if one required exact-head gate is still running or failed.
+
+### Refresh after every consequential remote mutation
+
+Merge, push, tag, workflow dispatch, release creation, version commit, package publication, deployment, and plugin update all advance the remote state epoch.
+
+After each one, refresh only the authority needed for the next decision. Typical examples:
+
+- merge -> default-branch HEAD + push workflows;
+- release-intent merge -> release workflow classification + publish job;
+- package workflow -> immutable artifact identity/digest;
+- release publish -> public release/tag/assets + consumer-facing bytes;
+- workspace/plugin update -> installed version/release id + provenance.
+
+Never continue from a pre-mutation snapshot merely because the mutation call returned success.
+
+### Match the stop condition to the user's requested rung
+
+Use:
+
+`implemented -> focused-validated -> PR-ready -> exact-head-green -> merged -> main-validated -> released/deployed -> public-verified -> consumer/workspace-synced`
+
+Examples:
+
+- "open a PR" may stop at PR-ready after required local/focused evidence;
+- "merge when green" continues through exact-head checks, blocker reconciliation, and merge confirmation;
+- "publish it" continues through the real release authority and public verification;
+- "publish then sync our installed plugin" continues through installed-state readback and provenance confirmation.
+
+Do not silently stop one or two rungs early and describe the task as finished.
+
+### Keep online repo work online by default
+
+Do not escalate an ordinary repository task into local desktop/remote-machine orchestration only because such a capability exists somewhere in the product family. Prefer the repository connector, repository-native CI, code review, release workflows, and hosted artifacts when they can close the requested claim.
+
+Use local/desktop/machine execution only when it materially provides an oracle or mutation the online control plane cannot provide, such as a required real-device/runtime validation. Keep that auxiliary result bound to the same repository revision before using it as merge/release evidence.
+
+### Do not make experience capture a completion gate
+
+Task journals, checkpoints, or compact handoff state may preserve continuity during long foreground work. They are caches for the current mission, not a requirement to create long-term memory, generalize lessons, or evolve the Skill after every repository task.
+
+Ordinary completion is about closing the engineering contract against current repository/runtime/release truth.
 
 ## 2. Recover the active path
 
