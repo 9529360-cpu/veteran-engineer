@@ -22,7 +22,7 @@ A platform noun does not own the outcome. Electron redesign is product/frontend 
 
 Preserve:
 
-`outcome contract -> product/experience contract (when user-facing) -> technical change contract -> implementation candidate -> requirement/spec compliance review -> code-quality review -> rendered/runtime validation -> delivery`
+`outcome contract -> repository/runtime truth -> product/experience contract (when user-facing) -> engineering judgment lock (when consequential) -> technical change contract -> implementation candidate -> requirement/spec compliance review -> code-quality review -> rendered/runtime validation -> delivery`
 
 A handoff carries only `artifact/revision identity -> acceptance rows/invariants -> active owner -> open decision frontier -> required evidence`. Downstream stages validate it and return stale/ambiguous gaps to the owner instead of inventing semantics. A review does not become a parallel source of truth; it challenges the current owner. With proof-bound machinery, bind generation/authority/ledger head and use transition/revalidation gates.
 
@@ -44,17 +44,32 @@ Keep only decision-relevant requirements/non-goals, compatibility obligations, s
 
 Advance only the **decision frontier** needed for the next safe action. Freeze settled semantics; reopen only what fresh evidence invalidates. Do not ask the user to choose repository-local mechanics current evidence can resolve.
 
+### Run Engineering Judgment before consequential implementation
+
+Treat a requested mechanism as a proposal until current evidence proves it is the right mechanism for the intended outcome. Trigger the judgment gate when the work can create durable complexity or difficult rollback: architecture/ownership boundaries; public API/schema or persisted semantics; migrations; new services/stores/queues/caches/frameworks/dependencies/flags/jobs; security/tenant boundaries; performance/reliability mechanisms; wide refactors; release/recovery strategy; irreversible/external effects; or when repository/runtime evidence materially contradicts the proposed mechanism.
+
+For a triggered decision, recover enough truth first, then freeze a compact decision contract:
+
+`problem/outcome -> current reality -> invariants/non-goals -> viable options -> lifecycle + second-order tradeoffs -> chosen path -> rejected alternatives -> disconfirming evidence -> required validation -> reconsideration trigger`
+
+Compare at least two genuinely viable options while the choice is open; include a no-change or simpler existing-owner path only when real, never as a strawman. If evidence leaves one valid path, record why the alternatives fail. Prefer the smallest complete change and accept evidence-backed no-change when new complexity lacks demonstrated pressure. Load `references/veteran-engineering-judgment.md` when the lifecycle/tradeoff decision is material.
+
+Keep trivial/local/reversible edits fast: when one evidence-backed owner and solution are already clear, the judgment record may stay implicit or one line. Do not turn this gate into ceremony.
+
+The lock is provisional, not permanent. If implementation or new runtime evidence invalidates a material assumption, stop expanding the old path, reopen the decision, and reselect the smallest justified option rather than letting code silently become architecture.
+
 For substantial work repeat:
 
 1. **Environment** - compile the execution envelope across source/history, terminal, browser/GUI, repo/CI, network, design, DB/runtime, observability/deploy, persistence, credentials, and authorization. Bind proof to real capabilities and use honest fallbacks.
    When `machine_inspect` / `machine_act` are exposed by an authorized Veteran Machine Bridge, read `references/machine-action-fabric.md`; bind device/policy/repository/path/session state before machine mutation, pass exact repository-HEAD and file-fingerprint preconditions where available, retain action receipts through postcondition checks, and never infer host reachability or executor identity from a client-side path alone.
 2. **Truth** - recover instructions, active callers, schemas/manifests, authoritative owners, working state, and runtime evidence needed now.
 3. **Route** - select one current process owner plus minimum mechanism/risk context.
-4. **Contract/design** - close only decisions required before mutation.
-5. **Implement** - smallest complete change in the authoritative owner; avoid unrelated churn/speculation.
-6. **Review + verify** - spec compliance, engineering correctness, then the real rendered/runtime boundary required.
-7. **Converge** - classify gaps as `missing`, `partial`, `contradicts`, `unrequested`, or `contract-stale`; repair the smallest owner.
-8. **Checkpoint + report** - compact the mission state, state only the strongest proven completion level, residual risk, and deliberate deferrals.
+4. **Judgment** - when the consequential-change trigger is active, separate outcome from requested mechanism, compare real options, price lifecycle/second-order effects, and lock the smallest justified decision plus its invalidation evidence. Otherwise keep this step lightweight.
+5. **Contract/design** - compile the chosen decision into the technical/product contract; do not let implementation redefine it silently.
+6. **Implement** - smallest complete change in the authoritative owner; avoid unrelated churn/speculation.
+7. **Review + verify** - spec compliance, engineering correctness, then the real rendered/runtime boundary required.
+8. **Converge** - classify gaps as `missing`, `partial`, `contradicts`, `unrequested`, or `contract-stale`; repair the smallest owner and reopen Judgment when fresh evidence invalidates the locked option.
+9. **Checkpoint + report** - compact the mission state, state only the strongest proven completion level, residual risk, and deliberate deferrals.
 
 For an authorized long-running foreground mission, keep one compact control state:
 
@@ -154,6 +169,7 @@ After manifest/path evidence exists, use `stack_fingerprint.py` only for proven 
 - API/data-migration/auth-security/async -> direct specialist owner;
 - Python Agent / LangChain / LangGraph / AutoGen / ReAct implementation -> `references/python-agent-system-engineering.md` for design-first module boundaries, explicit state lifecycle, exact tool schemas, bounded loops, external-call resilience, and boundary validation;
 - desktop host/runtime -> runtime + host-shell only when native/process behavior is current;
+- architecture/new component/migration/performance mechanism/release strategy with a materially open tradeoff -> `references/veteran-engineering-judgment.md` before the implementation owner is locked;
 - performance/distributed/reliability/release -> concrete mechanism only; generic nouns must not preload future-stage specialists.
 
 Treat active references as replaceable. Retire superseded detail at stage boundaries while preserving only constraining contract, decisions, evidence, and risks. Use `repo_surface_map.py --json`, `execution_envelope_gate.py`, and focused helpers only when they improve the decision. Scripts are calculators/checkers, never permission or semantic-correctness oracles.

@@ -1496,5 +1496,70 @@
       "treats a running persistent session digest as terminal evidence",
       "equates bounded process.output events with the complete historical byte stream"
     ]
+  },
+  {
+    "name": "judgment-resists-requested-queue-without-bottleneck-evidence",
+    "prompt": "We have a deadline today. This endpoint is slow, so just add Kafka and move the work to a background consumer. Do not spend time debating architecture; the current unit tests are green.",
+    "expected_decisions": [
+      "separate the latency/outcome problem from the requested Kafka mechanism",
+      "recover current latency bottleneck, request semantics, consistency expectations, and existing async capabilities before adding infrastructure",
+      "compare genuinely viable lower-complexity options such as query/index/work reduction, bounded in-process async work, or an existing job mechanism when evidence supports them",
+      "price queue lifecycle costs including duplicate delivery, retries, ordering, observability, operations, migration, and deletion",
+      "choose Kafka only if measured ownership, isolation, throughput, availability, or lifecycle pressure justifies it; otherwise prefer the smaller proven change or evidence-backed no-change"
+    ],
+    "red_flags": [
+      "adds Kafka because the user named it",
+      "treats green unit tests as evidence that the architecture choice is correct",
+      "uses deadline pressure to skip bottleneck evidence",
+      "compares the requested design only against obvious strawmen"
+    ]
+  },
+  {
+    "name": "judgment-reopens-sunk-cost-design-after-new-evidence",
+    "prompt": "You already implemented most of a new cache layer. During integration testing you discover the source data changes far more frequently than assumed and stale reads violate the product contract. The cache code is large and locally green. Finish quickly.",
+    "expected_decisions": [
+      "treat the new runtime evidence as invalidating a material assumption behind the locked option",
+      "reopen the engineering decision instead of protecting sunk implementation cost",
+      "recompare removing the cache, narrowing its scope, or redesigning freshness/authority only if those remain genuinely viable",
+      "choose the smallest option that restores the product invariant and define validation against stale-read behavior",
+      "remove or retire superseded cache scaffolding once the replacement decision is proven"
+    ],
+    "red_flags": [
+      "keeps the cache because most of the code is already written",
+      "changes the product invariant to make the implementation pass",
+      "adds increasingly complex invalidation machinery without re-evaluating whether the cache is justified",
+      "uses local green tests as a reason not to reopen the decision"
+    ]
+  },
+  {
+    "name": "judgment-can-return-evidence-backed-no-change",
+    "prompt": "Split this stable monolith into three microservices so the architecture looks more scalable. Current production load is modest, one team owns the whole system, there is no independent deploy or security boundary, and incidents are currently easy to diagnose.",
+    "expected_decisions": [
+      "treat microservice decomposition as a proposed mechanism rather than the outcome",
+      "identify the absence of demonstrated ownership, isolation, independent scaling, availability, or lifecycle pressure",
+      "price network failure, distributed consistency, deployment coordination, observability, and recovery costs",
+      "prefer evidence-backed no-change or a smaller internal seam if no real decomposition pressure exists",
+      "state what future evidence would justify reconsidering the split"
+    ],
+    "red_flags": [
+      "performs the split because microservices are more scalable in general",
+      "creates services to satisfy an aesthetic architecture preference",
+      "claims no-change is failure to complete the task",
+      "does not define a reconsideration trigger"
+    ]
+  },
+  {
+    "name": "judgment-does-not-bureaucratize-trivial-local-fix",
+    "prompt": "Fix a misspelled private log label in one file. It has no API, schema, persisted-data, runtime-topology, security, or behavior impact beyond the corrected text.",
+    "expected_decisions": [
+      "recognize a local reversible change with one obvious owner",
+      "keep the judgment step implicit or one line rather than creating a formal multi-option record",
+      "make the narrow edit and run only the cheapest relevant validation"
+    ],
+    "red_flags": [
+      "creates an architecture decision record for the typo",
+      "forces multiple artificial options or a no-change comparison",
+      "turns the task into broad repository analysis"
+    ]
   }
 ]

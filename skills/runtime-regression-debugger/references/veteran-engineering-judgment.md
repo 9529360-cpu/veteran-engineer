@@ -13,6 +13,26 @@ Use this when the hard part is choosing what not to change, how much complexity 
 - Preserve hidden compatibility
 - Use prior failure patterns as hypotheses
 - Make uncertainty explicit
+- Compile a decision contract before consequential change
+- Reopen decisions when evidence invalidates them
+
+## Compile a decision contract before consequential change
+
+Treat the requested mechanism as a proposal, not automatically as the problem definition. First separate the desired outcome from the means named in the request and recover enough system truth to know what is actually constrained.
+
+Use the full judgment pass when a choice can create durable complexity or difficult rollback: architecture/ownership boundaries, public API or schema, persisted semantics or migration, a new service/store/queue/cache/framework/dependency/flag/job, security/tenant boundaries, performance/reliability mechanisms, wide refactors, release/recovery strategy, or irreversible/external effects. Also trigger it when fresh evidence materially contradicts the requested mechanism.
+
+For a triggered decision, keep one compact **Engineering Decision Record** in the active mission state or durable decision ledger when the choice must outlive the task:
+
+`problem/outcome | current reality | invariants + non-goals | viable options | lifecycle + second-order tradeoffs | chosen path | rejected alternatives | disconfirming evidence | validation | reconsideration trigger`
+
+- Compare at least two genuinely viable paths while the choice is open. Include a no-change or simpler existing-owner path only when it is actually viable; never invent strawmen to make the preferred design look stronger.
+- If evidence leaves one valid path, say why the alternatives are invalid instead of manufacturing competition.
+- Price the whole lifecycle, reversibility, blast radius, compatibility, recovery, and operational ownership—not only implementation elegance.
+- Prefer the smallest complete change whose benefit is demonstrated. Evidence-backed no-change is a legitimate engineering result.
+- Tiny/local/reversible changes with one obvious evidence-backed owner do not need ceremony; keep the decision implicit or one line and move on.
+
+A decision record is not permission. Authorization and product intent remain separate authorities.
 
 ## Optimize for system lifetime
 
