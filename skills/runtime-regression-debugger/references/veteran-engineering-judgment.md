@@ -15,6 +15,9 @@ Use this when the hard part is choosing what not to change, how much complexity 
 - Make uncertainty explicit
 - Compile a decision contract before consequential change
 - Reopen decisions when evidence invalidates them
+- Calibrate evidence to reversibility and consequence
+- Pre-mortem high-risk choices before lock-in
+- Define exit criteria for temporary complexity
 
 ## Compile a decision contract before consequential change
 
@@ -85,6 +88,41 @@ Use direct changes for local reversible behavior. Increase design/evidence rigor
 Prefer additive/reversible steps under uncertainty. A one-line default can be high risk; a large isolated refactor can be comparatively low risk.
 
 Do not change a stable system when the benefit is unmeasured, the active owner is unknown, migration pressure is weak, scale assumptions are unproven, compatibility cannot yet be removed, or recovery is not credible. Evidence-backed no-change is a valid result.
+
+## Calibrate evidence to reversibility and consequence
+
+Do not use one universal amount of ceremony or a fake numeric risk score. Classify the decision qualitatively from the mechanism that can hurt the system:
+
+- **local + reversible**: one owner, bounded effect, easy undo -> use the cheapest focused oracle that can falsify the claim;
+- **broad but reversible**: multiple callers/components or rollout surface, but clean rollback exists -> require boundary/integration evidence and prove the rollback/disable path is real;
+- **stateful/public/security-sensitive**: persisted semantics, public contracts, auth/tenant boundaries, deployment/runtime identity, cross-version compatibility -> require compatibility/recovery evidence at the affected boundary before lock-in;
+- **irreversible/external/high-consequence**: destructive data change, money, external publication, access policy, unrecoverable migration, third-party side effect -> require explicit authorization where applicable, a dry-run/snapshot/reconciliation or forward-repair plan, and direct postcondition proof.
+
+Risk follows consequence, not diff size. A one-line payment rounding change can deserve more evidence than a thousand-line isolated refactor.
+
+Do not call a path reversible merely because code rollback exists. Data deletion, emitted messages, customer-visible side effects, schema/data transforms, external API calls, and already-consumed events may survive code rollback. State exactly what can and cannot be undone.
+
+## Pre-mortem high-risk choices before lock-in
+
+For stateful/public/security-sensitive or irreversible/external choices, briefly challenge the preferred option before implementation:
+
+`failure mode -> earliest detection -> containment/rollback -> durable recovery`
+
+Use the few failure modes that can materially change the decision; do not generate a generic risk catalog. If a plausible high-impact failure has no credible detection or recovery path, the option is not ready to lock unless the user explicitly accepts that residual risk and the action is authorized.
+
+Prefer changing the design to make failure cheaper over merely documenting a dangerous recovery story.
+
+## Define exit criteria for temporary complexity
+
+Flags, compatibility shims, dual-write paths, migration bridges, temporary caches/queues, fallback providers, and diagnostic instrumentation become permanent by accident unless their end is designed up front.
+
+Before adding temporary complexity, define:
+
+`owner | purpose | success/retirement signal | rollback/disable path | observation window or review trigger | removal proof`
+
+Do not invent calendar dates when the repository/product has no real schedule. Prefer evidence-bound removal triggers such as cohort migration completion, old-client retirement, error-rate stabilization, backfill completion, or provider recovery.
+
+A temporary mechanism without an owner and retirement condition should be treated as permanent architecture when judging its cost.
 
 ## Preserve hidden compatibility
 
