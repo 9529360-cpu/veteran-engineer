@@ -214,7 +214,13 @@ async function main() {
       if (closing) return;
       closing = true;
       process.stderr.write(`[veteran-remote-host] ${signal}: shutting down\n`);
-      try { await running.close(); } finally { process.exitCode = 0; }
+      try {
+        await running.close();
+        process.exitCode = 0;
+      } catch (error) {
+        process.exitCode = 1;
+        process.stderr.write(`[veteran-remote-host] shutdown failed: ${error?.code || 'ERROR'} ${error?.message || String(error)}\n`);
+      }
     };
     process.once('SIGINT', () => { void stop('SIGINT'); });
     process.once('SIGTERM', () => { void stop('SIGTERM'); });

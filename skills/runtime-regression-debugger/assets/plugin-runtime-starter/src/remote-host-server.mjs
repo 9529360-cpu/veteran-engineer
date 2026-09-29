@@ -190,19 +190,65 @@ export async function startRemoteHost({
   });
   const address = server.address();
   const actualPort = typeof address === 'object' && address ? address.port : resolvedPort;
-  let closed = false;
+  let closePromise = null;
   return {
     app,
     config,
     server,
     endpoint: `http://${resolvedBind.includes(':') ? `[${resolvedBind}]` : resolvedBind}:${actualPort}/mcp`,
     healthEndpoint: `http://${resolvedBind.includes(':') ? `[${resolvedBind}]` : resolvedBind}:${actualPort}/health`,
-    async close() {
-      if (closed) return;
-      closed = true;
-      await handler.close?.();
-      await app.services?.machineActionService?.shutdown?.().catch(() => {});
-      await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    close() {
+      if (closePromise) return closePromise;
+      closePromise = (async () => {
+        const failures = [];
+        const serverClosePromise = new Promise((resolve, reject) => (
+          server.close((error) => error ? reject(error) : resolve())
+        ));
+
+        try {
+          await handler.close?.();
+        } catch (error) {
+          failures.push(error);
+        }
+
+        let machineShutdown = null;
+        try {
+          machineShutdown = await app.services?.machineActionService?.shutdown?.() || null;
+        } catch (error) {
+          failures.push(error);
+        }
+
+        if (Array.isArray(machineShutdown?.remaining) && machineShutdown.remaining.length > 0) {
+          const error = new Error('Remote Host Machine Bridge shutdown left managed process sessions unverified');
+          error.code = 'REMOTE_HOST_MACHINE_SHUTDOWN_INCOMPLETE';
+          error.details = {
+            remaining: [...machineShutdown.remaining],
+            shutdown: machineShutdown
+          };
+          failures.push(error);
+        }
+
+        try {
+          await serverClosePromise;
+        } catch (error) {
+          failures.push(error);
+        }
+
+        if (failures.length === 1) throw failures[0];
+        if (failures.length > 1) {
+          const error = new AggregateError(failures, 'Remote Host shutdown encountered multiple cleanup failures');
+          error.code = 'REMOTE_HOST_CLOSE_FAILED';
+          error.details = {
+            failures: failures.map((failure) => ({
+              code: failure?.code || 'ERROR',
+              message: failure?.message || String(failure)
+            }))
+          };
+          throw error;
+        }
+        return { machineShutdown };
+      })();
+      return closePromise;
     }
   };
 }

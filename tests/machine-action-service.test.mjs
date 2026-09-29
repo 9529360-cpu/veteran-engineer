@@ -374,6 +374,98 @@ test('machine actions preserve interactive process sessions and bounded output r
   }
 });
 
+test('machine shutdown waits for persistent sessions to reach verified terminal state', async () => {
+  const root = await tempRoot();
+  const service = new MachineActionService({
+    enabled: true,
+    allowedLocalRoots: [root],
+    allowedExecutables: ['node'],
+    maxSessionOutputBytes: 64 * 1024
+  });
+  try {
+    const started = await service.act({
+      operation: 'process.start',
+      command: 'node',
+      args: ['-e', 'setInterval(() => {}, 1000)'],
+      cwd: root,
+      persistent: true,
+      timeoutMs: 30_000
+    });
+    const sessionId = started.session.id;
+
+    const shutdown = await service.shutdown({
+      graceMs: 1_000,
+      forceWaitMs: 1_000,
+      pollIntervalMs: 10
+    });
+    assert.deepEqual(shutdown.attempted, [sessionId]);
+    assert.deepEqual(shutdown.stopped, [sessionId]);
+    assert.deepEqual(shutdown.remaining, []);
+    assert.equal(shutdown.results.length, 1);
+    assert.equal(shutdown.results[0].verification.verified, true);
+    assert.equal(shutdown.results[0].verification.terminal, true);
+    assert.equal(shutdown.results[0].verification.processGone, true);
+    assert.equal(shutdown.results[0].verification.processProbe.state, 'missing');
+
+    const final = await service.inspect({ operation: 'process.status', sessionId });
+    assert.equal(final.session.status, 'exited');
+    assert.equal(final.session.outputComplete, true);
+
+    const repeated = await service.shutdown({ graceMs: 100, forceWaitMs: 100, pollIntervalMs: 10 });
+    assert.deepEqual(repeated, { attempted: [], stopped: [], forced: [], remaining: [], results: [] });
+  } finally {
+    await service.shutdown().catch(() => {});
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('machine shutdown escalates a SIGTERM-resistant process group and verifies forced teardown', { skip: process.platform === 'win32' }, async () => {
+  const root = await tempRoot();
+  const service = new MachineActionService({
+    enabled: true,
+    allowedLocalRoots: [root],
+    allowedExecutables: ['node'],
+    maxSessionOutputBytes: 64 * 1024
+  });
+  try {
+    const started = await service.act({
+      operation: 'process.start',
+      command: 'node',
+      args: ['-e', 'process.on("SIGTERM",()=>{});process.stdout.write("ready");setInterval(()=>{},1000)'],
+      cwd: root,
+      persistent: true,
+      timeoutMs: 30_000
+    });
+    const sessionId = started.session.id;
+    let ready = false;
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const output = await service.inspect({ operation: 'process.output', sessionId });
+      if (output.events.some((event) => event.text.includes('ready'))) {
+        ready = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(ready, true);
+
+    const shutdown = await service.shutdown({
+      graceMs: 100,
+      forceWaitMs: 1_000,
+      pollIntervalMs: 10
+    });
+    assert.deepEqual(shutdown.stopped, [sessionId]);
+    assert.deepEqual(shutdown.forced, [sessionId]);
+    assert.deepEqual(shutdown.remaining, []);
+    assert.equal(shutdown.results[0].forced, true);
+    assert.equal(shutdown.results[0].forceSignal.signalled, true);
+    assert.equal(shutdown.results[0].verification.verified, true);
+    assert.equal(shutdown.results[0].verification.processProbe.state, 'missing');
+  } finally {
+    await service.shutdown().catch(() => {});
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('machine repo.status binds local repository truth before and after a guarded edit', async () => {
   const fixture = await createGitRepo({ files: { 'README.md': 'hello\n', 'other.txt': 'other\n' } });
   const service = new MachineActionService({
