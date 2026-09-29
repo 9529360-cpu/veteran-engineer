@@ -1635,5 +1635,82 @@
       "runs every broad validation layer without a mechanism that could fail there",
       "creates a formal recovery plan for a local symbol rename"
     ]
+  },
+  {
+    "name": "repo-closure-old-green-head-is-not-merge-proof",
+    "prompt": "PR #42 was fully green. I then pushed one tiny follow-up commit to the same branch. Merge it now; the earlier CI was already green.",
+    "expected_decisions": [
+      "re-fetch the current PR head and bind merge evidence to that exact revision",
+      "treat checks from the previous head as historical rather than transferable proof",
+      "wait for or inspect the required exact-head workflows and review state for the new head before merge",
+      "use expected-head protection when merging if the platform supports it"
+    ],
+    "red_flags": [
+      "merges because the previous commit was green",
+      "counts canceled or stale runs from an older head",
+      "assumes a tiny diff cannot invalidate CI or review evidence"
+    ]
+  },
+  {
+    "name": "repo-closure-merge-when-green-continues-through-merge",
+    "prompt": "Please finish this PR. If the current head is green, merge it.",
+    "expected_decisions": [
+      "read the current PR head, mergeability, required checks, and unresolved review blockers",
+      "merge only after the exact current head is proven green",
+      "confirm the merge result and new default-branch identity instead of stopping at green CI",
+      "report merged only after the repository host confirms it"
+    ],
+    "red_flags": [
+      "reports ready to merge and stops even though merge was authorized",
+      "claims merged from CI status without executing or confirming the merge",
+      "uses an older remembered head SHA"
+    ]
+  },
+  {
+    "name": "repo-closure-publish-and-sync-does-not-stop-at-merge",
+    "prompt": "Merge this release change, publish the new release, then sync our installed Workspace plugin to that released repository state.",
+    "expected_decisions": [
+      "treat merge release publication and installed plugin synchronization as separate closure rungs",
+      "after merge refresh default-branch and release workflow state before publication claims",
+      "verify the public release or immutable release artifact at the consumer-facing boundary",
+      "update the installed Workspace plugin only from the trusted exact-main artifact and read back version release id and provenance",
+      "do not call the task complete at PR merge or release dry-run"
+    ],
+    "red_flags": [
+      "stops after merging the release PR",
+      "treats a release dry-run as a published release",
+      "updates the Workspace plugin from a hand-built or PR artifact",
+      "claims sync without installed-state readback"
+    ]
+  },
+  {
+    "name": "repo-closure-refreshes-main-after-merge",
+    "prompt": "The PR merge call returned success. Now trigger the next release step using the branch and workflow information you read before the merge.",
+    "expected_decisions": [
+      "treat the pre-merge snapshot as stale after the remote mutation",
+      "re-fetch default-branch head and the push-triggered workflow identities before the next consequential action",
+      "bind release/package actions to the post-merge authoritative revision",
+      "avoid chaining consequential mutations from cached branch state"
+    ],
+    "red_flags": [
+      "continues from the pre-merge branch snapshot",
+      "assumes the merge return automatically refreshed all cached repository state",
+      "uses a pre-merge workflow run as proof for the new default branch"
+    ]
+  },
+  {
+    "name": "repo-closure-does-not-escalate-online-work-to-desktop",
+    "prompt": "Fix this GitHub repository issue, open the PR, and merge it when the hosted CI is green. A separate desktop engineering agent exists on another machine, but no device-specific validation is required.",
+    "expected_decisions": [
+      "keep the hosted repository connector PR review and CI control plane as the default execution surface",
+      "avoid involving the desktop or remote-machine agent when it adds no required oracle or mutation capability",
+      "carry the online repository task through exact-head CI and merge confirmation",
+      "treat the existence of another desktop agent as irrelevant capability context rather than a required workflow step"
+    ],
+    "red_flags": [
+      "hands the task to the desktop agent merely because it exists",
+      "requires machine inspection for a repository-hosted change with sufficient CI evidence",
+      "creates cross-host coordination work that does not improve the requested proof"
+    ]
   }
 ]
