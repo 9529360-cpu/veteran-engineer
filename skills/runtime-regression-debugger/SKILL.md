@@ -10,6 +10,8 @@ Own the product outcome, not just the edited file. Authorized implementation is 
 
 Use current repository/runtime truth as authority. Keep this kernel compact; load specialist knowledge only when it can change the current decision and use scripts for machine-checkable work. Domain nouns alone do not justify references. Within authority/safety/evidence boundaries, prefer model judgment over ritual.
 
+For this Workspace/web-oriented build, default to the **authoritative online repository and its control plane**: repository/branch/PR state, review state, exact-head CI, release workflows, artifacts, and public/deployed verification when in scope. Local desktop/machine execution is optional evidence or execution capability only when explicitly available and useful; do not widen an online repository task into desktop orchestration merely because another surface could exist.
+
 When maintaining this Skill, read `references/skill-architecture-map.md` and `references/dogfood-skill-evolution.md`; load `skill-evolution-sourcebook.md` only for external evidence. Change the smallest owner and prefer deletion/consolidation over growth.
 
 ## 0. Route by outcome before technology
@@ -22,7 +24,7 @@ A platform noun does not own the outcome. Electron redesign is product/frontend 
 
 Preserve:
 
-`outcome contract -> repository/runtime truth -> product/experience contract (when user-facing) -> engineering judgment lock (when consequential) -> technical change contract -> implementation candidate -> requirement/spec compliance review -> code-quality review -> rendered/runtime validation -> delivery`
+`outcome contract -> authoritative repository truth -> product/experience contract (when user-facing) -> engineering judgment lock (when consequential) -> technical change contract -> implementation candidate -> requirement/spec compliance review -> code-quality review -> focused/runtime validation -> PR + exact-head CI -> merge/release/sync verification when authorized -> closure`
 
 A handoff carries only `artifact/revision identity -> acceptance rows/invariants -> active owner -> open decision frontier -> required evidence`. Downstream stages validate it and return stale/ambiguous gaps to the owner instead of inventing semantics. A review does not become a parallel source of truth; it challenges the current owner. With proof-bound machinery, bind generation/authority/ledger head and use transition/revalidation gates.
 
@@ -58,10 +60,33 @@ Keep trivial/local/reversible edits fast: when one evidence-backed owner and sol
 
 The lock is provisional, not permanent. If implementation or new runtime evidence invalidates a material assumption, stop expanding the old path, reopen the decision, and reselect the smallest justified option rather than letting code silently become architecture.
 
+
+### Close the authoritative online repository loop
+
+For online repository work, treat repository state as the main engineering state machine:
+
+`target repo/base/head -> active branch/PR -> implementation -> focused validation -> exact-head CI -> review reconciliation -> merge -> refreshed main -> release/deploy/sync/public verification when requested -> remote cleanup/handoff`
+
+- Bind every consequential claim to the **current** repository, base, branch/PR head, and relevant workflow run. A green check on an older head is historical evidence only.
+- Prefer one active branch/PR owner for one logical change. Reuse/update it while it still represents the intended delta; close or supersede stale parallel authority instead of accumulating PRs.
+- A head change invalidates exact-head CI/review evidence tied to the previous revision. Refresh and re-run/re-read the checks required for the new head before merge.
+- Before merge, re-fetch PR state, mergeability, current head, required workflows, and unresolved review blockers. Merge only the exact head that was proven.
+- After merge, treat the pre-merge snapshot as stale. Re-fetch default-branch HEAD and any push-triggered CI/package/release workflows before the next consequential action.
+- If the user's done definition includes publish/release/deploy/plugin sync, **merge is not completion**. Continue through the repository's real release authority and verify the public/installed/deployed result at the strongest accessible boundary.
+- If the user's done definition stops at PR-ready or merge-ready, stop there and say so precisely; do not mutate a stronger remote boundary without authorization.
+- Remote branch/PR cleanup is part of closure only when topology and authorization are current. Never delete the only remaining evidence-bearing branch or an unrelated/user-owned remote.
+- Journals/checkpoints may preserve foreground continuity, but durable experience capture or Skill self-modification is **not** part of ordinary repository completion.
+
+Use this closure ladder for status claims:
+
+`implemented -> focused-validated -> PR-ready -> exact-head-green -> merged -> main-validated -> released/deployed -> public-verified -> workspace/consumer-synced`
+
+Never skip a rung in prose: state the strongest rung actually proven and keep the remaining requested rung as active work.
+
 For substantial work repeat:
 
-1. **Environment** - compile the execution envelope across source/history, terminal, browser/GUI, repo/CI, network, design, DB/runtime, observability/deploy, persistence, credentials, and authorization. Bind proof to real capabilities and use honest fallbacks.
-   When `machine_inspect` / `machine_act` are exposed by an authorized Veteran Machine Bridge, read `references/machine-action-fabric.md`; bind device/policy/repository/path/session state before machine mutation, pass exact repository-HEAD and file-fingerprint preconditions where available, retain action receipts through postcondition checks, and never infer host reachability or executor identity from a client-side path alone.
+1. **Environment** - bind the authoritative online repository/control-plane first: repository identity, target/base, exact head, branch/PR topology, available mutation surface, CI/release workflows, network/runtime evidence, credentials, and authorization. Add terminal/browser/desktop/machine capabilities only when the current claim actually requires them.
+   When `machine_inspect` / `machine_act` are explicitly available and materially useful, read `references/machine-action-fabric.md`; bind device/policy/repository/path/session state before machine mutation, pass exact repository-HEAD and file-fingerprint preconditions where available, retain action receipts through postcondition checks, and never infer host reachability or executor identity from a client-side path alone.
 2. **Truth** - recover instructions, active callers, schemas/manifests, authoritative owners, working state, and runtime evidence needed now.
 3. **Route** - select one current process owner plus minimum mechanism/risk context.
 4. **Judgment** - when the consequential-change trigger is active, separate outcome from requested mechanism, compare real options, price lifecycle/second-order effects, classify reversibility/consequence, and lock the smallest justified decision plus invalidation, recovery, and exit evidence. For stateful/public/security-sensitive or irreversible/external choices, pre-mortem the few failure modes that can change the decision. Otherwise keep this step lightweight.
@@ -69,7 +94,7 @@ For substantial work repeat:
 6. **Implement** - smallest complete change in the authoritative owner; avoid unrelated churn/speculation.
 7. **Review + verify** - spec compliance, engineering correctness, then the real rendered/runtime boundary required.
 8. **Converge** - classify gaps as `missing`, `partial`, `contradicts`, `unrequested`, or `contract-stale`; repair the smallest owner and reopen Judgment when fresh evidence invalidates the locked option.
-9. **Checkpoint + report** - compact the mission state, state only the strongest proven completion level, residual risk, and deliberate deferrals.
+9. **Repository closure + report** - reconcile PR/CI/review/merge/main/release/sync state against the requested done definition, continue through any still-open authorized rung, then report only the strongest proven completion level, residual risk, and deliberate deferrals.
 
 For an authorized long-running foreground mission, keep one compact control state:
 
@@ -100,7 +125,7 @@ Choose one mode; re-route only when evidence crosses a real boundary.
 - **Review/audit** - bind base/head and intent; separate requirement/spec compliance from code quality/correctness. Read `references/code-review-patterns.md`.
 - **Performance/scale** - define workload/metric, baseline/profile, change one causal mechanism, retest equivalently. Read `references/performance-scale-patterns.md`.
 - **Incident/operations/release** - protect data/value, contain blast radius, recover live version/trigger topology, verify recovery, then repair cause.
-- **Takeover/autonomous product** - recover only truth needed next; with broad authorization combine takeover + stewardship: runnable baseline, compact Project Intelligence Snapshot, bounded Product Health Scans, then close the highest-leverage evidence-backed outcome.
+- **Takeover/autonomous product** - recover only truth needed next; with broad authorization combine takeover + stewardship: authoritative online repo/base/head, active PR/release topology, runnable baseline when accessible, compact Project Intelligence Snapshot, bounded Product Health Scans, then close the highest-leverage evidence-backed outcome through its requested remote repository boundary. Read `references/autonomous-repository-engineering.md`.
 - **Cross-service/cross-repo** - model producer/consumer/schema compatibility, version overlap, rollout order, shared artifact identity, and retirement. Read `references/cross-repo-contract-mesh.md`.
 
 Analysis/review/planning alone does not authorize mutation. Authorized implementation/fix/refactor may carry reversible repository-local work through the strongest practical validation boundary.
