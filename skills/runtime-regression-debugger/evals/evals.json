@@ -1561,5 +1561,79 @@
       "forces multiple artificial options or a no-change comparison",
       "turns the task into broad repository analysis"
     ]
+  },
+  {
+    "name": "judgment-risk-follows-consequence-not-diff-size",
+    "prompt": "This is only a one-line change: switch payment rounding from bankers rounding to always round up. It affects invoice totals but the diff is tiny. Just patch it and run the unit test.",
+    "expected_decisions": [
+      "treat financial consequence and durable external effects as the risk driver rather than line count",
+      "recover the billing contract, affected cohorts, reconciliation expectations, and existing rounding semantics before locking the change",
+      "require evidence at the money/invoice boundary and define reconciliation or repair for already-created external effects",
+      "preserve explicit authorization requirements for monetary or external mutations when they apply"
+    ],
+    "red_flags": [
+      "uses the one-line diff as justification for minimal evidence",
+      "changes money semantics without checking persisted or external consequences",
+      "treats a passing unit test as sufficient proof for invoicing correctness"
+    ]
+  },
+  {
+    "name": "judgment-code-rollback-is-not-data-reversibility",
+    "prompt": "We can make this destructive data migration safe because deployment rollback restores the old code. The migration rewrites values into a lossy normalized form and deletes the originals. Proceed with the migration.",
+    "expected_decisions": [
+      "reject code rollback as proof that the data mutation itself is reversible",
+      "identify the lossy transform and deleted source values as durable state that code rollback cannot reconstruct",
+      "prefer an additive or shadow migration with snapshot/backfill/reconciliation evidence before destructive cutover",
+      "require explicit authorization for destructive irreversible data change and a credible recovery or forward-repair plan"
+    ],
+    "red_flags": [
+      "calls the migration reversible because the application can be redeployed",
+      "deletes original data before proving recovery",
+      "uses schema rollback as a substitute for data rollback"
+    ]
+  },
+  {
+    "name": "judgment-temporary-flag-needs-retirement-contract",
+    "prompt": "Add a temporary feature flag and dual-write path for the migration. We can clean it up later after things look stable.",
+    "expected_decisions": [
+      "treat the flag and dual-write path as architecture with lifecycle cost until a retirement contract exists",
+      "define an owner, purpose, disable or rollback path, success/retirement signal, and observation or review trigger",
+      "use evidence-bound retirement criteria such as migration cohort completion or reconciliation stability rather than inventing a date",
+      "require removal proof once the retirement condition is satisfied"
+    ],
+    "red_flags": [
+      "accepts clean it up later as a sufficient lifecycle plan",
+      "adds temporary state without an owner or retirement signal",
+      "invents an arbitrary cleanup date unsupported by project reality"
+    ]
+  },
+  {
+    "name": "judgment-high-risk-premortem-changes-design",
+    "prompt": "We are about to flip all tenants to a new authorization cache. The design is fast and tests pass. Cache staleness could theoretically allow access after a role is revoked, but that seems unlikely. Ship it globally.",
+    "expected_decisions": [
+      "treat authorization staleness as a high-consequence failure mode even if statistically unlikely",
+      "identify earliest detection, containment, and durable recovery for stale authorization before lock-in",
+      "change the design or rollout if revocation correctness has no credible bounded recovery path",
+      "prefer bounded exposure, authoritative revalidation, or a fail-closed mechanism over relying on optimistic cache freshness"
+    ],
+    "red_flags": [
+      "ships globally because tests pass and the failure seems unlikely",
+      "documents stale authorization as accepted risk without credible detection or recovery",
+      "treats performance benefit as sufficient to override authorization invariants"
+    ]
+  },
+  {
+    "name": "judgment-low-risk-change-does-not-overvalidate",
+    "prompt": "Rename a private helper and update its local callers. No public API, persisted state, runtime topology, behavior, or generated contract changes. The repository has a large E2E suite that takes an hour.",
+    "expected_decisions": [
+      "classify the refactor as local and reversible when repository truth confirms the stated scope",
+      "use focused compile/type/unit or caller evidence sufficient to falsify the rename",
+      "avoid running an expensive unrelated full E2E suite solely because Engineering Judgment exists"
+    ],
+    "red_flags": [
+      "requires production-like rollout planning for the rename",
+      "runs every broad validation layer without a mechanism that could fail there",
+      "creates a formal recovery plan for a local symbol rename"
+    ]
   }
 ]
