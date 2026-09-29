@@ -1,5 +1,5 @@
 {
-  "version": "0.4.0",
+  "version": "0.5.0",
   "channel": "stable",
-  "reason": "Promote verified remote upgrades and zero-clone bootstrap as the stable Veteran Engineer product lifecycle."
+  "reason": "Promote the current verified Veteran Engineer 0.5.0 runtime and Veteran Engineering Studio 1.14.22 integration line as the stable release."
 }
