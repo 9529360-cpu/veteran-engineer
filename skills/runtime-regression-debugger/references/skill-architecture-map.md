@@ -38,7 +38,7 @@ flowchart TD
 Layer intent:
 
 - `agents/openai.yaml` controls product discovery metadata and implicit invocation policy. It must not contain engineering workflow logic.
-- `SKILL.md` is the compact cross-project control plane. It owns process precedence, stage interfaces, authority ordering, execution loop, primary modes, progressive routing, autonomy boundaries, and completion language.
+- `SKILL.md` is the compact cross-project control plane. It owns process precedence, stage interfaces, authority ordering, the Engineering Judgment trigger/lock, execution loop, primary modes, progressive routing, autonomy boundaries, and completion language.
 - `scripts/engineering_context_router.py` has no always-on deep reference set: `CORE` is intentionally empty. Cross-project invariants stay in `SKILL.md`; control/orchestration references consume context only when explicit signals require them.
 - `references/` owns deep mechanism knowledge that should load only when the current decision needs it.
 - `scripts/` owns deterministic calculators/checkers/navigation aids where machine execution is more reliable than prose reasoning, including capability/evidence-envelope validation.
@@ -58,8 +58,11 @@ flowchart LR
 
     P --> X{User-facing experience materially changes?}
     X -- yes --> E[Experience / product contract]
-    X -- no --> TD[Technical change contract]
-    E --> TD
+    X -- no --> J{Consequential decision?}
+    E --> J
+    J -- yes --> G[Engineering judgment lock\noptions + tradeoffs + invalidation trigger]
+    J -- no --> TD[Technical change contract]
+    G --> TD
 
     TD --> I[Implementation candidate]
     I --> S[Requirement / spec compliance review]
