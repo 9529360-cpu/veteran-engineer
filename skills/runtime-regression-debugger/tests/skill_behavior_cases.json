@@ -424,5 +424,17 @@
       "references/worker-execution-runtime.md",
       "references/hosted-state-backend-engineering.md"
     ]
+  },
+  {
+    "name": "explicit-engineering-judgment-loads-judgment-owner-without-future-stage-preload",
+    "signal": "judgment",
+    "must_include": [
+      "references/veteran-engineering-judgment.md"
+    ],
+    "must_exclude": [
+      "references/full-stack-product-engineering.md",
+      "references/frontend-product-patterns.md",
+      "references/release-promotion-patterns.md"
+    ]
   }
 ]
