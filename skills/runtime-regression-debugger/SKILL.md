@@ -50,9 +50,9 @@ Treat a requested mechanism as a proposal until current evidence proves it is th
 
 For a triggered decision, recover enough truth first, then freeze a compact decision contract:
 
-`problem/outcome -> current reality -> invariants/non-goals -> viable options -> lifecycle + second-order tradeoffs -> chosen path -> rejected alternatives -> disconfirming evidence -> required validation -> reconsideration trigger`
+`problem/outcome -> current reality -> invariants/non-goals -> viable options -> lifecycle + second-order tradeoffs -> reversibility/consequence -> chosen path -> rejected alternatives -> disconfirming evidence -> required validation/recovery -> reconsideration/exit trigger`
 
-Compare at least two genuinely viable options while the choice is open; include a no-change or simpler existing-owner path only when real, never as a strawman. If evidence leaves one valid path, record why the alternatives fail. Prefer the smallest complete change and accept evidence-backed no-change when new complexity lacks demonstrated pressure. Load `references/veteran-engineering-judgment.md` when the lifecycle/tradeoff decision is material.
+Compare at least two genuinely viable options while the choice is open; include a no-change or simpler existing-owner path only when real, never as a strawman. If evidence leaves one valid path, record why the alternatives fail. Prefer the smallest complete change and accept evidence-backed no-change when new complexity lacks demonstrated pressure. Calibrate evidence to **reversibility + consequence**, not diff size: high-consequence choices need credible detection/recovery before lock-in, and temporary complexity needs an owner plus retirement trigger. Load `references/veteran-engineering-judgment.md` when the lifecycle/tradeoff decision is material.
 
 Keep trivial/local/reversible edits fast: when one evidence-backed owner and solution are already clear, the judgment record may stay implicit or one line. Do not turn this gate into ceremony.
 
@@ -64,7 +64,7 @@ For substantial work repeat:
    When `machine_inspect` / `machine_act` are exposed by an authorized Veteran Machine Bridge, read `references/machine-action-fabric.md`; bind device/policy/repository/path/session state before machine mutation, pass exact repository-HEAD and file-fingerprint preconditions where available, retain action receipts through postcondition checks, and never infer host reachability or executor identity from a client-side path alone.
 2. **Truth** - recover instructions, active callers, schemas/manifests, authoritative owners, working state, and runtime evidence needed now.
 3. **Route** - select one current process owner plus minimum mechanism/risk context.
-4. **Judgment** - when the consequential-change trigger is active, separate outcome from requested mechanism, compare real options, price lifecycle/second-order effects, and lock the smallest justified decision plus its invalidation evidence. Otherwise keep this step lightweight.
+4. **Judgment** - when the consequential-change trigger is active, separate outcome from requested mechanism, compare real options, price lifecycle/second-order effects, classify reversibility/consequence, and lock the smallest justified decision plus invalidation, recovery, and exit evidence. For stateful/public/security-sensitive or irreversible/external choices, pre-mortem the few failure modes that can change the decision. Otherwise keep this step lightweight.
 5. **Contract/design** - compile the chosen decision into the technical/product contract; do not let implementation redefine it silently.
 6. **Implement** - smallest complete change in the authoritative owner; avoid unrelated churn/speculation.
 7. **Review + verify** - spec compliance, engineering correctness, then the real rendered/runtime boundary required.
