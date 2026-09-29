@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { VeteranInstaller } from '../src/installer/index.mjs';
 import { RUNTIME_VERSION } from '../src/constants.mjs';
+import { runNativeStudioCli } from '../src/native-studio-cli.mjs';
 
 function optionValue(argv, index, option) {
   const value = argv[index + 1];
@@ -37,7 +38,7 @@ function parse(argv) {
 }
 
 function usage() {
-  return `Veteran Engineer ${process.env.npm_package_version || RUNTIME_VERSION}\n\nUsage:\n  veteran-engineer install <codex|hermes|generic> [options]\n  veteran-engineer status [host] [--json]\n  veteran-engineer doctor [host] [--json]\n  veteran-engineer repair [host] [options]\n  veteran-engineer upgrade [--release latest|vX.Y.Z] [options]\n  veteran-engineer uninstall <host> [--purge]\n  veteran-engineer hosts [--json]\n\nSurface profiles: local-stdio, remote-mcp, secure-tunnel. Use --surface-profile with generic descriptors.\nShared runtime defaults to ~/plugins/veteran-engineer. Durable state defaults to ~/.veteran-engineer/state.\n`;
+  return `Veteran Engineer ${process.env.npm_package_version || RUNTIME_VERSION}\n\nUsage:\n  veteran-engineer install <codex|hermes|generic> [options]\n  veteran-engineer status [host] [--json]\n  veteran-engineer doctor [host] [--json]\n  veteran-engineer repair [host] [options]\n  veteran-engineer upgrade [--release latest|vX.Y.Z] [options]\n  veteran-engineer uninstall <host> [--purge]\n  veteran-engineer hosts [--json]\n  veteran-engineer studio <build|site|visual-pack|audit> ...\n\nSurface profiles: local-stdio, remote-mcp, secure-tunnel. Use --surface-profile with generic descriptors.\nShared runtime defaults to ~/plugins/veteran-engineer. Durable state defaults to ~/.veteran-engineer/state.\n`;
 }
 
 function doctorText(report) {
@@ -75,7 +76,12 @@ function statusText(report) {
 }
 
 async function main() {
-  const args = parse(process.argv.slice(2));
+  const rawArgs = process.argv.slice(2);
+  if (rawArgs[0] === 'studio') {
+    await runNativeStudioCli(rawArgs.slice(1));
+    return;
+  }
+  const args = parse(rawArgs);
   if (['help', '-h', '--help'].includes(args.command)) {
     process.stdout.write(usage());
     return;
