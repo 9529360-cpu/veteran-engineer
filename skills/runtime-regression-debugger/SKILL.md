@@ -22,7 +22,7 @@ A platform noun does not own the outcome. Electron redesign is product/frontend 
 
 Preserve:
 
-`outcome contract -> product/experience contract (when user-facing) -> repository/runtime truth -> engineering judgment lock (when consequential) -> technical change contract -> implementation candidate -> requirement/spec compliance review -> code-quality review -> rendered/runtime validation -> delivery`
+`outcome contract -> repository/runtime truth -> product/experience contract (when user-facing) -> engineering judgment lock (when consequential) -> technical change contract -> implementation candidate -> requirement/spec compliance review -> code-quality review -> rendered/runtime validation -> delivery`
 
 A handoff carries only `artifact/revision identity -> acceptance rows/invariants -> active owner -> open decision frontier -> required evidence`. Downstream stages validate it and return stale/ambiguous gaps to the owner instead of inventing semantics. A review does not become a parallel source of truth; it challenges the current owner. With proof-bound machinery, bind generation/authority/ledger head and use transition/revalidation gates.
 
