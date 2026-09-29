@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "veteran-engineering-studio",
-  "version": "1.14.24",
-  "description": "End-to-end software engineering with web-first machine execution, implementation-first Visual Design Authority, a reusable product UI pattern library, test-code semantic self-checks, and a provider-neutral Design Action Fabric for high-quality product UI, real-runtime visual proof, Figma workflows, design systems, Python Agent engineering, debugging, release/operations, accessibility, and rendered QA.",
+  "version": "1.14.25",
+  "description": "Repository-first end-to-end software engineering for online codebases: architecture, implementation, review, exact-head CI, PR/merge closure, release/operations, product UI, and evidence-bound delivery.",
   "keywords": [
     "full-stack",
     "software-engineering",
@@ -46,9 +46,6 @@
     "multi-agent",
     "design-system-discovery",
     "repo-probe",
-    "remote-machine",
-    "terminal",
-    "cross-device",
     "design-action-fabric",
     "design-provider",
     "asset-sync",
@@ -64,14 +61,21 @@
     "designer-critique",
     "ui-slop-scan",
     "optical-alignment",
-    "image-first-design"
+    "image-first-design",
+    "github",
+    "repository",
+    "pull-request",
+    "ci",
+    "exact-head",
+    "release-engineering",
+    "repository-closure"
   ],
   "extensions": {
     "com.openai": {
       "interface": {
         "displayName": "Veteran Engineering Studio",
         "shortDescription": "End-to-end full-stack engineering with a dedicated UI specialist",
-        "longDescription": "Veteran Full-Stack Engineer is the primary owner for substantial repository, architecture, backend, data, runtime, debugging, release, operations, mixed product work, and provenance-safe cross-host coordination with replay-safe attribution evidence. Veteran Frontend Design Builder is a bounded UI/frontend specialist with evidence-first design-system reuse, Code Connect and existing-screen discovery, visual-shotgun exploration, selective image-first art direction, typography and optical craft, iterative screenshot-based designer critique, advisory UI slop scanning, responsive polish, accessibility, and rendered QA. The full-stack owner retains cross-layer integration and final delivery authority.",
+        "longDescription": "Veteran Full-Stack Engineer is the primary owner for substantial online repository work: takeover, architecture, backend/data/runtime changes, debugging, review, exact-head CI, PR/merge convergence, release/operations, and mixed product delivery. It treats the hosted repository/control plane as the default authority and carries authorized work through the requested remote closure boundary. Veteran Frontend Design Builder remains a bounded UI/frontend specialist for design-system discovery, visual direction, responsive polish, accessibility, and rendered QA; the full-stack owner retains cross-layer integration and final repository delivery authority. Local desktop or machine execution is optional evidence only when explicitly available and materially required.",
         "developerName": "Veteran Engineer Project",
         "category": "Developer Tools",
         "capabilities": [
@@ -79,9 +83,9 @@
           "Write"
         ],
         "defaultPrompt": [
-          "Take ownership of this software task end to end, using the frontend design specialist whenever visual UI quality or design-system work is material.",
-          "Audit this product across engineering and UI quality, implement the highest-value fixes, and verify the real runtime result.",
-          "Build this feature as a production-quality vertical slice, including polished frontend behavior and rendered QA when applicable."
+          "Take ownership of this online repository task end to end: recover current repo/PR truth, implement the change, validate the exact head, reconcile review, and carry it through the requested merge/release boundary.",
+          "Audit this repository and product surface, implement the highest-value evidence-backed fixes, and close the work through current PR/CI/release state.",
+          "Build this feature as a production-quality vertical slice, using the frontend design specialist when visual quality is material, then verify the current repository head and delivery state."
         ],
         "brandColor": "#4F46E5"
       }
