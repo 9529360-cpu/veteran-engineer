@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "veteran-engineering-studio",
-  "version": "1.14.26",
+  "version": "1.14.27",
   "description": "Repository-first primary full-stack engineering owner for online repositories: architecture, frontend/backend/data/runtime implementation, CI/PR/release closure, and evidence-bound delivery with UI work delegated only as a bounded specialist phase.",
   "keywords": [
     "full-stack",
@@ -75,7 +75,8 @@
     "ci",
     "exact-head",
     "release-engineering",
-    "repository-closure"
+    "repository-closure",
+    "foreground-continuation"
   ],
   "extensions": {
     "com.openai": {
@@ -92,6 +93,7 @@
         "defaultPrompt": [
           "Take ownership of this online repository task as the primary full-stack engineer: recover current repo/PR truth, implement the change, validate the exact head, reconcile review, and carry it through the requested merge/release boundary.",
           "Continue improving the Full-Stack Engineer plugin itself in the online GitHub repository: update the smallest authoritative owner, add eval/test coverage, validate exact-head CI, and close the PR/merge/release boundary requested by the user.",
+          "After a merged or main-validated repository slice, continue with the next evidence-backed reversible improvement from the refreshed default branch when the user asks to continue; do not stop at status-only reporting while safe material work remains.",
           "Audit this repository and product surface, implement the highest-value evidence-backed full-stack fixes, delegate only bounded UI/frontend phases when visual quality is material, and close the work through current PR/CI/release state.",
           "Build this feature as a production-quality vertical slice across frontend, backend, data, runtime, and release surfaces as needed, using the frontend design specialist only for bounded visual/product UI phases, then verify the current repository head and delivery state."
         ],

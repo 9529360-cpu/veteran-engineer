@@ -23,6 +23,13 @@
       "rationale": "Selected-plugin repository work, CI, PR, and merge closure belong to the full-stack owner, not the UI specialist."
     },
     {
+      "id": "foreground-continuation-after-main-validation",
+      "request": "继续开发吧。上一个 PR 已经合并并完成 main 验证后，从刷新后的 main 开新分支继续做下一个高价值可逆改进。",
+      "primary": "runtime-regression-debugger",
+      "specialist": [],
+      "rationale": "A continuation request after repository closure is a full-stack stewardship loop: refresh main, pick the next evidence-backed slice, and keep repository ownership with the primary full-stack engineer."
+    },
+    {
       "id": "backend-auth-feature",
       "request": "Add organization-scoped API keys with persistence, authorization checks, tests, migration safety, and release verification.",
       "primary": "runtime-regression-debugger",
