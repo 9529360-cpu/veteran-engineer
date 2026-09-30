@@ -9,6 +9,20 @@
       "rationale": "Whole-repository takeover and delivery require one end-to-end engineering owner."
     },
     {
+      "id": "full-stack-plugin-evolution",
+      "request": "继续完善全栈工程师这个插件，走 GitHub 在线仓库，不要用开发机。",
+      "primary": "runtime-regression-debugger",
+      "specialist": [],
+      "rationale": "The named target is the full-stack engineer plugin itself, so the primary full-stack owner remains in control."
+    },
+    {
+      "id": "selected-agent-full-stack-repo-work",
+      "request": "Use @agent and GitHub to keep improving the full-stack engineer plugin, check PR/CI state, patch the repo, and merge when it is proven.",
+      "primary": "runtime-regression-debugger",
+      "specialist": [],
+      "rationale": "Selected-plugin repository work, CI, PR, and merge closure belong to the full-stack owner, not the UI specialist."
+    },
+    {
       "id": "backend-auth-feature",
       "request": "Add organization-scoped API keys with persistence, authorization checks, tests, migration safety, and release verification.",
       "primary": "runtime-regression-debugger",
@@ -23,6 +37,15 @@
         "frontend-design-builder"
       ],
       "rationale": "Cross-layer outcome stays with full-stack owner while UI work may be delegated."
+    },
+    {
+      "id": "mixed-full-stack-with-ui-polish",
+      "request": "This includes frontend polish, but also auth, API, jobs, runtime wiring, tests, and release checks; keep one full-stack owner and delegate UI only if needed.",
+      "primary": "runtime-regression-debugger",
+      "specialist": [
+        "frontend-design-builder"
+      ],
+      "rationale": "Frontend polish is a bounded phase inside a cross-layer full-stack delivery contract."
     },
     {
       "id": "desktop-redesign-with-runtime",

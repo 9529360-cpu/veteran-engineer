@@ -1,16 +1,23 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "veteran-engineering-studio",
-  "version": "1.14.25",
-  "description": "Repository-first end-to-end software engineering for online codebases: architecture, implementation, review, exact-head CI, PR/merge closure, release/operations, product UI, and evidence-bound delivery.",
+  "version": "1.14.26",
+  "description": "Repository-first primary full-stack engineering owner for online repositories: architecture, frontend/backend/data/runtime implementation, CI/PR/release closure, and evidence-bound delivery with UI work delegated only as a bounded specialist phase.",
   "keywords": [
     "full-stack",
+    "full-stack-engineer",
+    "primary-full-stack-owner",
     "software-engineering",
     "frontend",
-    "ui",
-    "ux",
+    "backend",
+    "data",
+    "runtime",
+    "infrastructure",
     "debugging",
     "architecture",
+    "repository-takeover",
+    "vertical-slice",
+    "end-to-end-delivery",
     "design-system",
     "release",
     "visual-qa",
@@ -74,8 +81,8 @@
     "com.openai": {
       "interface": {
         "displayName": "Veteran Engineering Studio",
-        "shortDescription": "End-to-end full-stack engineering with a dedicated UI specialist",
-        "longDescription": "Veteran Full-Stack Engineer is the primary owner for substantial online repository work: takeover, architecture, backend/data/runtime changes, debugging, review, exact-head CI, PR/merge convergence, release/operations, and mixed product delivery. It treats the hosted repository/control plane as the default authority and carries authorized work through the requested remote closure boundary. Veteran Frontend Design Builder remains a bounded UI/frontend specialist for design-system discovery, visual direction, responsive polish, accessibility, and rendered QA; the full-stack owner retains cross-layer integration and final repository delivery authority. Local desktop or machine execution is optional evidence only when explicitly available and materially required.",
+        "shortDescription": "End-to-end full-stack engineering with primary repository ownership and bounded UI specialist delegation",
+        "longDescription": "Veteran Full-Stack Engineer is the primary owner for substantial online repository work: takeover, architecture, backend/data/runtime changes, frontend integration, debugging, review, exact-head CI, PR/merge convergence, release/operations, and mixed product delivery. It treats the hosted repository/control plane as the default authority for repository work. When a user asks for the full-stack engineer, 全栈工程师, repository development, CI/PR/release closure, or codebase ownership, route to this full-stack owner first. Veteran Frontend Design Builder remains a bounded UI/frontend specialist for design-system discovery, visual direction, responsive polish, accessibility, and rendered QA; it does not become the whole-repository owner when backend, data, runtime, release, or cross-layer product behavior is material. The full-stack owner retains cross-layer integration and final repository delivery authority. Local desktop or machine execution is optional evidence only when explicitly available and materially required.",
         "developerName": "Veteran Engineer Project",
         "category": "Developer Tools",
         "capabilities": [
@@ -83,9 +90,10 @@
           "Write"
         ],
         "defaultPrompt": [
-          "Take ownership of this online repository task end to end: recover current repo/PR truth, implement the change, validate the exact head, reconcile review, and carry it through the requested merge/release boundary.",
-          "Audit this repository and product surface, implement the highest-value evidence-backed fixes, and close the work through current PR/CI/release state.",
-          "Build this feature as a production-quality vertical slice, using the frontend design specialist when visual quality is material, then verify the current repository head and delivery state."
+          "Take ownership of this online repository task as the primary full-stack engineer: recover current repo/PR truth, implement the change, validate the exact head, reconcile review, and carry it through the requested merge/release boundary.",
+          "Continue improving the Full-Stack Engineer plugin itself in the online GitHub repository: update the smallest authoritative owner, add eval/test coverage, validate exact-head CI, and close the PR/merge/release boundary requested by the user.",
+          "Audit this repository and product surface, implement the highest-value evidence-backed full-stack fixes, delegate only bounded UI/frontend phases when visual quality is material, and close the work through current PR/CI/release state.",
+          "Build this feature as a production-quality vertical slice across frontend, backend, data, runtime, and release surfaces as needed, using the frontend design specialist only for bounded visual/product UI phases, then verify the current repository head and delivery state."
         ],
         "brandColor": "#4F46E5"
       }
