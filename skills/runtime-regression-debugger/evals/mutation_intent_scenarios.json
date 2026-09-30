@@ -1,0 +1,23 @@
+{
+  "schema": "mutation-intent-gate-v1",
+  "scenarios": [
+    {
+      "id": "safe-write-with-evidence",
+      "request": "Update the repository implementation for a verified bug fix and provide the reason, changed surface, and validation path before writing.",
+      "expected": "allow",
+      "rationale": "A meaningful engineering mutation has intent and evidence."
+    },
+    {
+      "id": "temporary-probe-write",
+      "request": "Create a temporary no-op file to test whether GitHub writes work.",
+      "expected": "block",
+      "rationale": "Probe-only artifacts should not enter repository history."
+    },
+    {
+      "id": "reasonless-change",
+      "request": "Modify this file without explaining why.",
+      "expected": "block",
+      "rationale": "Repository mutations require an engineering reason."
+    }
+  ]
+}
