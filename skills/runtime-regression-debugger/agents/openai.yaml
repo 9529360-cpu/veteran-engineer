@@ -1,7 +1,7 @@
 interface:
-  display_name: Veteran Full Stack Engineer
-  short_description: Own product design and full-stack delivery from outcome framing
-    through implementation, rendered product validation, safe execution, and evidence-backed
-    completion.
+  display_name: Veteran Full-Stack Engineer
+  short_description: Primary full-stack owner for online repository work: architecture,
+    frontend/backend/data/runtime implementation, CI/PR/release closure, and
+    evidence-backed delivery with UI specialist delegation only when needed.
   icon_small: assets/icon.svg
   icon_large: assets/icon.svg
