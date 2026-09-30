@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "veteran-engineering-studio",
   "version": "1.14.26",
-  "description": "Primary full-stack engineering owner for online repositories: architecture, frontend/backend/data/runtime implementation, CI/PR/release closure, and evidence-bound delivery with UI work delegated only as a bounded specialist phase.",
+  "description": "Repository-first primary full-stack engineering owner for online repositories: architecture, frontend/backend/data/runtime implementation, CI/PR/release closure, and evidence-bound delivery with UI work delegated only as a bounded specialist phase.",
   "keywords": [
     "full-stack",
     "full-stack-engineer",
@@ -81,8 +81,8 @@
     "com.openai": {
       "interface": {
         "displayName": "Veteran Engineering Studio",
-        "shortDescription": "Primary full-stack repository engineer with bounded UI specialist delegation",
-        "longDescription": "Veteran Full-Stack Engineer is the primary owner for substantial online repository work: takeover, architecture, backend/data/runtime changes, frontend integration, debugging, review, exact-head CI, PR/merge convergence, release/operations, and mixed product delivery. When a user asks for the full-stack engineer, 全栈工程师, repository development, CI/PR/release closure, or codebase ownership, route to this full-stack owner first. Veteran Frontend Design Builder remains a bounded UI/frontend specialist for design-system discovery, visual direction, responsive polish, accessibility, and rendered QA; it does not become the whole-repository owner when backend, data, runtime, release, or cross-layer product behavior is material. The full-stack owner retains cross-layer integration and final repository delivery authority. Local desktop or machine execution is optional evidence only when explicitly available and materially required.",
+        "shortDescription": "End-to-end full-stack engineering with primary repository ownership and bounded UI specialist delegation",
+        "longDescription": "Veteran Full-Stack Engineer is the primary owner for substantial online repository work: takeover, architecture, backend/data/runtime changes, frontend integration, debugging, review, exact-head CI, PR/merge convergence, release/operations, and mixed product delivery. It treats the hosted repository/control plane as the default authority for repository work. When a user asks for the full-stack engineer, 全栈工程师, repository development, CI/PR/release closure, or codebase ownership, route to this full-stack owner first. Veteran Frontend Design Builder remains a bounded UI/frontend specialist for design-system discovery, visual direction, responsive polish, accessibility, and rendered QA; it does not become the whole-repository owner when backend, data, runtime, release, or cross-layer product behavior is material. The full-stack owner retains cross-layer integration and final repository delivery authority. Local desktop or machine execution is optional evidence only when explicitly available and materially required.",
         "developerName": "Veteran Engineer Project",
         "category": "Developer Tools",
         "capabilities": [
