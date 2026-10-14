@@ -11,6 +11,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { inspectHostWorkerCapacity } from './host-worker-capacity.mjs';
+import { conveneNativeCouncil, readNativeCouncil, selectNativeCouncilOption, nativeCouncilSummaries } from './native-agent-council.mjs';
 
 const MAX_TOOL_RESULT_CHARS = 12_000;
 const MAX_TOOL_CALLS_PER_TURN = 64;
@@ -83,6 +84,8 @@ export class NativeAgent {
     this.advisorCapacity = advisorCapacity;
     this.history = [];
     this.children = new Map();
+    this.councils = new Map();
+    this.usage = { modelCalls: 0, inputTokens: 0, outputTokens: 0, meteredResponses: 0, toolCalls: 0, toolFailures: 0 };
     this.running = false;
   }
 
@@ -94,6 +97,16 @@ export class NativeAgent {
     if (this.signal?.aborted) throw fail('NATIVE_AGENT_CANCELLED', 'Agent was cancelled');
   }
 
+  advisorSlots() {
+    const host = inspectHostWorkerCapacity({ workerMemoryMiB: 128 });
+    const measuredCapacity = Math.max(0, Math.min(host.effectiveCpuSlots, host.estimatedMemorySlots));
+    const capacity = Number.isInteger(this.advisorCapacity) && this.advisorCapacity >= 0
+      ? Math.min(this.advisorCapacity, measuredCapacity) : measuredCapacity;
+    return Math.max(0, capacity - this.children.size);
+  }
+
+  getCouncilSummaries() { return nativeCouncilSummaries(this); }
+
   /** A child may reason broadly but never receives mutation tools or delegation authority. */
   async spawnAdvisor({ question, perspective = '', maxTurns = 8 } = {}) {
     if (!this.allowAdvisors) throw fail('NATIVE_AGENT_DELEGATION_FORBIDDEN', 'Nested Agent delegation is disabled');
@@ -103,10 +116,7 @@ export class NativeAgent {
     if (typeof perspective !== 'string' || perspective.length > 1200) {
       throw fail('NATIVE_AGENT_ADVISOR_INVALID', 'Advisory perspective must be a short string');
     }
-    const host = inspectHostWorkerCapacity({ workerMemoryMiB: 128 });
-    const capacity = Number.isInteger(this.advisorCapacity) && this.advisorCapacity >= 0
-      ? this.advisorCapacity : Math.min(host.effectiveCpuSlots, host.estimatedMemorySlots);
-    if (this.children.size >= capacity) throw fail('NATIVE_AGENT_HOST_CAPACITY', 'No safe host capacity for another advisory Agent');
+    if (this.advisorSlots() < 1) throw fail('NATIVE_AGENT_HOST_CAPACITY', 'No safe host capacity for another advisory Agent');
     const child = new NativeAgent({
       model: this.model,
       tools: this.tools.filter((tool) => tool.readOnly),
@@ -131,6 +141,9 @@ export class NativeAgent {
       const result = await child.prompt(question);
       this.emit('agent_completed', { childAgentId: child.agentId, turns: result.turns });
       return { agentId: child.agentId, parentAgentId: this.agentId, role: 'advisor', ...result };
+    } catch (error) {
+      this.emit('agent_failed', { childAgentId: child.agentId, role: 'advisor', code: error?.code || 'NATIVE_AGENT_FAILED' });
+      throw error;
     } finally {
       this.children.delete(child.agentId);
     }
@@ -147,6 +160,38 @@ export class NativeAgent {
       }, required: ['question'] },
       execute: (args) => this.spawnAdvisor(args)
     });
+    if (this.allowAdvisors) list.push(
+      {
+        name: 'convene_council',
+        description: 'Optional substantive design competition: independent advisers develop diverse proposals, then independent critics cross-examine evidence. You decide perspectives/count by problem; no preset roster. Primary retains selection authority.',
+        readOnly: false,
+        parameters: { type: 'object', additionalProperties: false, properties: {
+          question: { type: 'string' },
+          perspectives: { type: 'array', minItems: 2, maxItems: 64, items: { type: 'string' } },
+          crossExamine: { type: 'boolean' }, maxTurns: { type: 'integer' }
+        }, required: ['question', 'perspectives'] },
+        execute: (args) => conveneNativeCouncil(this, args)
+      },
+      {
+        name: 'read_council',
+        description: 'Inspect paginated independent proposals and red-team critiques before deciding.',
+        readOnly: true,
+        parameters: { type: 'object', properties: {
+          councilId: { type: 'string' }, offset: { type: 'integer' }, limit: { type: 'integer' }
+        }, required: ['councilId'] },
+        execute: (args) => readNativeCouncil(this, args)
+      },
+      {
+        name: 'select_council_option',
+        description: 'Record the primary Agent choice with explicit rationale and evidence. Voting is advisory only; selection does not authorize any execution.',
+        readOnly: false,
+        parameters: { type: 'object', properties: {
+          councilId: { type: 'string' }, candidateId: { type: 'string' }, rationale: { type: 'string' },
+          evidence: { type: 'array', items: { type: 'string' } }
+        }, required: ['councilId', 'candidateId', 'rationale'] },
+        execute: (args) => selectNativeCouncilOption(this, args)
+      }
+    );
     return list;
   }
 
@@ -154,12 +199,14 @@ export class NativeAgent {
     this.checkAborted();
     const tool = tools.find((entry) => entry.name === call.name);
     if (!tool) return { role: 'tool', tool_call_id: call.id, content: 'Tool unavailable or denied: ' + call.name };
+    this.usage.toolCalls++;
     this.emit('tool_requested', { tool: call.name });
     try {
       const value = await tool.execute(call.arguments, { agentId: this.agentId, signal: this.signal, role: this.role });
       this.emit('tool_finished', { tool: call.name, ok: true });
       return { role: 'tool', tool_call_id: call.id, content: safeResult(value) };
     } catch (error) {
+      this.usage.toolFailures++;
       this.emit('tool_finished', { tool: call.name, ok: false, code: error?.code || 'TOOL_ERROR' });
       if (this.signal?.aborted) this.checkAborted();
       // Give the model bounded actionable failure feedback, never a raw stack or secret-bearing object.
@@ -182,7 +229,19 @@ export class NativeAgent {
           tools: tools.map((tool) => ({ name: tool.name, description: tool.description || '', parameters: tool.parameters })),
           signal: this.signal
         };
-        const decision = activeModelMessage(await this.model.complete(request));
+        const response = await this.model.complete(request);
+        this.usage.modelCalls++;
+        const rawUsage = response?.usage || null;
+        if (rawUsage && typeof rawUsage === 'object') {
+          const input = rawUsage.prompt_tokens ?? rawUsage.input_tokens;
+          const output = rawUsage.completion_tokens ?? rawUsage.output_tokens;
+          if (Number.isSafeInteger(input) && input >= 0 && Number.isSafeInteger(output) && output >= 0) {
+            this.usage.meteredResponses++;
+            this.usage.inputTokens += input;
+            this.usage.outputTokens += output;
+          }
+        }
+        const decision = activeModelMessage(response);
         text = decision.content;
         const assistant = { role: 'assistant', content: text };
         if (decision.toolCalls.length) {
@@ -194,7 +253,7 @@ export class NativeAgent {
         this.emit('agent_turn', { turn, toolsRequested: decision.toolCalls.length });
         if (!decision.toolCalls.length) {
           this.emit('agent_finished', { turns: turn });
-          return { text, turns: turn, status: 'completed' };
+          return { text, turns: turn, status: 'completed', usage: { ...this.usage } };
         }
         // Read-only operations and independent advisory loops can run concurrently;
         // mutating tools execute in order, never simultaneously in one Agent.

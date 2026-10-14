@@ -341,6 +341,9 @@ export class MissionService {
             summary: {
               exitCode: result.code,
               planningMode: nativePlanning ? 'native-agent-loop' : 'configured-process-provider',
+              nativeCouncilCount: nativePlanning ? (parsed.councils || []).length : 0,
+              nativeCouncilChoices: nativePlanning ? (parsed.councils || []).filter((council) => council.selection).length : 0,
+              nativeCouncilReviewBallots: nativePlanning ? (parsed.councils || []).reduce((total, council) => total + (council.reviewedBallots || 0), 0) : 0,
               taskCount: parsed.tasks.length,
               experienceIds: experience.items.map((item) => item.id),
               activeProjectMissionCount: continuity.activeMissionCount,

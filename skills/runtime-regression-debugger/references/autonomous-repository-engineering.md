@@ -52,7 +52,12 @@ worker execution authorization. A configured native Agent model endpoint
 now permits true Veteran-owned subprocess Agents without Codex/Claude Code
 CLI. The model-agnostic lead planner creates a real Agent loop, explores
 repository evidence with read-only tools, consults independent read-only
-advisers via `spawn_advisor`, and submits a validated task DAG. There are
+advisers via `spawn_advisor`, or convenes a capacity-aware Agent council of
+independent competitors via `convene_council`, `read_council` and
+`select_council_option`. A council's structured review/ranking is advisory;
+the lead records its evidence and rationale, and MissionService still verifies
+the resulting task DAG. Never inflate small tasks with ceremonial panels, or
+mistake a reviewer's vote for objective proof or execution authorization. There are
 no fixed architectural staff roles or 2/4-worker team cap, though runtime
 capacity and permission policy remain authoritative. Adviser suggestions
 must be evaluated by the main Agent, not promoted to decisions automatically.
