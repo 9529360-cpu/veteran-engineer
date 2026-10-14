@@ -9,6 +9,26 @@ The Full-Stack Engineer keeps end-to-end ownership. Material UI/UX work routes i
 
 The GitHub repository `9529360-cpu/veteran-engineer` is the implementation source of truth. Current repository/runtime evidence and executable gates outrank old exported artifacts, historical claims, or remembered checkpoints.
 
+## Optional MCP workflow learning (opt-in)
+
+The Veteran MCP runtime can record its own real tool outcomes into a task journal
+without capturing prompts or raw tool output. It recognizes returned repository
+snapshots, accepted task commits, validation results and deterministic reviews.
+Capture is **off by default**. Initialize a task journal and set
+`VETERAN_WORKFLOW_OBSERVER=1`, `VETERAN_WORKFLOW_JOURNAL` (absolute file),
+and `VETERAN_WORKFLOW_OBSERVER_IMPORTER` (absolute path to the matching Skill's
+`scripts/workflow_observer.py`) on the running MCP process. An available Python
+interpreter is required; optionally set `VETERAN_WORKFLOW_OBSERVER_PYTHON`.
+
+Both SDK and fallback MCP transports use the same post-result producer. Events
+are sent through JSONL stdin to the existing journal importer; failed capture
+cannot turn a tool success into failure. Journals are task-scoped; do not share
+one journal between active producers without serialization. Completed journals
+may be analyzed with `experience_compactor.py --include-workflows` to propose
+review-required, project-scoped workflow candidates after independent repetition.
+The feature does **not** observe other ChatGPT tools, install background hooks,
+or automatically edit Skills. See
+`skills/runtime-regression-debugger/references/engineering-experience-governance.md`.
 ## Visual Design Authority
 
 Substantial new UI, major redesigns, and explicit visual-quality recovery work now pass a blocking design gate before deep implementation. Frontend Design Builder must inspect the current product and system, materialize a real visual direction when capable tools exist, compete meaningfully different directions when the target is unresolved, reject generic AI-template patterns, lock one visual target/design contract, and only then proceed into deep frontend code.

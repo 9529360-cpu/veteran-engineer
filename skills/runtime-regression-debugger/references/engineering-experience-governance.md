@@ -144,6 +144,47 @@ automatic promotion. The importer only records asserted receipts: it cannot
 independently verify a test or CI run. Confirm exact identities on review.
 Without real host hooks, use the existing manual `workflow-step` command.
 
+#### Built-in optional Veteran MCP producer
+
+Veteran's own MCP server (official SDK and standalone fallback) provides an actual **post-result callback**.
+It observes only returned, typed runtime results from `project_snapshot`, `task_result_commit`,
+`validation_run`, and `review_run`, then delivers the same bounded JSONL schema
+to `scripts/workflow_observer.py`. No result or returned proof means **no event**.
+Explicit failed validation/review with durable evidence becomes a negative observation.
+
+This is **disabled by default**. For each actual task, initialize a dedicated
+journal with its own contract, then set the following variables in the MCP server
+environment before launch:
+
+~~~bash
+python3 /absolute/skill/scripts/engineering_journal.py /absolute/task.json init --contract "Current task"
+export VETERAN_WORKFLOW_OBSERVER=1
+export VETERAN_WORKFLOW_JOURNAL=/absolute/task.json
+export VETERAN_WORKFLOW_OBSERVER_IMPORTER=/absolute/skill/scripts/workflow_observer.py
+# Optional: VETERAN_WORKFLOW_OBSERVER_PYTHON=/absolute/python3
+~~~
+
+On Windows set the variables with PowerShell and point the optional Python setting
+at a reachable Python interpreter. Use the importer from the **installed matching
+Veteran Skill**. The separately bundled runtime starter may not include the Skill
+scripts, so no implicit relative importer path is guessed.
+
+Only a hashed request identifier, stable activity slug, passed/failed outcome,
+Git commit hash and runtime-generated opaque evidence IDs reach the importer.
+Prompts, arguments, commands, tool output, file paths, credentials and arbitrary
+result properties are excluded. Child execution uses an argument vector plus
+JSONL stdin, never a shell-escaped command. Delivery is serialized within the
+MCP process and awaited; it does not persist beyond that host session.
+Own each journal in **one** MCP process; concurrent producers or manual writers
+on the same journal need external serialization. If Python, script or journal is
+unavailable, the MCP tool result is unchanged and one bounded stderr warning
+is emitted. A disabled producer has no journal reads or subprocesses.
+
+This hook applies to Veteran's **own MCP tool calls only**. It cannot capture
+ordinary ChatGPT conversations, IDE tools, external GitHub connector calls,
+third-party tools, or sessions when the MCP runtime is not running.
+Candidate extraction remains opt-in and produces review-required proposals;
+there is no automatic Skill rewrite, promotion, installation or background agent.
 The compactor groups by workflow and **ordered steps**, ignores copied/replayed task identities, and emits project-scoped `repeated-workflow` candidates with proof references and a counterexample count. A failed, incomplete, open, or materially different run blocks promotion until reconciled. Multiple records from one task never satisfy independence; the threshold is a heuristic for useful candidates, not evidence of generality or benefit. Without journal capture or an exposed executor, the Skill can only identify a pattern from explicitly supplied evidence; it cannot secretly observe all conversations, run a background learner, or modify loaded instructions.
 
 A candidate becomes a genuine Skill improvement only after confirming the current repository, source/package identity, scope and false positives; checking prior rules for duplicates; comparing old-versus-new behavior on representative and held-out tasks; and shipping a reviewable, regression-covered repository PR. For automatic reuse **before** general promotion, a human-reviewed, scope-bound project playbook may be recorded in the project's existing authorized memory store; freshness is checked each run. Do not turn a candidate into a global rule solely because its steps repeat.
