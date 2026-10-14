@@ -12,6 +12,7 @@ import { MissionService } from './mission-service.mjs';
 import { missionExecutionCapacity } from './adaptive-mission-strategy.mjs';
 import { nowIso, randomId } from './util.mjs';
 import { resolveWorkerConfig, writeWorkerPacket } from './worker-adapter.mjs';
+import { selectWorkerForTask } from './worker-performance.mjs';
 import { ProjectBootstrapExecutor, normalizeBootstrapAuthorization } from './bootstrap-executor.mjs';
 
 function runtimeFeedbackForPacket(mission, waveBase) {
@@ -290,7 +291,8 @@ export class WorkerOrchestrator {
             throw error;
           }
         }
-        const packet = packetFor(project, refreshed.mission, task, waveBase, experience);
+        const effectiveWorker = runWorkers ? (task.workerAssignment?.worker || task.worker) : task.worker;
+        const packet = packetFor(project, refreshed.mission, { ...task, worker: effectiveWorker }, waveBase, experience);
         const packetPath = path.join(this.store.artifactsDir, 'worker-packets', `${dispatchId}.json`);
         if (!runWorkers) {
           await writeWorkerPacket({
@@ -314,11 +316,14 @@ export class WorkerOrchestrator {
           target.attempts += 1;
           target.updatedAt = nowIso();
           target.admission = null;
-          target.dispatches.push({ id: dispatchId, waveBase, worktreePath: worktree.path, packetPath, packet, bootstrapEvidenceId, runWorkers: runWorkers === true, status: runWorkers ? 'executing' : 'ready', createdAt: nowIso() });
+          target.dispatches.push({ id: dispatchId, waveBase, worktreePath: worktree.path, packetPath, packet, bootstrapEvidenceId, runWorkers: runWorkers === true,
+            workerKey: runWorkers ? effectiveWorker : null,
+            workerSelection: runWorkers ? (task.workerAssignment || null) : null,
+            status: runWorkers ? 'executing' : 'ready', createdAt: nowIso() });
           liveMission.status = runWorkers ? 'executing' : 'ready';
           state.runtime.timeline.push({ type: 'worker_dispatched', missionId, taskId: task.id, dispatchId, runWorkers, at: nowIso() });
         }, { missionId, taskId: task.id, dispatchId, runWorkers, admissionId: admission.id });
-        prepared.push({ task: { ...task, attempts: task.attempts + 1 }, packet, packetPath, worktree, dispatchId, bootstrap, bootstrapEvidenceId });
+        prepared.push({ task: { ...task, worker: effectiveWorker, attempts: task.attempts + 1 }, packet, packetPath, worktree, dispatchId, bootstrap, bootstrapEvidenceId });
       } catch (error) {
         if (worktree) await this.worktreeManager.removeTaskWorktree(project, mission, task).catch(() => {});
         await this.#releaseAdmissions({ ...admission, taskIds: [task.id] }, 'task-preparation-failed');
@@ -436,6 +441,7 @@ export class WorkerOrchestrator {
           if (dispatch) {
             Object.assign(dispatch, {
               workerSpawnConfirmed: result.workerProcessConfirmed === true,
+              evidenceId: result.evidenceId,
               status: missionCancelled ? 'cancelled' : (cancelled ? 'cancelled' : 'failed'),
               endedAt: nowIso(),
               error: { code, message: result.error.message },
@@ -467,6 +473,9 @@ export class WorkerOrchestrator {
             const dispatch = task.dispatches.find((entry) => entry.id === result.dispatchId);
             if (dispatch) {
               dispatch.workerSpawnConfirmed = result.workerProcessConfirmed === true;
+              dispatch.evidenceId = result.evidenceId;
+              dispatch.error = { code: 'TASK_INTEGRATION_FAILED', message: 'Runtime integration rejected worker task commit' };
+              dispatch.endedAt = nowIso();
               dispatch.status = 'failed';
             }
             if (liveMission && !missionCancelled) liveMission.status = 'blocked';
@@ -488,6 +497,7 @@ export class WorkerOrchestrator {
         if (dispatch) {
           Object.assign(dispatch, {
             workerSpawnConfirmed: result.workerProcessConfirmed === true,
+            evidenceId: result.evidenceId,
             status: 'integrated',
             endedAt: nowIso(),
             commitSha: result.commitSha,
@@ -525,6 +535,8 @@ export class WorkerOrchestrator {
       results: results.map((result) => ({
         taskId: result.task.id,
         ok: result.ok,
+        worker: result.task.worker,
+        workerSelection: result.task.workerAssignment || null,
         commitSha: result.commitSha || null,
         discardedCommitSha: result.discardedCommitSha || null,
         bootstrap: result.bootstrap || null,
@@ -560,6 +572,7 @@ export class WorkerOrchestrator {
       if (dispatch) {
         Object.assign(dispatch, {
           workerSpawnConfirmed: result.workerProcessConfirmed === true,
+          evidenceId: result.evidenceId,
           status: 'cancelled',
           endedAt: nowIso(),
           error: { code: 'MISSION_CANCELLED', message: 'Worker result was discarded because the mission was cancelled before integration' },
@@ -600,6 +613,12 @@ export class WorkerOrchestrator {
       const budget = missionExecutionCapacity({ state, mission, project, runWorkers });
       const selected = ready.slice(0, budget.capacity);
       for (const task of selected) {
+        if (runWorkers && task.workerAssignment?.attempt !== task.attempts + 1) {
+          task.workerAssignment = {
+            ...selectWorkerForTask({ state, project, task }),
+            attempt: task.attempts + 1
+          };
+        }
         task.status = 'admitted';
         task.admission = { id: admissionId, runWorkers, reservedAt: nowIso() };
         task.updatedAt = nowIso();
@@ -620,6 +639,7 @@ export class WorkerOrchestrator {
         if (!task || task.status !== 'admitted' || task.admission?.id !== admission.id) continue;
         task.status = 'planned';
         task.admission = null;
+        task.workerAssignment = null;
         task.updatedAt = nowIso();
         released.push(task.id);
       }
@@ -704,6 +724,7 @@ export class WorkerOrchestrator {
       if (!['failed', 'interrupted', 'cancelled'].includes(task.status)) throw Object.assign(new Error('Only failed/interrupted/cancelled tasks can be retried'), { code: 'TASK_RETRY_INVALID' });
       task.status = 'planned';
       task.admission = null;
+      task.workerAssignment = null;
       task.updatedAt = nowIso();
       mission.status = 'ready';
       reconcileInterruptedMission(state, mission);

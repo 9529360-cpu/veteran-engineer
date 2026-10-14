@@ -195,6 +195,58 @@ available, while dynamic graph expansion, cross-machine scheduling and
 runtime-observed per-agent cost/throughput control are **follow-up work**.
 Changing the default capacity does not silently bypass the explicit
 execution authorization policy.
+## Evidence-based Worker selection (optional, no silent executor takeover)
+
+The primary Agent can now compare **durable, verified engineering task outcomes**,
+not role names or a model's opinion, when choosing the executor for a default
+low/medium-risk task. `mission_status.workerPerformance` reports integrated
+task attempts and evidence-backed failures; every actual dispatch records the
+selected Worker and selection rationale. Successful integration is **not**
+proof that final CI, semantic review or production acceptance passed.
+
+This is an **explicit opt-in** for choosing among executors already authorized
+by the operator. It never discovers or borrows a Codex/Claude session, installs
+new providers, selects an unconfigured Worker, changes a task's explicit
+`worker`, or automatically switches a high/critical-risk task.
+
+```json
+{
+  "defaults": {
+    "workerPolicy": {
+      "enabled": true,
+      "defaultWorker": "native",
+      "nativeAgent": {
+        "model": "your-model-name",
+        "baseURL": "http://127.0.0.1:11434/v1"
+      },
+      "workers": {
+        "bounded-specialist": {
+          "type": "custom",
+          "command": "/path/to/approved-worker",
+          "args": []
+        }
+      },
+      "adaptiveSelection": {
+        "enabled": true,
+        "candidates": ["native", "bounded-specialist"]
+      }
+    }
+  }
+}
+```
+
+Omit `adaptiveSelection` or leave `enabled: false` to retain the existing
+operator/default routing. Candidate keys are configuration identities, **not**
+extra authorization; each candidate must pass existing WorkerAdapter policy
+and requested execution-capability checks. No candidate may expand a task's
+`writeSet`, acquire credentials, or inherit the lead's merge authority.
+Decisions use task-owner evidence when present, otherwise project history,
+and exclude cancellation, supervisor-only launches, ambiguous timeouts,
+integration conflicts and missing evidence. On retry the lead can choose
+again using newly observed outcomes; execution remains subject to explicit
+`mission_execute(runWorkers=true)` authorization, resource capacity and
+operator control.
+
 ## Veteran-native Agent kernel (model-independent, self-spawning)
 
 Veteran now includes its **own Agent inference/tool loop**, adapted from CodeAny

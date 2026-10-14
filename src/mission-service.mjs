@@ -12,6 +12,7 @@ import {
 } from './git.mjs';
 import { normalizeTaskCapabilityContract, runtimeResourcesConflict } from './capability-plane.mjs';
 import { planNativeMission } from './native-mission-planner.mjs';
+import { workerPerformanceSnapshot } from './worker-performance.mjs';
 import {
   assessTaskRisk,
   buildProjectContinuitySnapshot,
@@ -203,7 +204,8 @@ export function missionAgentTeam(mission, tasks = []) {
       execution: 'independent-runtime-worker',
       taskId: task.id,
       owner: task.owner,
-      worker: task.worker || 'default',
+      worker: latest.workerKey || task.worker || 'default',
+      workerSelection: latest.workerSelection || null,
       status: latest.status,
       attempts: attempts.length,
       latestDispatchId: latest.id,
@@ -482,7 +484,20 @@ export class MissionService {
       : storedMission;
     const candidates = (mission.candidateIds || []).map((id) => state.runtime.candidates?.[id]).filter(Boolean);
     const mergeProposals = (mission.mergeProposalIds || []).map((id) => state.runtime.mergeProposals?.[id]).filter(Boolean);
-    return { mission, tasks, candidates, mergeProposals, agentTeam: missionAgentTeam(mission, tasks) };
+    const policy = state.projects[mission.projectId]?.workerPolicy || {};
+    const workerNames = [...new Set([
+      ...Object.keys(policy.workers || {}),
+      ...(policy.worker ? ['default'] : []),
+      ...(policy.nativeAgent ? ['native'] : []),
+      ...tasks.flatMap((task) => (task.dispatches || []).map((dispatch) => dispatch.workerKey).filter(Boolean))
+    ])];
+    return {
+      mission, tasks, candidates, mergeProposals,
+      agentTeam: missionAgentTeam(mission, tasks),
+      workerPerformance: workerPerformanceSnapshot({
+        state, projectId: mission.projectId, candidates: workerNames
+      })
+    };
   }
 
   async readiness({ missionId }) {
