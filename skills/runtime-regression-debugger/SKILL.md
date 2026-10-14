@@ -183,6 +183,8 @@ Preserve the repository's **active quality floor** while making a candidate gree
 
 ## 7. Scale execution without multiplying authority
 
+When Skill evolution is explicitly authorized, let repeated, evidence-bound multi-step workflows become reusable candidates rather than relying on conversational memory. The existing engineering journal can record completed step identities with proof pointers; `scripts/experience_compactor.py --include-workflows` recognizes recurring ordered sequences across independent closed journals. Load `references/engineering-experience-governance.md` for scope, freshness, counterexamples, and promotion rules. A detected pattern is not a validated universal rule: do not silently edit, publish, or activate the Skill from runtime observations. Promote only through an authorized, reviewable GitHub change and behavior regression; continue ordinary product work without mandatory logging ceremony.
+
 For broad programs compile `goal -> done definition -> work graph -> dependency waves -> integration gates -> final evidence`. Create independence before parallelism; fan out only across disjoint owners/write sets with independent oracles under one integration authority.
 
 When plugin/app/MCP runtime is active, this Skill remains judgment/policy; runtime may own authenticated tools, durable state, workers, evidence, approvals, and resumability. Load plugin/worker/hosted-state references only when that mechanism is current; use `scripts/trace_runtime_boundaries.py` only when process/runtime boundaries themselves need tracing. Worker/reviewer output is a proposal plus evidence: inspect diff/write set and rerun required integration proof before acceptance. Repository/runtime truth outranks persisted experience.

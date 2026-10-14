@@ -16,6 +16,7 @@
 - Keep behavior and trigger regressions separate
 - Bind evaluation to the loaded Skill identity
 - Capture dogfood telemetry from one journal
+- Mine repeated workflows conservatively
 - Keep regression pressure proportional
 - Promotion rule
 
@@ -195,6 +196,12 @@ For long-run Skill evaluation, do not maintain a second hand-written runtime dia
 Record routing snapshots with `route-event --router-json <router-output>` and record only decision-relevant/failing host-tool outcomes with `tool-event` or `host-event`; normal runs need not journal every tool call. `resume` counts its own invocations, and `stats` reports frontiers/checkpoints/decisions/evidence, preemptions, route working-set maxima/unmatched signals, journaled tool outcomes, host events, and current stall state. Label tool/host counts as **journaled events**, not host-global totals unless the host truly routes every action through the journal.
 
 Prefer `journal -> stats/final evidence report` over a separate hand-written runtime-evaluation diary. This keeps late-stage activity from disappearing when the agent continues after the last manual observation. Keep secrets, raw customer content, and unnecessary PII out of telemetry.
+
+## Mine repeated workflows conservatively
+
+During explicitly authorized Skill evolution, use the existing journal's `workflow-step` proof events for actual repeatable engineering procedures. At a useful task boundary, `experience_compactor.py --include-workflows` groups stable step sequences from **three independent completed mission journals** and emits candidate playbooks. Deduplicate journal copies, preserve ordered steps and evidence IDs, surface contradictions, and never mistake a candidate for automatically validated skill knowledge.
+
+The only automatic operation is **candidate discovery**; not automatic `SKILL.md` edits, self-publication, or changing an installed plugin. A proposed new general procedure must still clear reuse scope, freshness, security, negative examples, a baseline comparison, and an ordinary reviewed PR with regressions. Project-specific successful recipes normally stay project-scoped. The active coding mission remains primary; journaling must not become a new mandatory tool ritual.
 
 ## Keep regression pressure proportional
 

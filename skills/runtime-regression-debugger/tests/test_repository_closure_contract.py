@@ -29,7 +29,7 @@ def test_repository_closure_is_the_workspace_default():
 
 def test_workspace_plugin_metadata_is_repo_first():
     plugin = json.loads((REPO_ROOT / "plugin.json").read_text())
-    assert plugin["version"] == "1.14.28"
+    assert plugin["version"] == "1.14.29"
     assert "Repository-first" in plugin["description"]
     keywords = set(plugin["keywords"])
     assert {"github", "repository", "pull-request", "ci", "exact-head", "repository-closure"}.issubset(keywords)
