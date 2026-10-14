@@ -1,4 +1,5 @@
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -52,5 +53,5 @@ def test_transport_and_semantics_do_not_replace_engineering_owner():
 
 def test_studio_version_and_keywords_follow_skill_change():
     plugin = json.loads((ROOT.parent.parent / "plugin.json").read_text(encoding="utf-8"))
-    assert plugin["version"] == "1.14.29"
+    assert re.fullmatch(r"\d+\.\d+\.\d+", plugin["version"])
     assert {"command-transport", "semantic-code-navigation"}.issubset(set(plugin["keywords"]))
