@@ -12,6 +12,7 @@ import { toolWorkflowBindingsMeta } from './tool-workflow-bindings.mjs';
 import { assertCurrentWorkflowBindingTypeSafety } from './tool-workflow-binding-type-safety.mjs';
 import { toolWorkflowSuggestionsMeta, toolWorkflowErrorSuggestionsMeta } from './tool-workflow-suggestions.mjs';
 import { inspectMcpSdkIntegrity, assertMcpSdkIntegrity } from './mcp-sdk-integrity.mjs';
+import { createMcpWorkflowObserver } from './mcp-workflow-observer.mjs';
 
 const runtimeRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 assertCurrentWorkflowBindingTypeSafety();
@@ -45,7 +46,7 @@ function toolErrorResult(name, args, error) {
   };
 }
 
-async function createOfficialSdkServerFactory({ stateRoot, configPath }) {
+async function createOfficialSdkServerFactory({ stateRoot, configPath, observer }) {
   const [{ McpServer }, { serveStdio }, zod] = await Promise.all([
     import('@modelcontextprotocol/server'),
     import('@modelcontextprotocol/server/stdio'),
@@ -67,6 +68,7 @@ async function createOfficialSdkServerFactory({ stateRoot, configPath }) {
         try {
           const result = await app.callTool(tool.name, args || {});
           const extraContent = await app.toolContent(tool.name, args || {}, result);
+          await observer.observe(tool.name, args || {}, result);
           return {
             content: [{ type: 'text', text: jsonSafe(result) }, ...extraContent],
             structuredContent: toolOutputStructuredContent(tool.name, result),
@@ -82,7 +84,7 @@ async function createOfficialSdkServerFactory({ stateRoot, configPath }) {
   return { app, serve: () => serveStdio(factory, { legacy: 'serve', onerror: (error) => console.error(`[${RUNTIME_NAME}] MCP SDK error: ${error.message}`) }) };
 }
 
-async function startFallback({ stateRoot, configPath }) {
+async function startFallback({ stateRoot, configPath, observer }) {
   const app = await createVeteranApp({ stateRoot, protocolMode: MCP_TRANSPORT_MODES.STANDALONE_FALLBACK, configPath });
   process.stdin.setEncoding('utf8');
   let buffer = '';
@@ -123,6 +125,7 @@ async function startFallback({ stateRoot, configPath }) {
           try {
             const result = await app.callTool(name, args);
             const extraContent = await app.toolContent(name, args, result);
+            await observer.observe(name, args, result);
             success(message.id, {
               content: [{ type: 'text', text: jsonSafe(result) }, ...extraContent],
               structuredContent: toolOutputStructuredContent(name, result, { legacyEnvelope: true }),
@@ -145,15 +148,16 @@ async function startFallback({ stateRoot, configPath }) {
 }
 
 export async function startMcpServer({ stateRoot = stateRootFromEnv(), configPath = process.env.VETERAN_ENGINEER_CONFIG, requireSdk = process.env.VETERAN_MCP_REQUIRE_SDK === '1', forceFallback = process.env.VETERAN_MCP_FORCE_FALLBACK === '1' } = {}) {
+  const observer = createMcpWorkflowObserver();
   if (!forceFallback) {
     const integrity = await inspectMcpSdkIntegrity(runtimeRoot);
     if (integrity.status === 'verified') {
-      const official = await createOfficialSdkServerFactory({ stateRoot, configPath });
+      const official = await createOfficialSdkServerFactory({ stateRoot, configPath, observer });
       official.serve();
       return { app: official.app, mode: MCP_TRANSPORT_MODES.OFFICIAL_SDK };
     }
     if (integrity.status === 'invalid') assertMcpSdkIntegrity(integrity);
   }
   if (requireSdk) throw Object.assign(new Error('Official MCP SDK required but unavailable'), { code: 'MCP_SDK_REQUIRED' });
-  return startFallback({ stateRoot, configPath });
+  return startFallback({ stateRoot, configPath, observer });
 }
