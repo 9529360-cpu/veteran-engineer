@@ -212,6 +212,8 @@ Some references intentionally discuss adjacent concepts. Keep the owner boundary
 | `proactive-product-stewardship.md` | broad-authority candidate selection, bounded Product Health Scan, product-quality prioritization, repository-to-product iteration | product strategy oracle, fake health score, or duplicate design/implementation handbook |
 | `autonomous-repository-engineering.md` | repository autonomy, trust/risk boundaries, capability-aware execution envelope, and honest fallback discipline | host-specific tool catalog, authorization oracle, or every-task default context |
 | `chatgpt-web-host-execution.md` | streamed-web tool activation, foreground continuation, single-frontier focus/preemption, bounded evidence, disconnect recovery, and unknown-outcome reconciliation | background-execution promise, general engineering policy, mandatory connector stack, or fixed command sequence |
+| `command-transport-integrity.md` | payload/argv integrity across PowerShell, WSL, Bash, and remote command hops; classify transport vs execution vs outcome | Electron UI host-shell owner, a new executor/agent, or general debugging handbook |
+| `semantic-code-navigation.md` | optional LSP/compiler/AST-assisted code navigation, bounded call-graph tracing, and safe cross-file edits | mandatory IDE integration, global repository index, or a second execution authority |
 | `product-requirements-engineering.md` | requirement discovery, scope, acceptance semantics | implementation process owner |
 | `cognitive-routing-invariant-compiler.md` | specialist composition and authority conflicts | ordinary single-owner task guidance |
 | `batch-mission-orchestration.md` | mission graph, waves, integration gates | worker process runtime implementation |
@@ -273,6 +275,8 @@ Use this table before editing the Skill itself.
 | Long-investigation compact resume + frontier/stall + mutation provenance + dogfood telemetry | `scripts/engineering_journal.py` | keyed-decision, frontier lease, mutation-receipt replay, compact-resume, route/tool/host stats, and stalled-frontier regressions |
 | Repository navigation/calculation aid | focused `scripts/*.py` helper | smoke/unit test; never promote helper output to authority |
 | Capability/evidence execution envelope | `scripts/execution_envelope_gate.py` + `autonomous-repository-engineering.md` | unavailable-capability, honest-fallback, dynamic-refresh regressions; never confuse capability with authorization |
+| Cross-shell script delivery failure | `references/command-transport-integrity.md` + caller's existing transport/executor | target-visible digest/argv/exit evidence, failure-classification and fallback route tests |
+| Cross-file code navigation failure | `references/semantic-code-navigation.md` + caller's actual LSP/compiler/search tools | optional-tool fallback, scoped caller graph, exact-HEAD test evidence |
 | Local-machine repository/file/process execution evidence | runtime `src/machine-action-service.mjs` + `references/machine-action-fabric.md` | `repo.status`, file-digest/precondition, action-receipt, request-replay, Remote Host MCP, and cross-platform smoke regressions |
 | Plugin/MCP execution behavior | materialized `assets/plugin-runtime-starter/` runtime source | Node/runtime integration tests, archive byte-preservation, and identity proof |
 | Evaluation methodology | `evals/README.md` or evolution references | evaluator/harness validation; no runtime-rule inflation |
