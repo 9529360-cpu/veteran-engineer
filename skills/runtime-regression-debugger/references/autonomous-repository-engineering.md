@@ -21,6 +21,40 @@ Use this for implementation, repair, refactor, migration, or review tasks where 
 - Close the authoritative online repository loop
 - Prefer completion over commentary
 
+### Resource-aware subordinate Agent team
+
+Mission remains the sole product owner. Ordinary small fixes should stay
+with the primary Agent when it has tools and authority to execute directly.
+Large tasks may decompose into disjoint write-set tasks and real independent
+worker processes, each with its own bounded packet, worktree, dispatch ID
+and return evidence. Only actual runtime worker dispatches count as
+first-class subordinate Agent members (`mission_status.agentTeam`).
+No task title or persona name is sufficient proof that an Agent exists.
+
+The runtime samples the *executing machine* via CPU parallelism, Linux
+cgroup CPU quotas, free memory and cgroup memory headroom. Worker
+admission is refreshed at every real run; free-memory slots are not
+double-subtracted for already-running workers, while CPU and configured
+ceilings account for active workers across Missions sharing the state.
+An omitted/null `workerPolicy.maxWorkers` means auto resource-derived
+capacity, not a fixed number; a positive configured max is a hard operator
+ceiling. `memoryMiBPerWorker` tunes the conservative per-child reserve.
+High-risk and critical Missions still narrow concurrency. Current active
+worker count and task dependency/resource conflicts can further reduce
+admission. Machine capacity is only one bound: provider availability,
+model rate limits, process/OS quotas and actual task independence may
+still prevent twenty simultaneous Agent processes. Never claim capacity
+is proof of spawning.
+
+Existing `mission_execute(runWorkers=true)` still requires explicit
+worker execution authorization and available/authenticated executors.
+Preserve one primary Agent's integration/review/acceptance authority;
+subordinates cannot independently push, merge, deploy, expand task scope,
+spawn nested teams, or silently rewrite owner decisions. A persisted
+dispatch represents an attempted worker execution; use live WorkerAdapter
+process evidence for current liveness instead of treating the Mission
+status projection as a PID monitor. For hosted MCP, probe server resources
+rather than asserting knowledge of the user's client computer.
 ## 1. Convert the request into an executable contract
 
 When the user says to build, fix, change, redesign, migrate, integrate, or otherwise implement an outcome, treat that as authorization to carry ordinary reversible repository-local work through completion. A plan is an internal control artifact, not the default final product. Do not make the user repeatedly say "continue" between inspection, implementation, testing, and local/runtime verification.

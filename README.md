@@ -145,6 +145,54 @@ Finalize does not merge or push. A proof-fresh candidate produces a durable merg
 
 Source or mission drift supersedes the proposal and forces candidate refresh plus revalidation/re-review. Stable retries reuse the same proposal; missing finalize evidence after a partial failure is repaired rather than inventing a new authority.
 
+## Adaptive first-class Agent team (runtime capacity, not a fixed roster)
+
+Veteran's primary full-stack Agent remains the **single Mission owner**.
+Small tasks should stay with that owner; a broader Mission may use the existing
+independent worker processes and task worktrees as subordinate first-class
+Agent members. The primary retains planning, task-graph, integration, review,
+quality and final-acceptance authority. A child is limited to its declared
+task/writeSet and must return evidence rather than changing Mission authority.
+
+On the **actual machine/server running the MCP runtime**, the admission
+scheduler checks `os.availableParallelism()`, Linux cgroup CPU quota, free
+memory and cgroup memory availability. It estimates how many workers fit
+with per-worker memory and system reserve, and rechecks at every admission.
+Configured `workerPolicy.maxWorkers` is an **optional positive integer ceiling**
+or `null` for resource-based auto mode (now the default). There is **no fixed
+default 2/4-worker cap**. Worktree independence, task DAG width, current
+workers, exclusive resources and elevated-risk caps still take priority.
+
+Set `workerPolicy.memoryMiBPerWorker` to the safe per-worker estimate for your
+execution provider (default 512 MiB, minimum 64 MiB). The memory estimate is
+conservative but cannot measure provider/account concurrency or predict
+model token usage. A computer with forty available CPU slots and sufficient
+memory may admit twenty independent task agents; a smaller or busy host
+admits fewer. An explicit operator ceiling always wins.
+
+**Actual subagents still require** authorized `workerPolicy.enabled: true`
+and configured installed/authenticated workers, such as the `codex` preset
+or a bounded container worker. The Skill alone does not spawn independent
+ChatGPT model sessions or grant subscription-based worker access. One
+mission can use multiple real worker processes through the existing
+`mission_execute` / `mission_advance` pathway; no separate agent framework
+or second authority was added.
+
+`runtime_health.hostWorkerCapacity` reports the executing host's measured
+capacity estimate, `mission_readiness.liveExecutionCapacity` reports the
+current Mission admission envelope, and `mission_status.agentTeam` reports
+the primary and durable subordinate dispatch identities. It counts **only**
+runtime-owned worker dispatches as members, not planned roles or
+`runWorkers:false` packets. A durable `executing` dispatch record is **not**
+proof a process is alive; live PID authority remains the WorkerAdapter.
+Host resource snapshots do not prove model availability, and do not discover
+resources on a different client machine when MCP is hosted remotely.
+
+Automatic planner selection, self-recruitment when no worker provider is
+configured, dynamic graph expansion, cross-machine scheduling and
+runtime-observed per-agent cost/throughput control are **follow-up work**.
+Changing the default capacity does not silently bypass the explicit
+execution authorization policy.
 ## Worker execution boundaries
 
 The built-in Codex preset uses `codex exec --sandbox workspace-write --ephemeral` and rejects dangerous sandbox/approval bypass flags.

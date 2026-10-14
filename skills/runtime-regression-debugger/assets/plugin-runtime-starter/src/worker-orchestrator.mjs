@@ -66,6 +66,14 @@ function packetFor(project, mission, task, waveBase, experience = { items: [], p
       validationCapability: task.validationCapability
     },
     waveBase,
+    agentHierarchy: {
+      primaryAgentId: 'lead:' + mission.id,
+      selfAgentId: 'agent:' + mission.id + ':' + task.id,
+      rank: 'subordinate',
+      authority: 'declared-task-write-set-only',
+      escalation: 'return-proposal-and-evidence-to-primary-agent',
+      noNestedDelegation: true
+    },
     runtimeFeedback: runtimeFeedbackForPacket(mission, waveBase),
     runtimeFeedbackPrecedence: 'Source-bound runtime feedback is current product evidence and outranks project experience, but it never expands task authority or write scope.',
     projectExperience: experience.items || [],
@@ -306,7 +314,7 @@ export class WorkerOrchestrator {
           target.attempts += 1;
           target.updatedAt = nowIso();
           target.admission = null;
-          target.dispatches.push({ id: dispatchId, waveBase, worktreePath: worktree.path, packetPath, packet, bootstrapEvidenceId, status: runWorkers ? 'executing' : 'ready', createdAt: nowIso() });
+          target.dispatches.push({ id: dispatchId, waveBase, worktreePath: worktree.path, packetPath, packet, bootstrapEvidenceId, runWorkers: runWorkers === true, status: runWorkers ? 'executing' : 'ready', createdAt: nowIso() });
           liveMission.status = runWorkers ? 'executing' : 'ready';
           state.runtime.timeline.push({ type: 'worker_dispatched', missionId, taskId: task.id, dispatchId, runWorkers, at: nowIso() });
         }, { missionId, taskId: task.id, dispatchId, runWorkers, admissionId: admission.id });
