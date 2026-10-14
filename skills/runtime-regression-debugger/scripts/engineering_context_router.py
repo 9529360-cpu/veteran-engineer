@@ -26,6 +26,8 @@ ROUTES = {
     "repo-autopilot": ["references/project-takeover-engineering.md", "references/proactive-product-stewardship.md"],
     "foreground-agent": ["references/project-takeover-engineering.md", "references/proactive-product-stewardship.md", "references/chatgpt-web-host-execution.md"],
     "chatgpt-web-host": ["references/chatgpt-web-host-execution.md"],
+    "command-transport": ["references/command-transport-integrity.md"],
+    "code-intelligence": ["references/semantic-code-navigation.md"],
     "monorepo": ["references/project-takeover-engineering.md", "references/staff-engineering-execution.md"],
     "workspace": ["references/project-takeover-engineering.md"],
     "frontend": ["references/frontend-implementation-patterns.md"],
@@ -498,6 +500,19 @@ ALIASES.update({
     "tls-handshake": "connection-storm",
     "connection-reset": "connection-storm",
     "retry-amplification": "connection-storm",
+})
+
+
+ALIASES.update({
+    "powershell-wsl": "command-transport",
+    "nested-shell": "command-transport",
+    "native-argument-truncation": "command-transport",
+    "script-handoff": "command-transport",
+    "command-payload-integrity": "command-transport",
+    "lsp": "code-intelligence",
+    "symbol-navigation": "code-intelligence",
+    "ide-semantic": "code-intelligence",
+    "cross-file-rename": "code-intelligence",
 })
 
 

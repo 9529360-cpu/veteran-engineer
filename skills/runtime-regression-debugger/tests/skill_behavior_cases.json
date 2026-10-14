@@ -436,5 +436,29 @@
       "references/frontend-product-patterns.md",
       "references/release-promotion-patterns.md"
     ]
+  },
+  {
+    "name": "powershell-wsl-transport-does-not-load-desktop-shell",
+    "signal": "powershell-wsl",
+    "must_include": [
+      "references/command-transport-integrity.md"
+    ],
+    "must_exclude": [
+      "references/host-shell-platform-patterns.md",
+      "references/runtime-lifecycle-patterns.md",
+      "references/full-stack-product-engineering.md"
+    ]
+  },
+  {
+    "name": "semantic-code-navigation-does-not-force-ui-or-ide",
+    "signal": "symbol-navigation",
+    "must_include": [
+      "references/semantic-code-navigation.md"
+    ],
+    "must_exclude": [
+      "references/frontend-product-patterns.md",
+      "references/frontend-design-governance.md",
+      "references/command-transport-integrity.md"
+    ]
   }
 ]

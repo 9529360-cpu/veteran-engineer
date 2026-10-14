@@ -132,6 +132,10 @@ Analysis/review/planning alone does not authorize mutation. Authorized implement
 
 ## 4. Recover repository truth and preserve invariants
 
+For material cross-file navigation or refactors, prefer callable LSP/compiler/AST symbol evidence before broad text search; verify callers, generated edges, and runtime behavior, with a search-and-test fallback when no semantic tool is available. Load `references/semantic-code-navigation.md` only for that active mechanism. An IDE is optional, never a precondition or replacement for this Skill's Agent execution loop.
+
+For multi-line or nested execution across PowerShell, WSL, Bash, or remote command adapters, verify the delivered script bytes/arguments before diagnosing application behavior. Prefer a staged UTF-8 file or verified stdin and short argument-vector launcher rather than escalating nested quoting or repeating a truncated command. Load `references/command-transport-integrity.md` only when the transport boundary is current; command success still needs an independent postcondition.
+
 Trace live behavior, not the repository wholesale:
 
 `entry -> registration/wiring -> active caller -> authoritative owner -> durable/external effect -> projection -> validation -> delivery`
