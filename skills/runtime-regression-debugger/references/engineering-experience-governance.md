@@ -104,6 +104,46 @@ python3 scripts/experience_compactor.py /tmp/run1.json /tmp/run2.json /tmp/run3.
   --scope-id repo:owner/name --include-workflows --min-workflow-runs 3
 ~~~
 
+### Optional post-tool observation, without a host-global listener
+
+For a host that actually exposes post-tool callbacks, a consenting bridge may translate
+**outcomes and immutable proof receipts only** into allowlisted semantic events. The
+Skill cannot subscribe to ChatGPT's private tool stream, install invisible hooks, or
+observe sessions where no bridge exists.
+
+Initialize the existing task journal. After a real tool result, a bridge can pass a
+small newline-delimited JSON stream to the optional importer:
+
+~~~bash
+python3 scripts/engineering_journal.py /tmp/run1.json init --contract "repo change"
+python3 scripts/workflow_observer.py /tmp/run1.json --source local-bridge --events /tmp/observed.jsonl
+~~~
+
+Example sanitized `/tmp/observed.jsonl` (one JSON object per event):
+
+~~~jsonl
+{"event_id":"tool-001","workflow":"repo-validation","activity":"repo.inspect","outcome":"passed","evidence_ids":["commit:abc123"]}
+{"event_id":"tool-002","workflow":"repo-validation","activity":"checks.focused","outcome":"passed","evidence_ids":["test:focused-green"]}
+{"event_id":"tool-003","workflow":"repo-validation","activity":"review.diff","outcome":"passed","evidence_ids":["review:diff-reviewed"]}
+~~~
+
+The bridge must map tool results to these activities: `repo.inspect`,
+`source.change`, `checks.focused`, `review.diff`, `pr.create`,
+`checks.ci`, `release.verify`. It must only report `passed` after the
+tool's own outcome and proof were inspected, not from a planned command or a
+model's optimistic narration. The importer permits **only** event ID, workflow,
+activity, outcome and short proof IDs. Extra fields (arguments, output, source
+content, prompts, identities, credentials) fail the entire batch; raw event IDs
+are hashed before storage. There is no external network send or background
+process. Serialize bridge writes with other journal writers.
+
+Each journal remains task-scoped. Duplicate event IDs replay idempotently;
+contradictory replays fail closed. Different outcomes, repeated non-identical
+steps, or mixed manual and observed capture in one workflow count against
+automatic promotion. The importer only records asserted receipts: it cannot
+independently verify a test or CI run. Confirm exact identities on review.
+Without real host hooks, use the existing manual `workflow-step` command.
+
 The compactor groups by workflow and **ordered steps**, ignores copied/replayed task identities, and emits project-scoped `repeated-workflow` candidates with proof references and a counterexample count. A failed, incomplete, open, or materially different run blocks promotion until reconciled. Multiple records from one task never satisfy independence; the threshold is a heuristic for useful candidates, not evidence of generality or benefit. Without journal capture or an exposed executor, the Skill can only identify a pattern from explicitly supplied evidence; it cannot secretly observe all conversations, run a background learner, or modify loaded instructions.
 
 A candidate becomes a genuine Skill improvement only after confirming the current repository, source/package identity, scope and false positives; checking prior rules for duplicates; comparing old-versus-new behavior on representative and held-out tasks; and shipping a reviewable, regression-covered repository PR. For automatic reuse **before** general promotion, a human-reviewed, scope-bound project playbook may be recorded in the project's existing authorized memory store; freshness is checked each run. Do not turn a candidate into a global rule solely because its steps repeat.
