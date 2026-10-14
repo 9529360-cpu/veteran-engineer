@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "veteran-engineering-studio",
-  "version": "1.14.32",
+  "version": "1.14.33",
   "description": "Repository-first primary full-stack engineering owner for online repositories: architecture, frontend/backend/data/runtime implementation, CI/PR/release closure, and evidence-bound delivery with UI work delegated only as a bounded specialist phase.",
   "keywords": [
     "full-stack",

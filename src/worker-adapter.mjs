@@ -8,7 +8,7 @@ import { buildContainerInvocation, validateContainerWorkerConfig } from './conta
 import { signalProcessTree } from './process-lifecycle-authority.mjs';
 
 const SAFE_ENV_KEYS = ['PATH', 'HOME', 'USERPROFILE', 'TMP', 'TEMP', 'TMPDIR', 'SYSTEMROOT', 'COMSPEC', 'LANG', 'LC_ALL', 'SHELL'];
-const LOCAL_WORKER_TYPES = new Set(['custom', 'custom-unconfined', 'codex']);
+const LOCAL_WORKER_TYPES = new Set(['custom', 'custom-unconfined', 'codex', 'native']);
 const MAX_ENV_NAMES = 64;
 const MAX_LOCAL_TIMEOUT_MS = 2_147_483_647;
 const MAX_CAPTURED_OUTPUT_CHARS = 2_000_000;
@@ -245,10 +245,39 @@ function codexPreset(project) {
   };
 }
 
+
+function nativePreset(project) {
+  const options = project.workerPolicy?.nativeAgent || {};
+  // No opportunistic subscription login or undocumented CLI session reuse.
+  // A configured compatible endpoint (including a keyless local model) is
+  // required before any independent native Agent process is admitted.
+  if (!options.model || !options.baseURL) return null;
+  const maxTurns = options.maxTurns ?? 32;
+  const envAllowlist = options.apiKeyEnv ? [options.apiKeyEnv] : [];
+  return {
+    type: 'native',
+    command: process.execPath,
+    args: [fileURLToPath(new URL('../bin/veteran-native-agent.mjs', import.meta.url))],
+    envAllowlist,
+    env: {
+      VETERAN_NATIVE_BASE_URL: options.baseURL,
+      VETERAN_NATIVE_MODEL: options.model,
+      ...(options.apiKeyEnv ? { VETERAN_NATIVE_API_KEY_ENV: options.apiKeyEnv } : {}),
+      VETERAN_NATIVE_MAX_TURNS: String(maxTurns),
+      ...(options.advisorCapacity === undefined ? {} : { VETERAN_NATIVE_ADVISOR_CAPACITY: String(options.advisorCapacity) })
+    },
+    timeoutMs: options.timeoutMs ?? 900_000
+  };
+}
+
 export function resolveWorkerConfig(project, requestedWorker = 'default') {
-  const effectiveWorker = requestedWorker === 'default' ? (project.workerPolicy?.defaultWorker || 'default') : requestedWorker;
-  const configured = project.workerPolicy?.workers?.[effectiveWorker] || (effectiveWorker === 'default' ? project.workerPolicy?.worker : null) || null;
+  const policy = project.workerPolicy || {};
+  const effectiveWorker = requestedWorker === 'default'
+    ? (policy.defaultWorker || (policy.worker || policy.workers?.default ? 'default' : (policy.nativeAgent ? 'native' : 'default')))
+    : requestedWorker;
+  const configured = policy.workers?.[effectiveWorker] || (effectiveWorker === 'default' ? policy.worker : null) || null;
   if (configured) return configured;
+  if (effectiveWorker === 'native') return nativePreset(project);
   if (effectiveWorker === 'codex') return codexPreset(project);
   const command = process.env.VETERAN_WORKER_COMMAND;
   if (!command) return null;
@@ -460,7 +489,7 @@ export class WorkerAdapter {
         env.TEMP = runtimeProfile.tmp;
         env.TMPDIR = runtimeProfile.tmp;
       }
-      if (runtimeProfile && (config.type || 'custom') === 'custom') {
+      if (runtimeProfile && ['custom', 'native'].includes(config.type || 'custom')) {
         env.HOME = runtimeProfile.home;
         env.USERPROFILE = runtimeProfile.home;
         env.XDG_CONFIG_HOME = runtimeProfile.config;

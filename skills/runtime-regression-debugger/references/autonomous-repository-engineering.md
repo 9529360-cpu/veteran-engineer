@@ -48,7 +48,20 @@ still prevent twenty simultaneous Agent processes. Never claim capacity
 is proof of spawning.
 
 Existing `mission_execute(runWorkers=true)` still requires explicit
-worker execution authorization and available/authenticated executors.
+worker execution authorization. A configured native Agent model endpoint
+now permits true Veteran-owned subprocess Agents without Codex/Claude Code
+CLI. The model-agnostic lead planner creates a real Agent loop, explores
+repository evidence with read-only tools, consults independent read-only
+advisers via `spawn_advisor`, and submits a validated task DAG. There are
+no fixed architectural staff roles or 2/4-worker team cap, though runtime
+capacity and permission policy remain authoritative. Adviser suggestions
+must be evaluated by the main Agent, not promoted to decisions automatically.
+The OpenAI-compatible native adapter supports keyless local model endpoints,
+not unapproved reuse of model-provider subscriptions. Endpoint support and
+model tool-calling quality must be verified on the actual executing host.
+Avoid claiming unlimited recursion, automatic background operation, general
+purpose shell access, or full upstream SDK feature parity; none are enabled
+by this implementation.
 Preserve one primary Agent's integration/review/acceptance authority;
 subordinates cannot independently push, merge, deploy, expand task scope,
 spawn nested teams, or silently rewrite owner decisions. A persisted

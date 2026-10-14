@@ -131,6 +131,33 @@ function validatePolicyScope(value, pathValue) {
     if (workerPolicy.memoryMiBPerWorker !== undefined && (!Number.isInteger(workerPolicy.memoryMiBPerWorker) || workerPolicy.memoryMiBPerWorker < 64)) {
       throw invalidOperatorConfig(`${pathValue}.workerPolicy.memoryMiBPerWorker`, 'integer >=64', workerPolicy.memoryMiBPerWorker);
     }
+    if (workerPolicy.nativeAgent !== undefined) {
+      const native = workerPolicy.nativeAgent;
+      if (!isRecord(native)) throw invalidOperatorConfig(`${pathValue}.workerPolicy.nativeAgent`, 'object', native);
+      for (const name of ['model', 'baseURL']) {
+        if (typeof native[name] !== 'string' || !native[name].trim()) {
+          throw invalidOperatorConfig(`${pathValue}.workerPolicy.nativeAgent.${name}`, 'non-empty string', native[name]);
+        }
+      }
+      if (native.apiKeyEnv !== undefined && (typeof native.apiKeyEnv !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(native.apiKeyEnv))) {
+        throw invalidOperatorConfig(`${pathValue}.workerPolicy.nativeAgent.apiKeyEnv`, 'environment-variable name', native.apiKeyEnv);
+      }
+      if (native.maxTurns !== undefined && (!Number.isInteger(native.maxTurns) || native.maxTurns < 1 || native.maxTurns > 256)) {
+        throw invalidOperatorConfig(`${pathValue}.workerPolicy.nativeAgent.maxTurns`, 'integer 1-256', native.maxTurns);
+      }
+      if (native.plannerMaxTurns !== undefined && (!Number.isInteger(native.plannerMaxTurns) || native.plannerMaxTurns < 1 || native.plannerMaxTurns > 256)) {
+        throw invalidOperatorConfig(`${pathValue}.workerPolicy.nativeAgent.plannerMaxTurns`, 'integer 1-256', native.plannerMaxTurns);
+      }
+      if (native.modelTimeoutMs !== undefined && (!Number.isInteger(native.modelTimeoutMs) || native.modelTimeoutMs < 1 || native.modelTimeoutMs > 600_000)) {
+        throw invalidOperatorConfig(`${pathValue}.workerPolicy.nativeAgent.modelTimeoutMs`, 'integer 1-600000', native.modelTimeoutMs);
+      }
+      if (native.advisorCapacity !== undefined && (!Number.isInteger(native.advisorCapacity) || native.advisorCapacity < 0)) {
+        throw invalidOperatorConfig(`${pathValue}.workerPolicy.nativeAgent.advisorCapacity`, 'non-negative integer', native.advisorCapacity);
+      }
+      if (native.timeoutMs !== undefined && (!Number.isInteger(native.timeoutMs) || native.timeoutMs < 1 || native.timeoutMs > 2_147_483_647)) {
+        throw invalidOperatorConfig(`${pathValue}.workerPolicy.nativeAgent.timeoutMs`, 'positive integer', native.timeoutMs);
+      }
+    }
   }
   return value;
 }

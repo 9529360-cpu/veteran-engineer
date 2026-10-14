@@ -189,11 +189,89 @@ proof a process is still alive; live PID authority remains the WorkerAdapter.
 Host resource snapshots do not prove model availability, and do not discover
 resources on a different client machine when MCP is hosted remotely.
 
-Automatic planner selection, self-recruitment when no worker provider is
-configured, dynamic graph expansion, cross-machine scheduling and
+Without an enabled and configured native model or authorized external executor,
+no actual worker can run. Native-model planning and task execution are now
+available, while dynamic graph expansion, cross-machine scheduling and
 runtime-observed per-agent cost/throughput control are **follow-up work**.
 Changing the default capacity does not silently bypass the explicit
 execution authorization policy.
+## Veteran-native Agent kernel (model-independent, self-spawning)
+
+Veteran now includes its **own Agent inference/tool loop**, adapted from CodeAny
+Open Agent SDK's `QueryEngine`/`AgentTool` architecture (upstream MIT;
+`src/native-agent-LICENSE.txt`, reference commit
+`a9ade5fdaefb0fb5cffdddeed93b3bc81feb7734`). It does **not** require
+Claude, Codex or their subscriptions, CLI sessions, or an Anthropic API key.
+It is a focused JavaScript port integrated with Veteran's runtime, **not** a
+wholesale copy or claim of feature parity with the upstream SDK.
+
+The kernel `src/native-agent-kernel.mjs` supports independent conversations,
+iterative model decisions, arbitrary injected tool interfaces, tool-call
+feedback, cancellation, bounded turns, and read-only `spawn_advisor` subagents
+with **separate real model loops and histories**. The model can freely choose
+whether to inspect files, debate designs, challenge assumptions or act; it is
+not locked to a fixed role roster or canned step list. Advisers do not inherit
+write tools or delegation permissions, and the primary owns final decisions.
+
+The built-in native model adapter uses standard OpenAI-compatible Chat
+Completions endpoints (`src/native-agent-model.mjs`) including **keyless local
+Ollama / vLLM**. Host environments can inject any model object implementing
+`complete({ messages, tools, signal })` instead. An API key is needed **only if
+the selected model endpoint requires one**; the runtime never silently uses
+an existing Claude/Codex session or creates an API subscription.
+
+When an operator has authorized real native model execution, the same kernel:
+
+- **Plans autonomously** using `mission_plan` without explicit tasks or an
+  external planner command: the native planning Agent inspects repository
+  evidence and submits a task DAG through `submit_plan`. The MissionService
+  validates dependency/scope/conflict risk before admission.
+- **Runs true engineering workers** through `mission_execute(runWorkers=true)`:
+  each task is a separate OS subprocess with its own model context, controlled
+  by the existing WorkerAdapter/supervisor, restricted file tools and an
+  isolated Git worktree. The existing integration and proof gates remain.
+- **Recruits advisers** inside an Agent's inference loop through
+  `spawn_advisor`, with resource-based concurrent admission and no fixed
+  2/4-worker roster. Advisory agents are independently reasoned opinions,
+  not fake persona labels or execution-authority peers.
+
+Minimal local-model operator policy example (`operator.json` under the Veteran
+runtime state root):
+
+```json
+{
+  "defaults": {
+    "workerPolicy": {
+      "enabled": true,
+      "maxWorkers": null,
+      "nativeAgent": {
+        "model": "qwen2.5-coder",
+        "baseURL": "http://127.0.0.1:11434/v1",
+        "maxTurns": 40,
+        "plannerMaxTurns": 28
+      }
+    }
+  }
+}
+```
+
+This config is an example, **not** proof that the chosen local model or server
+is installed, available or capable of tool calling. An optional `apiKeyEnv`
+for a remote HTTPS model endpoint forwards only that named environment variable
+into the authorized native worker. Credentials are never written into Mission
+packets. Without an explicitly configured and reachable model, native Agent
+execution is unavailable, rather than simulated.
+
+Deliberate boundaries: native agents cannot run arbitrary shell commands by
+default, see or edit private credential paths, commit/push/merge/deploy or
+expand their worktree `writeSet`. This local file scope is not an OS-level
+security sandbox: use appropriately isolated hosts or future container-backed
+native executors for adversarial/untrusted code. The existing task source
+verification and Worker process-tree cleanup still apply. Autonomous
+always-on background operation, unlimited recursion, cloud subscription
+reuse, a model marketplace, formal multi-adviser tournament scoring, and
+cross-machine agent placement are **not yet implemented**.
+
 ## Worker execution boundaries
 
 The built-in Codex preset uses `codex exec --sandbox workspace-write --ephemeral` and rejects dangerous sandbox/approval bypass flags.
