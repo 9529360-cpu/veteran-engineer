@@ -68,6 +68,7 @@ def fresh() -> dict:
             "mutation_receipts": [],
             "host_events": [],
             "workflow_steps": [],
+            "observed_workflow_events": [],
         },
         "closed": False,
     }
@@ -100,6 +101,7 @@ def load(path: pathlib.Path) -> dict:
     telemetry.setdefault("mutation_receipts", [])
     telemetry.setdefault("host_events", [])
     telemetry.setdefault("workflow_steps", [])
+    telemetry.setdefault("observed_workflow_events", [])
     for item in data.setdefault("attempts", []):
         item.setdefault("equivalence_class", None)
         item.setdefault("forbidden_equivalent_class", None)
@@ -949,6 +951,7 @@ def main() -> int:
                 "mutation_receipts": len(data.get("telemetry", {}).get("mutation_receipts", [])),
                 "journaled_host_events": len(data.get("telemetry", {}).get("host_events", [])),
                 "journaled_workflow_steps": len(data.get("telemetry", {}).get("workflow_steps", [])),
+                "observed_workflow_events": len(data.get("telemetry", {}).get("observed_workflow_events", [])),
             },
             "closed": bool(data.get("closed")),
             "evidence_level": data.get("evidence_level"),
@@ -1020,6 +1023,7 @@ def main() -> int:
                 "mutation_receipts": len(mutation_receipts),
                 "journaled_host_events": len(host_events),
                 "journaled_workflow_steps": len(telemetry.get("workflow_steps", [])),
+                "observed_workflow_events": len(telemetry.get("observed_workflow_events", [])),
             },
             "frontier_states": frontier_states,
             "route": {

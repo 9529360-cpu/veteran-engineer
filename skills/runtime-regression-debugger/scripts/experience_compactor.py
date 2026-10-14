@@ -54,22 +54,41 @@ def extract_workflow_observations(data: dict) -> list[dict]:
     telemetry = data.get("telemetry", {})
     if not isinstance(telemetry, dict):
         return []
-    events = telemetry.get("workflow_steps", [])
-    if not isinstance(events, list):
+    manual_events = telemetry.get("workflow_steps", [])
+    observed_events = telemetry.get("observed_workflow_events", [])
+    if not isinstance(manual_events, list) or not isinstance(observed_events, list):
         return []
     by_workflow: dict[str, list[dict]] = defaultdict(list)
-    for event in events:
-        if not isinstance(event, dict):
-            continue
-        workflow = event.get("workflow")
-        if isinstance(workflow, str) and WORKFLOW_LABEL.fullmatch(workflow):
-            by_workflow[workflow].append(event)
+    # Preserve source provenance even if a malformed imported row claims to
+    # be manual. Mixed streams cannot be assumed to form one canonical order.
+    for events, from_observer in ((manual_events, False), (observed_events, True)):
+        for event in events:
+            if not isinstance(event, dict):
+                continue
+            workflow = event.get("workflow")
+            if isinstance(workflow, str) and WORKFLOW_LABEL.fullmatch(workflow):
+                by_workflow[workflow].append({**event, "_from_observer": from_observer})
     observations = []
     for workflow, rows in by_workflow.items():
         steps = [row.get("step") for row in rows]
         proof_ids = [row.get("evidence_ids") for row in rows]
+        modes = {"host-observer-v1" if row["_from_observer"] else "manual"
+                 for row in rows}
+        observer_receipts_valid = all(
+            not row["_from_observer"]
+            or (
+                row.get("capture") == "host-observer-v1"
+                and isinstance(row.get("source"), str)
+                and WORKFLOW_LABEL.fullmatch(row["source"])
+                and isinstance(row.get("event_digest"), str)
+                and re.fullmatch(r"[0-9a-f]{64}", row["event_digest"])
+            )
+            for row in rows
+        )
         valid = (
-            data.get("closed") is True
+            len(modes) == 1
+            and observer_receipts_valid
+            and data.get("closed") is True
             and not data.get("residual_risks")
             and 2 <= len(rows) <= 10
             and all(isinstance(step, str) and WORKFLOW_LABEL.fullmatch(step) for step in steps)
@@ -84,6 +103,7 @@ def extract_workflow_observations(data: dict) -> list[dict]:
             "steps": tuple(steps) if all(isinstance(step, str) for step in steps) else (),
             "run_id": run_id,
             "valid": bool(valid),
+            "capture_mode": next(iter(modes)) if len(modes) == 1 else "mixed",
             "evidence_ids": [value for ids in proof_ids if isinstance(ids, list) for value in ids
                              if isinstance(value, str) and WORKFLOW_PROOF.fullmatch(value)][:20],
         })
@@ -116,6 +136,7 @@ def repeated_workflow_candidates(scope_id: str, source_identity: str | None,
                 "independent_successful_runs": len(supporting),
                 "supporting_run_ids": sorted(row["run_id"] for row in supporting),
                 "evidence_ids": evidence[:20],
+                "capture_modes": sorted({row["capture_mode"] for row in supporting}),
                 "counterexample_runs": len(counterexamples),
                 "promotion_blocked": bool(counterexamples),
                 "source_identity": source_identity,
