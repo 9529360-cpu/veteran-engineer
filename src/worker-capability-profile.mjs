@@ -41,6 +41,8 @@ export function workerCapabilityProfile(project, task) {
     if (type === 'container') {
       const engine = String(config.engine || 'docker');
       derived.push('container-worker', `container-engine:${engine}`, 'network-isolated', 'read-only-rootfs');
+    } else if (type === 'native') {
+      derived.push('native-agent', 'independent-agent-loop', 'model-agnostic-agent', 'scoped-filesystem-worker');
     } else if (type === 'codex') {
       derived.push('codex-worker', 'workspace-write-sandbox');
     } else if (type === 'custom-unconfined') {

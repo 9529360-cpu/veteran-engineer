@@ -119,14 +119,14 @@ const TOOL_INPUT_CONTRACTS = Object.freeze({
     required: ['projectId']
   },
   mission_plan: {
-    description: 'Create a dependency-aware Mission. Explicit tasks are optional when an operator-configured plannerProvider can generate them.',
+    description: 'Create a dependency-aware Mission. Explicit tasks are optional when an operator planner or configured Veteran-native Agent can generate them.',
     properties: {
       projectId: stringField('Opened project id.'),
       goal: stringField('Product/engineering outcome to achieve.'),
       doneDefinition: stringField('Observable completion definition.'),
       nonGoals: stringArray('Explicit scope exclusions.'),
       riskEnvelope: stringField('Maximum Mission risk envelope.', { enumValues: RISK_LEVELS }),
-      tasks: { type: 'array', items: TASK, minItems: 1, maxItems: 64, description: 'Optional explicit task DAG. Omit to use plannerProvider.' }
+      tasks: { type: 'array', items: TASK, minItems: 1, maxItems: 64, description: 'Optional explicit task DAG. Omit when an authorized planner or native Agent can plan.' }
     },
     required: ['projectId', 'goal', 'doneDefinition']
   },

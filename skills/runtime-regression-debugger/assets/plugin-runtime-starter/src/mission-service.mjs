@@ -11,6 +11,7 @@ import {
   writeSetsConflict
 } from './git.mjs';
 import { normalizeTaskCapabilityContract, runtimeResourcesConflict } from './capability-plane.mjs';
+import { planNativeMission } from './native-mission-planner.mjs';
 import {
   assessTaskRisk,
   buildProjectContinuitySnapshot,
@@ -266,7 +267,8 @@ export class MissionService {
     let plannerEvidenceId = null;
     if (!Array.isArray(proposedTasks) || proposedTasks.length === 0) {
       const provider = project.plannerProvider || null;
-      if (!provider?.command) throw new Error('mission requires at least one task or an operator-configured plannerProvider');
+      const nativePlanning = !provider?.command && project.workerPolicy?.enabled === true && Boolean(project.workerPolicy?.nativeAgent);
+      if (!provider?.command && !nativePlanning) throw new Error('mission requires tasks, an operator-configured plannerProvider, or an enabled Veteran-native Agent model');
 
       const invokePlanner = async (plannerRepoPath) => {
         const plannerProject = {
@@ -297,20 +299,33 @@ export class MissionService {
           experiencePrecedence: experience.precedence,
           limits: { maxTasks: 64 }
         };
-        const providerEnv = allowlistedProcessEnvironment(provider.envAllowlist || []);
-        const providerSecrets = (provider.envAllowlist || [])
-          .map((key) => providerEnv[key.trim()])
-          .filter((value) => typeof value === 'string' && value.length > 0);
-        const result = await runProcess(provider.command, provider.args || [], {
-          cwd: plannerRepoPath,
-          env: providerEnv,
-          inheritEnv: false,
-          input: JSON.stringify(payload),
-          allowFailure: true,
-          timeoutMs: provider.timeoutMs || 180_000
-        });
+        let result = { code: 0, stderr: '', stdout: '' };
         let parsed = null;
-        try { parsed = redactKnownSecrets(JSON.parse(result.stdout), providerSecrets); } catch { }
+        let providerSecrets = [];
+        if (nativePlanning) {
+          parsed = await planNativeMission({
+            project: plannerProject,
+            mission: payload.mission,
+            continuity,
+            projectExperience: experience.items,
+            repoPath: plannerRepoPath,
+            missionId
+          });
+        } else {
+          const providerEnv = allowlistedProcessEnvironment(provider.envAllowlist || []);
+          providerSecrets = (provider.envAllowlist || [])
+            .map((key) => providerEnv[key.trim()])
+            .filter((value) => typeof value === 'string' && value.length > 0);
+          result = await runProcess(provider.command, provider.args || [], {
+            cwd: plannerRepoPath,
+            env: providerEnv,
+            inheritEnv: false,
+            input: JSON.stringify(payload),
+            allowFailure: true,
+            timeoutMs: provider.timeoutMs || 180_000
+          });
+          try { parsed = redactKnownSecrets(JSON.parse(result.stdout), providerSecrets); } catch { }
+        }
         const safeStderr = redactKnownSecrets(result.stderr, providerSecrets);
         if (result.code !== 0 || !Array.isArray(parsed?.tasks) || parsed.tasks.length === 0 || parsed.tasks.length > 64) {
           const error = new Error('Planner provider failed or returned an invalid task graph');
@@ -322,9 +337,10 @@ export class MissionService {
         if (this.evidenceService) {
           const evidence = await this.evidenceService.record({
             projectId,
-            type: 'planner-provider',
+            type: nativePlanning ? 'native-agent-planner' : 'planner-provider',
             summary: {
               exitCode: result.code,
+              planningMode: nativePlanning ? 'native-agent-loop' : 'configured-process-provider',
               taskCount: parsed.tasks.length,
               experienceIds: experience.items.map((item) => item.id),
               activeProjectMissionCount: continuity.activeMissionCount,
