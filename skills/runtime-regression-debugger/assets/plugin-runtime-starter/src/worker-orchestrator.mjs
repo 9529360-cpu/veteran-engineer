@@ -329,6 +329,7 @@ export class WorkerOrchestrator {
     if (!prepared.length) return { missionId, waveIndex: mission.nextWaveIndex, waveBase, results: [], preparationFailures };
 
     const results = await Promise.all(prepared.map(async (item) => {
+      let workerProcessConfirmed = false;
       const config = resolveWorkerConfig(project, item.task.worker);
       try {
         const before = await sourceIdentity(item.worktree.path);
@@ -343,6 +344,9 @@ export class WorkerOrchestrator {
           packetRoot: this.store.artifactsDir,
           config
         });
+        // A supervisor fork or packet alone is not a real independent Agent.
+        workerProcessConfirmed = Number.isInteger(run.pid) && run.pid > 0
+          && Number.isInteger(run.supervisorPid) && run.pid !== run.supervisorPid;
         const after = await sourceIdentity(item.worktree.path);
         if (after.head !== waveBase) throw Object.assign(new Error('Worker changed task HEAD; runtime owns commits'), { code: 'TASK_HEAD_OWNERSHIP_VIOLATION', details: { before: waveBase, after: after.head } });
         if (run.termination?.reason === 'operator-cancel') {
@@ -376,7 +380,7 @@ export class WorkerOrchestrator {
           commitSha = (await git(item.worktree.path, ['rev-parse', 'HEAD'])).stdout.trim();
           await this.#validateTaskCommit(item.worktree.path, waveBase, commitSha, item.task.writeSet);
         }
-        return { ...item, ok: true, commitSha, evidenceId: evidence.id, changedPaths: paths, run };
+        return { ...item, ok: true, commitSha, evidenceId: evidence.id, changedPaths: paths, run, workerProcessConfirmed };
       } catch (error) {
         const failureCode = error.code || 'ERROR';
         const evidenceType = failureCode === 'WORKER_CANCELLED'
@@ -411,7 +415,7 @@ export class WorkerOrchestrator {
             doesNotApplyWhen: 'Current repository/runtime evidence contradicts this candidate or scope differs.'
           }).catch(() => {});
         }
-        return { ...item, ok: false, error, evidenceId: evidence.id };
+        return { ...item, ok: false, error, evidenceId: evidence.id, workerProcessConfirmed };
       }
     }));
 
@@ -431,6 +435,7 @@ export class WorkerOrchestrator {
           const dispatch = task.dispatches.find((entry) => entry.id === result.dispatchId);
           if (dispatch) {
             Object.assign(dispatch, {
+              workerSpawnConfirmed: result.workerProcessConfirmed === true,
               status: missionCancelled ? 'cancelled' : (cancelled ? 'cancelled' : 'failed'),
               endedAt: nowIso(),
               error: { code, message: result.error.message },
@@ -459,6 +464,11 @@ export class WorkerOrchestrator {
             task.status = missionCancelled ? 'cancelled' : 'failed';
             task.commitSha = result.commitSha;
             task.updatedAt = nowIso();
+            const dispatch = task.dispatches.find((entry) => entry.id === result.dispatchId);
+            if (dispatch) {
+              dispatch.workerSpawnConfirmed = result.workerProcessConfirmed === true;
+              dispatch.status = 'failed';
+            }
             if (liveMission && !missionCancelled) liveMission.status = 'blocked';
             state.runtime.timeline.push({ type: 'task_integration_failed', missionId, taskId: result.task.id, at: nowIso(), missionCancelled });
           }, { missionId, taskId: result.task.id });
@@ -477,6 +487,7 @@ export class WorkerOrchestrator {
         const dispatch = task.dispatches.find((entry) => entry.id === result.dispatchId);
         if (dispatch) {
           Object.assign(dispatch, {
+            workerSpawnConfirmed: result.workerProcessConfirmed === true,
             status: 'integrated',
             endedAt: nowIso(),
             commitSha: result.commitSha,
@@ -548,6 +559,7 @@ export class WorkerOrchestrator {
       const dispatch = task.dispatches.find((entry) => entry.id === result.dispatchId);
       if (dispatch) {
         Object.assign(dispatch, {
+          workerSpawnConfirmed: result.workerProcessConfirmed === true,
           status: 'cancelled',
           endedAt: nowIso(),
           error: { code: 'MISSION_CANCELLED', message: 'Worker result was discarded because the mission was cancelled before integration' },

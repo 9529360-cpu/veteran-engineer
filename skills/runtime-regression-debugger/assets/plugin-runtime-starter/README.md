@@ -182,9 +182,10 @@ or second authority was added.
 capacity estimate, `mission_readiness.liveExecutionCapacity` reports the
 current Mission admission envelope, and `mission_status.agentTeam` reports
 the primary and durable subordinate dispatch identities. It counts **only**
-runtime-owned worker dispatches as members, not planned roles or
-`runWorkers:false` packets. A durable `executing` dispatch record is **not**
-proof a process is alive; live PID authority remains the WorkerAdapter.
+actual WorkerAdapter-confirmed child processes as members, not planned roles,
+unconfirmed launches or `runWorkers:false` packets. Unconfirmed attempts are
+reported separately. A durable `executing` dispatch record is **not**
+proof a process is still alive; live PID authority remains the WorkerAdapter.
 Host resource snapshots do not prove model availability, and do not discover
 resources on a different client machine when MCP is hosted remotely.
 

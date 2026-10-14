@@ -186,13 +186,13 @@ export function computeWaves(tasks) {
 
 /**
  * A first-class subordinate Agent is created only for a runtime-owned worker
- * dispatch, never merely because a task has a role/title or a prepared packet.
- * The durable dispatch is not an OS PID liveness assertion.
+ * dispatch with a confirmed WorkerAdapter child PID, never a role/title,
+ * packet-only or supervisor-only attempt. Durable state is not OS liveness.
  */
 export function missionAgentTeam(mission, tasks = []) {
   const leadAgentId = 'lead:' + mission.id;
   const members = tasks.flatMap((task) => {
-    const attempts = (task.dispatches || []).filter((dispatch) => dispatch.runWorkers === true);
+    const attempts = (task.dispatches || []).filter((dispatch) => dispatch.runWorkers === true && dispatch.workerSpawnConfirmed === true);
     if (!attempts.length) return [];
     const latest = attempts[attempts.length - 1];
     return [{
@@ -221,7 +221,8 @@ export function missionAgentTeam(mission, tasks = []) {
     },
     members,
     memberCount: members.length,
-    note: 'Members represent real runtime worker dispatches, not prompt personas. Live process identity is not inferred from persisted dispatch state.'
+    unconfirmedLaunches: tasks.reduce((count, task) => count + (task.dispatches || []).filter((entry) => entry.runWorkers === true && entry.workerSpawnConfirmed !== true).length, 0),
+    note: 'Only WorkerAdapter-confirmed child subprocesses count as subagents. Launch attempts are tracked separately; persisted results do not attest live process state.'
   };
 }
 

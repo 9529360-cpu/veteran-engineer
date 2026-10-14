@@ -27,9 +27,10 @@ Mission remains the sole product owner. Ordinary small fixes should stay
 with the primary Agent when it has tools and authority to execute directly.
 Large tasks may decompose into disjoint write-set tasks and real independent
 worker processes, each with its own bounded packet, worktree, dispatch ID
-and return evidence. Only actual runtime worker dispatches count as
+and return evidence. Only subprocesses with WorkerAdapter-confirmed child PIDs count as
 first-class subordinate Agent members (`mission_status.agentTeam`).
-No task title or persona name is sufficient proof that an Agent exists.
+An unconfirmed launch attempt is reported separately; no task title,
+packet-only dispatch or supervisor-only process is proof of a real Agent.
 
 The runtime samples the *executing machine* via CPU parallelism, Linux
 cgroup CPU quotas, free memory and cgroup memory headroom. Worker

@@ -10,6 +10,7 @@ test('primary Agent is sole mission authority; a role-only planned task is not a
   assert.equal(team.lead.authority, 'planning-integration-review-and-final-acceptance');
   assert.deepEqual(team.members, []);
   assert.equal(team.memberCount, 0);
+  assert.equal(team.unconfirmedLaunches, 0);
 });
 
 test('real worker dispatch becomes a subordinate first-class Agent with stable identity across retries', () => {
@@ -17,12 +18,12 @@ test('real worker dispatch becomes a subordinate first-class Agent with stable i
     id: 'T1', owner: 'backend', worker: 'codex',
     dispatches: [
       { id: 'D0', runWorkers: false, status: 'ready' },
-      { id: 'D1', runWorkers: true, status: 'failed' },
-      { id: 'D2', runWorkers: true, status: 'integrated' }
+      { id: 'D1', runWorkers: true, workerSpawnConfirmed: true, status: 'failed' },
+      { id: 'D2', runWorkers: true, workerSpawnConfirmed: true, status: 'integrated' }
     ]
   }, {
     id: 'T2', owner: 'database', worker: 'codex',
-    dispatches: [{ id: 'D3', runWorkers: true, status: 'executing' }]
+    dispatches: [{ id: 'D3', runWorkers: true, workerSpawnConfirmed: true, status: 'executing' }]
   }]);
   assert.equal(team.members.length, 2);
   assert.equal(team.members[0].agentId, 'agent:M1:T1');
@@ -34,4 +35,12 @@ test('real worker dispatch becomes a subordinate first-class Agent with stable i
   assert.equal(team.members[0].status, 'integrated');
   assert.equal(team.members[1].status, 'executing');
   assert.equal(team.members[1].liveness, 'not-attested-by-status');
+  assert.equal(team.unconfirmedLaunches, 0);
+});
+
+test('dispatch and supervisor-only failures do not become fake independent Agents', () => {
+  const team = missionAgentTeam({ id: 'M2' }, [{ id: 'T1', owner: 'frontend', dispatches: [{ id: 'D1', runWorkers: true, status: 'executing' }] }, { id: 'T2', owner: 'backend', dispatches: [{ id: 'D2', runWorkers: true, workerSpawnConfirmed: false, status: 'failed' }] }]);
+  assert.equal(team.memberCount, 0);
+  assert.deepEqual(team.members, []);
+  assert.equal(team.unconfirmedLaunches, 2);
 });

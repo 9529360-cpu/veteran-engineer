@@ -191,7 +191,7 @@ const TOOL_OUTPUT_CONTRACTS = Object.freeze({
     tasks: { type: 'array', items: OUTPUT_TASK, description: 'Mission tasks.' },
     candidates: { type: 'array', items: OUTPUT_CANDIDATE, description: 'Immutable Mission candidates.' },
     mergeProposals: { type: 'array', items: openObject('Operator merge proposal.'), description: 'Durable merge proposals.' },
-    agentTeam: openObject('Primary Mission Agent and first-class, runtime-dispatched subordinate Agent members. Not OS PID liveness proof.')
+    agentTeam: openObject('Primary Mission Agent and first-class, WorkerAdapter-confirmed spawned subordinate Agent members. Unconfirmed launch attempts are separate; history is not current PID liveness.')
   }, ['mission', 'tasks']),
   mission_advance: openObject('Result of one authoritative Mission state-machine transition.', {
     action: stringField('Transition action taken.', { minLength: null }),
