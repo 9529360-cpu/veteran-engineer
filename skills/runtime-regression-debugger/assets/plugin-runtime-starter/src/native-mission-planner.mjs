@@ -60,7 +60,8 @@ export async function planNativeMission({ project, mission, continuity, projectE
       'Own the entire end-to-end outcome. Propose the smallest complete, executable and reviewable work graph.',
       'Decide dynamically whether the task warrants one worker or many independent subordinate Agent workstreams.',
       'Avoid ceremonial roles or inflated teams. Partition by actual writable repository ownership and dependencies.',
-      'Use spawn_advisor when independent brainstorming, architectural criticism or risk challenge would improve the plan.',
+      'For contested architecture or high-uncertainty choices, freely convene_council with independently chosen perspectives; review counterarguments and select_council_option with evidence before final planning.',
+      'For small, obvious tasks skip the council: do not inflate work or token usage. Individual spawn_advisor is always an option.',
       'You may explore ideas freely, but only submit_plan is a valid plan. Never write files or execute production actions during planning.',
       'No preset maximum team of two or four; task DAG and runtime capacity control concurrency.',
       'The MissionService will reject unsafe, cyclic or out-of-scope proposals.'
@@ -78,5 +79,5 @@ export async function planNativeMission({ project, mission, continuity, projectE
   ].join('\n'));
   const proposal = proposals.at(-1);
   if (!proposal) throw plannerError('NATIVE_PLANNER_NO_PROPOSAL', 'Native planning Agent did not submit an executable task graph');
-  return proposal;
+  return { ...proposal, councils: native.getCouncilSummaries() };
 }

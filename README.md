@@ -234,6 +234,29 @@ When an operator has authorized real native model execution, the same kernel:
   `spawn_advisor`, with resource-based concurrent admission and no fixed
   2/4-worker roster. Advisory agents are independently reasoned opinions,
   not fake persona labels or execution-authority peers.
+- **Runs an optional competitive Agent council** through `convene_council`:
+  the primary picks the *perspectives and count* appropriate to an ambiguous
+  decision; independent advisers propose before seeing each other's work,
+  then separately instantiated adversarial reviewers test trade-offs and
+  identify weak claims. Advisers run in capacity-sized waves when the host
+  cannot safely admit all of them simultaneously. No fixed staff roster or
+  per-mission 2/4-worker limit is introduced.
+- **Keeps evidence-based selection under primary authority:** `read_council`
+  pages proposals and critiques, while `select_council_option` records the
+  lead's chosen proposal and explicit rationale. Model-derived endorsements
+  and challenges are *advisory rankings only*, never correctness proofs or
+  permission to edit/merge/deploy. Planning evidence records council size,
+  structured ballots, selected option and bounded independent arguments.
+  Small, straightforward tasks should skip this additional model work.
+
+Advisory `advisorCapacity` is an *optional ceiling*, not a promise that the
+host or model service can sustain that many calls. Current CPU/cgroup and
+free-memory slots continue to bound adviser admission; overflow waits in
+waves rather than being fabricated or prematurely promoted to a worker.
+The council uses the configured model endpoint and therefore consumes its
+available quota/cost; there is no new account, automatic paid API purchase,
+or borrowed Claude/Codex session. A missing quota or failing model remains
+an explicit incomplete review, not an invented successful vote.
 
 Minimal local-model operator policy example (`operator.json` under the Veteran
 runtime state root):
