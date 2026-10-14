@@ -15,7 +15,8 @@ import {
   assessTaskRisk,
   buildProjectContinuitySnapshot,
   compileMissionExecutionStrategy,
-  plannerProjectAwareness
+  plannerProjectAwareness,
+  missionExecutionCapacity
 } from './adaptive-mission-strategy.mjs';
 import { normalizePathList, nowIso, randomId, redactKnownSecrets } from './util.mjs';
 
@@ -181,6 +182,48 @@ export function computeWaves(tasks) {
     }
   }
   return waves;
+}
+
+/**
+ * A first-class subordinate Agent is created only for a runtime-owned worker
+ * dispatch with a confirmed WorkerAdapter child PID, never a role/title,
+ * packet-only or supervisor-only attempt. Durable state is not OS liveness.
+ */
+export function missionAgentTeam(mission, tasks = []) {
+  const leadAgentId = 'lead:' + mission.id;
+  const members = tasks.flatMap((task) => {
+    const attempts = (task.dispatches || []).filter((dispatch) => dispatch.runWorkers === true && dispatch.workerSpawnConfirmed === true);
+    if (!attempts.length) return [];
+    const latest = attempts[attempts.length - 1];
+    return [{
+      agentId: 'agent:' + mission.id + ':' + task.id,
+      parentAgentId: leadAgentId,
+      rank: 'subordinate',
+      execution: 'independent-runtime-worker',
+      taskId: task.id,
+      owner: task.owner,
+      worker: task.worker || 'default',
+      status: latest.status,
+      attempts: attempts.length,
+      latestDispatchId: latest.id,
+      source: 'durable-runtime-dispatch',
+      liveness: 'not-attested-by-status'
+    }];
+  });
+  return {
+    contract: 'veteran-mission-agent-team-v1',
+    lead: {
+      agentId: leadAgentId,
+      rank: 'primary',
+      role: 'full-stack-engineering-owner',
+      missionId: mission.id,
+      authority: 'planning-integration-review-and-final-acceptance'
+    },
+    members,
+    memberCount: members.length,
+    unconfirmedLaunches: tasks.reduce((count, task) => count + (task.dispatches || []).filter((entry) => entry.runWorkers === true && entry.workerSpawnConfirmed !== true).length, 0),
+    note: 'Only WorkerAdapter-confirmed child subprocesses count as subagents. Launch attempts are tracked separately; persisted results do not attest live process state.'
+  };
 }
 
 export class MissionService {
@@ -420,7 +463,7 @@ export class MissionService {
       : storedMission;
     const candidates = (mission.candidateIds || []).map((id) => state.runtime.candidates?.[id]).filter(Boolean);
     const mergeProposals = (mission.mergeProposalIds || []).map((id) => state.runtime.mergeProposals?.[id]).filter(Boolean);
-    return { mission, tasks, candidates, mergeProposals };
+    return { mission, tasks, candidates, mergeProposals, agentTeam: missionAgentTeam(mission, tasks) };
   }
 
   async readiness({ missionId }) {
@@ -511,6 +554,7 @@ export class MissionService {
       authoritativeSourceIdentity: authoritativeSource,
       projectTruth: mission.projectTruth || null,
       executionStrategy: mission.executionStrategy || null,
+      liveExecutionCapacity: missionExecutionCapacity({ state: await this.store.read(), mission, project, runWorkers: true }),
       projectContinuity: mission.projectContinuity || null,
       blockers,
       operatorActionRequired,

@@ -279,6 +279,7 @@ Use this table before editing the Skill itself.
 | Cross-shell script delivery failure | `references/command-transport-integrity.md` + caller's existing transport/executor | target-visible digest/argv/exit evidence, failure-classification and fallback route tests |
 | Cross-file code navigation failure | `references/semantic-code-navigation.md` + caller's actual LSP/compiler/search tools | optional-tool fallback, scoped caller graph, exact-HEAD test evidence |
 | Local-machine repository/file/process execution evidence | runtime `src/machine-action-service.mjs` + `references/machine-action-fabric.md` | `repo.status`, file-digest/precondition, action-receipt, request-replay, Remote Host MCP, and cross-platform smoke regressions |
+| Adaptive subordinate Agent team capacity | runtime `src/host-worker-capacity.mjs` + `src/adaptive-mission-strategy.mjs` + existing `MissionService`/`WorkerOrchestrator` | actual MCP host CPU/cgroup/memory budget, task independence and risk, explicit operator cap, live worker admission, durable subordinate roster, no fabricated model sessions |
 | Plugin/MCP execution behavior | materialized `assets/plugin-runtime-starter/` runtime source | Node/runtime integration tests, archive byte-preservation, and identity proof |
 | Evaluation methodology | `evals/README.md` or evolution references | evaluator/harness validation; no runtime-rule inflation |
 | Skill architecture itself | smallest owning layer above | update this map only after the real owners are changed |

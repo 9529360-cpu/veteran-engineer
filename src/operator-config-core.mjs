@@ -125,8 +125,11 @@ function validatePolicyScope(value, pathValue) {
       assertBooleanField(workerPolicy, key, `${pathValue}.workerPolicy`);
     }
     assertStringArrayField(workerPolicy, 'capabilities', `${pathValue}.workerPolicy`);
-    if (workerPolicy.maxWorkers !== undefined && (!Number.isInteger(workerPolicy.maxWorkers) || workerPolicy.maxWorkers < 1)) {
-      throw invalidOperatorConfig(`${pathValue}.workerPolicy.maxWorkers`, 'positive integer', workerPolicy.maxWorkers);
+    if (workerPolicy.maxWorkers !== undefined && workerPolicy.maxWorkers !== null && (!Number.isInteger(workerPolicy.maxWorkers) || workerPolicy.maxWorkers < 1)) {
+      throw invalidOperatorConfig(`${pathValue}.workerPolicy.maxWorkers`, 'positive integer or null (auto)', workerPolicy.maxWorkers);
+    }
+    if (workerPolicy.memoryMiBPerWorker !== undefined && (!Number.isInteger(workerPolicy.memoryMiBPerWorker) || workerPolicy.memoryMiBPerWorker < 64)) {
+      throw invalidOperatorConfig(`${pathValue}.workerPolicy.memoryMiBPerWorker`, 'integer >=64', workerPolicy.memoryMiBPerWorker);
     }
   }
   return value;
@@ -162,7 +165,8 @@ export function projectPolicy(operatorConfig, repoPath, remoteUrl = null) {
   const requiredValidationCapabilities = normalizedStringArray(specific.requiredValidationCapabilities || defaults.requiredValidationCapabilities || []);
   const workerPolicy = {
     enabled: false,
-    maxWorkers: 2,
+    maxWorkers: null,
+    memoryMiBPerWorker: 512,
     capabilities: [],
     allowUnconfinedCustomWorkers: false,
     allowRawValidation: false,

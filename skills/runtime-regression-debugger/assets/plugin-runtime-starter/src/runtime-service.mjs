@@ -8,6 +8,7 @@ import { TOOL_NAMES } from './tool-catalog.mjs';
 import { nowIso, pathExists } from './util.mjs';
 import { inspectMcpSdkIntegrity } from './mcp-sdk-integrity.mjs';
 import { resolveSurfaceProfile } from './surface-capabilities.mjs';
+import { inspectHostWorkerCapacity } from './host-worker-capacity.mjs';
 
 const defaultRuntimeRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const CANDIDATE_REF_PREFIX = 'refs/veteran/candidates/';
@@ -112,6 +113,7 @@ export class RuntimeService {
       audit: { ok: audit.ok, entries: audit.entries },
       mcp: protocolCapability(this.protocolMode),
       surface: this.surfaceProfile,
+      hostWorkerCapacity: inspectHostWorkerCapacity(),
       sdk: await inspectMcpSdkIntegrity(this.runtimeRoot),
       toolCount: TOOL_NAMES.length,
       toolSurface: [...TOOL_NAMES],

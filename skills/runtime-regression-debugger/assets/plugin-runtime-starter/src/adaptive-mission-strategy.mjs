@@ -1,5 +1,6 @@
 import { RISK_LEVELS } from './constants.mjs';
 import { writeSetsConflict } from './git.mjs';
+import { inspectHostWorkerCapacity } from './host-worker-capacity.mjs';
 
 export const ADAPTIVE_MISSION_CONTRACT = 'veteran-adaptive-mission-v1';
 
@@ -150,10 +151,22 @@ export function activeProjectWriteConflicts({ state, mission, task } = {}) {
   return conflicts;
 }
 
-export function missionExecutionCapacity({ state, mission, project, runWorkers = false } = {}) {
-  const configuredMaxWorkers = workerLimit(project?.workerPolicy?.maxWorkers, 2);
+export function missionExecutionCapacity({ state, mission, project, runWorkers = false, resources = null } = {}) {
+  // A resource snapshot is measured on the executing runtime, never presumed to
+  // describe a remote user's laptop when this is a hosted MCP server.
+  const hostResources = resources || inspectHostWorkerCapacity({
+    workerMemoryMiB: project?.workerPolicy?.memoryMiBPerWorker
+  });
+  const configuredMaxWorkers = workerLimit(project?.workerPolicy?.maxWorkers, hostResources.effectiveCpuSlots);
   const strategyLimit = workerLimit(mission?.executionStrategy?.concurrency?.maxConcurrentWorkers, configuredMaxWorkers);
-  const missionMaxWorkers = Math.min(configuredMaxWorkers, strategyLimit);
+  const plannedWidth = workerLimit(mission?.executionStrategy?.maxWaveWidth, strategyLimit);
+  const risk = mission?.executionStrategy?.effectiveRisk || 'low';
+  const riskLimit = risk === 'critical' ? 1 : (risk === 'high' ? 2 : plannedWidth);
+  // A previously small host must not freeze future team size. Recheck current
+  // safe wave width and risk at each real worker admission.
+  const missionMaxWorkers = runWorkers
+    ? Math.min(configuredMaxWorkers, hostResources.effectiveCpuSlots, plannedWidth, riskLimit)
+    : Math.min(configuredMaxWorkers, strategyLimit);
   if (!runWorkers) {
     return {
       configuredMaxWorkers,
@@ -163,6 +176,7 @@ export function missionExecutionCapacity({ state, mission, project, runWorkers =
       globalCapacity: configuredMaxWorkers,
       missionCapacity: missionMaxWorkers,
       capacity: missionMaxWorkers,
+      hostResources,
       reason: null
     };
   }
@@ -170,7 +184,11 @@ export function missionExecutionCapacity({ state, mission, project, runWorkers =
   const tasks = Object.values(state?.tasks || {});
   const globalActive = tasks.filter((task) => ACTIVE_RUNTIME_WORKER_STATUSES.has(task.status)).length;
   const missionActive = tasks.filter((task) => task.missionId === mission?.id && ACTIVE_RUNTIME_WORKER_STATUSES.has(task.status)).length;
-  const globalCapacity = Math.max(0, configuredMaxWorkers - globalActive);
+  const cpuCapacity = Math.max(0, Math.min(configuredMaxWorkers, hostResources.effectiveCpuSlots) - globalActive);
+  // Free memory already reflects resident child workers; unlike CPU admission
+  // it must NOT subtract globalActive a second time.
+  const memoryCapacity = hostResources.estimatedMemorySlots;
+  const globalCapacity = Math.min(cpuCapacity, memoryCapacity);
   const missionCapacity = Math.max(0, missionMaxWorkers - missionActive);
   const capacity = Math.min(globalCapacity, missionCapacity);
   return {
@@ -181,9 +199,10 @@ export function missionExecutionCapacity({ state, mission, project, runWorkers =
     globalCapacity,
     missionCapacity,
     capacity,
-    reason: capacity > 0
-      ? null
-      : (globalCapacity === 0 ? 'global-worker-admission-full' : 'adaptive-mission-admission-full')
+    hostResources,
+    reason: capacity > 0 ? null
+      : (cpuCapacity === 0 ? 'global-worker-admission-full'
+        : (memoryCapacity === 0 ? 'host-memory-admission-full' : 'adaptive-mission-admission-full'))
   };
 }
 
@@ -193,7 +212,8 @@ export function compileMissionExecutionStrategy({
   project = {},
   riskEnvelope = 'medium',
   riskEnvelopeSource = 'default',
-  continuity = null
+  continuity = null,
+  resources = null
 } = {}) {
   const maxWaveWidth = waves.reduce((largest, wave) => Math.max(largest, wave.length), 0);
   const taskRisk = maxRisk(tasks);
@@ -211,9 +231,16 @@ export function compileMissionExecutionStrategy({
   else if (effectiveRisk === 'high' || tasks.length >= 5 || waves.length >= 4) taskClass = 'heavy';
   else if (effectiveRisk === 'medium' || tasks.length > 1 || projectWriteConflicts.length) taskClass = 'moderate';
 
-  const configuredMaxWorkers = workerLimit(project.workerPolicy?.maxWorkers, 2);
+  const hostResources = resources || inspectHostWorkerCapacity({
+    workerMemoryMiB: project.workerPolicy?.memoryMiBPerWorker
+  });
+  const autoCapacity = !Number.isInteger(project.workerPolicy?.maxWorkers);
+  const configuredMaxWorkers = workerLimit(project.workerPolicy?.maxWorkers, hostResources.effectiveCpuSlots);
   const structuralParallelism = Math.max(1, Math.min(configuredMaxWorkers, maxWaveWidth || 1));
-  let maxConcurrentWorkers = structuralParallelism;
+  const feasibleParallelism = autoCapacity
+    ? Math.max(1, Math.min(structuralParallelism, hostResources.estimatedMemorySlots))
+    : structuralParallelism;
+  let maxConcurrentWorkers = feasibleParallelism;
   if (tasks.length <= 1 || maxWaveWidth <= 1 || effectiveRisk === 'critical') maxConcurrentWorkers = 1;
   else if (effectiveRisk === 'high') maxConcurrentWorkers = Math.min(structuralParallelism, 2);
   const executionMode = tasks.length <= 1
@@ -238,7 +265,8 @@ export function compileMissionExecutionStrategy({
   if (resolvedRiskEnvelopeSource !== 'baseline') reasons.push(`${resolvedRiskEnvelopeSource}-risk-envelope:${riskEnvelope}`);
   if (inferredRiskTasks.length) reasons.push('runtime-inferred-task-risk');
   if (projectWriteConflicts.length) reasons.push('same-project-write-overlap');
-  if (maxConcurrentWorkers < structuralParallelism) reasons.push('risk-shaped-concurrency');
+  if (feasibleParallelism < structuralParallelism) reasons.push('host-memory-shaped-concurrency');
+  if (maxConcurrentWorkers < feasibleParallelism) reasons.push('risk-shaped-concurrency');
   if (taskClass === 'heavy' && maxConcurrentWorkers === structuralParallelism && structuralParallelism > 2) reasons.push('size-heavy-full-parallelism');
   if (runtimeFeedbackCapabilities.length) reasons.push('runtime-feedback-available');
   if (browserLikeValidationAvailable) reasons.push('browser-validation-available');
@@ -257,7 +285,10 @@ export function compileMissionExecutionStrategy({
       configuredMaxWorkers,
       structuralParallelism,
       maxConcurrentWorkers,
-      riskShaped: maxConcurrentWorkers < structuralParallelism
+      policyMode: autoCapacity ? 'resource-auto' : 'operator-ceiling',
+      hostAtPlan: hostResources,
+      resourceShaped: feasibleParallelism < structuralParallelism,
+      riskShaped: maxConcurrentWorkers < feasibleParallelism
     },
     coordination: {
       requiresCoordination: projectWriteConflicts.length > 0,

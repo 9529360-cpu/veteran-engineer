@@ -190,7 +190,8 @@ const TOOL_OUTPUT_CONTRACTS = Object.freeze({
     mission: OUTPUT_MISSION,
     tasks: { type: 'array', items: OUTPUT_TASK, description: 'Mission tasks.' },
     candidates: { type: 'array', items: OUTPUT_CANDIDATE, description: 'Immutable Mission candidates.' },
-    mergeProposals: { type: 'array', items: openObject('Operator merge proposal.'), description: 'Durable merge proposals.' }
+    mergeProposals: { type: 'array', items: openObject('Operator merge proposal.'), description: 'Durable merge proposals.' },
+    agentTeam: openObject('Primary Mission Agent and first-class, WorkerAdapter-confirmed spawned subordinate Agent members. Unconfirmed launch attempts are separate; history is not current PID liveness.')
   }, ['mission', 'tasks']),
   mission_advance: openObject('Result of one authoritative Mission state-machine transition.', {
     action: stringField('Transition action taken.', { minLength: null }),
@@ -207,7 +208,8 @@ const TOOL_OUTPUT_CONTRACTS = Object.freeze({
     blockers: { type: 'array', items: openObject('Readiness blocker.'), description: 'Explicit blockers preventing the next transition.' },
     nextAction: nullable(stringField('Next safe action when known.', { minLength: null })),
     operatorActionRequired: booleanField('Whether progress requires operator action.'),
-    capabilitySnapshot: anyField('Current worker/capability admission snapshot.')
+    capabilitySnapshot: anyField('Current worker/capability admission snapshot.'),
+    liveExecutionCapacity: openObject('Live executing-host CPU, memory, risk and task-wave admission estimate, not a worker-spawn proof.')
   }, ['missionId', 'ready', 'phase', 'status']),
   mission_timeline: outputArray('Durable Mission timeline events.', openObject('Mission timeline event.', {
     type: stringField('Event type.', { minLength: null }),
@@ -383,6 +385,7 @@ const TOOL_OUTPUT_CONTRACTS = Object.freeze({
     stateReadable: booleanField('Whether durable state is readable.'),
     mcp: openObject('Effective MCP implementation and protocol eras.'),
     surface: openObject('Effective surface capability profile.'),
+    hostWorkerCapacity: openObject('Measured CPU/cgroup/free-memory worker-admission estimate for the actual MCP runtime host.'),
     toolCount: integerField('Public MCP tool count.', 0, 10000),
     toolSurface: anyField('Published tool surface identity.'),
     at: stringField('Health observation timestamp.', { minLength: null })
