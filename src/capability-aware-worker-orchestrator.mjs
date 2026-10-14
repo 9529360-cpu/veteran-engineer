@@ -10,6 +10,7 @@ import {
   taskRuntimeContext
 } from './capability-plane.mjs';
 import { runtimeManagedExecutionReadiness, workerCapabilityProfile } from './worker-capability-profile.mjs';
+import { selectWorkerForTask } from './worker-performance.mjs';
 
 const OUTSTANDING_LEASE_STATUSES = new Set(['admitted', 'dispatched', 'executing', 'cancelling', 'interrupted']);
 const TERMINAL_TASK_STATUSES = new Set(['done', 'failed', 'cancelled', 'blocked', 'superseded']);
@@ -112,7 +113,12 @@ export class CapabilityAwareWorkerOrchestrator {
     snapshot.wave = snapshot.wave.map((item) => {
       const task = byId.get(item.taskId);
       const dispatchOnlyReadiness = taskCapabilityReadiness(task, project);
-      const runtimeManagedReadiness = runtimeManagedExecutionReadiness(task, project);
+      const selectedWorker = task?.status === 'planned'
+        ? selectWorkerForTask({ state, project, task })
+        : (task?.workerAssignment || null);
+      const runtimeManagedReadiness = runtimeManagedExecutionReadiness(
+        selectedWorker ? { ...task, worker: selectedWorker.worker } : task, project
+      );
       const projectWriteConflicts = task ? activeProjectWriteConflicts({ state, mission, task }) : [];
       return {
         ...item,
@@ -122,6 +128,7 @@ export class CapabilityAwareWorkerOrchestrator {
         runtimeManagedMissingExecution: runtimeManagedReadiness.missingExecution,
         runtimeManagedExecutionBlockers: runtimeManagedReadiness.blockers,
         runtimeManagedExecution: runtimeManagedReadiness.profile,
+        workerSelection: selectedWorker,
         projectWriteConflicts
       };
     });
@@ -175,6 +182,7 @@ export class CapabilityAwareWorkerOrchestrator {
 
       const blocked = [];
       const selected = [];
+      const workerSelections = new Map();
       for (const task of admission.ready) {
         if (selected.length >= admission.capacity) break;
         const projectWriteConflicts = activeProjectWriteConflicts({ state, mission, task });
@@ -183,7 +191,10 @@ export class CapabilityAwareWorkerOrchestrator {
           continue;
         }
         const policyReadiness = taskCapabilityReadiness(task, project);
-        const managedReadiness = runWorkers ? runtimeManagedExecutionReadiness(task, project) : null;
+        const chosenWorker = runWorkers ? selectWorkerForTask({ state, project, task }) : null;
+        const managedReadiness = runWorkers
+          ? runtimeManagedExecutionReadiness({ ...task, worker: chosenWorker.worker }, project)
+          : null;
         const missingExecution = runWorkers ? managedReadiness.missingExecution : policyReadiness.missingExecution;
         const executionBlockers = runWorkers ? managedReadiness.blockers : [];
         if (policyReadiness.missingSensing.length || missingExecution.length || executionBlockers.length) {
@@ -209,6 +220,7 @@ export class CapabilityAwareWorkerOrchestrator {
           continue;
         }
         selected.push(task);
+        if (chosenWorker) workerSelections.set(task.id, chosenWorker);
       }
 
       if (!selected.length) {
@@ -225,7 +237,11 @@ export class CapabilityAwareWorkerOrchestrator {
       }
 
       const leases = selected.map((task) => {
-        const executionProfile = runWorkers ? workerCapabilityProfile(project, task) : null;
+        const selection = workerSelections.get(task.id);
+        if (selection) task.workerAssignment = { ...selection, attempt: task.attempts + 1 };
+        const executionProfile = runWorkers ? workerCapabilityProfile(project, {
+          ...task, worker: selection?.worker || task.worker
+        }) : null;
         const lease = {
           id: randomId('lease'),
           reservationId,

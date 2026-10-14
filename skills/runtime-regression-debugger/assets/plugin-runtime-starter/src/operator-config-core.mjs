@@ -131,6 +131,19 @@ function validatePolicyScope(value, pathValue) {
     if (workerPolicy.memoryMiBPerWorker !== undefined && (!Number.isInteger(workerPolicy.memoryMiBPerWorker) || workerPolicy.memoryMiBPerWorker < 64)) {
       throw invalidOperatorConfig(`${pathValue}.workerPolicy.memoryMiBPerWorker`, 'integer >=64', workerPolicy.memoryMiBPerWorker);
     }
+    if (workerPolicy.adaptiveSelection !== undefined) {
+      const selection = workerPolicy.adaptiveSelection;
+      if (!isRecord(selection)) throw invalidOperatorConfig(`${pathValue}.workerPolicy.adaptiveSelection`, 'object', selection);
+      assertBooleanField(selection, 'enabled', `${pathValue}.workerPolicy.adaptiveSelection`);
+      if (selection.candidates !== undefined) {
+        if (!Array.isArray(selection.candidates) || selection.candidates.length > 128
+          || selection.candidates.some((name) => typeof name !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(name)
+            || ['__proto__', 'constructor', 'prototype'].includes(name))
+          || new Set(selection.candidates).size !== selection.candidates.length) {
+          throw invalidOperatorConfig(`${pathValue}.workerPolicy.adaptiveSelection.candidates`, 'unique array of up to 128 named authorized Worker keys', selection.candidates);
+        }
+      }
+    }
     if (workerPolicy.nativeAgent !== undefined) {
       const native = workerPolicy.nativeAgent;
       if (!isRecord(native)) throw invalidOperatorConfig(`${pathValue}.workerPolicy.nativeAgent`, 'object', native);
@@ -201,6 +214,11 @@ export function projectPolicy(operatorConfig, repoPath, remoteUrl = null) {
     ...(specific.workerPolicy || {})
   };
   workerPolicy.capabilities = normalizedStringArray(workerPolicy.capabilities || []);
+  workerPolicy.adaptiveSelection = {
+    enabled: false,
+    ...(defaults.workerPolicy?.adaptiveSelection || {}),
+    ...(specific.workerPolicy?.adaptiveSelection || {})
+  };
   return {
     validationCapabilities,
     validationPolicy: {

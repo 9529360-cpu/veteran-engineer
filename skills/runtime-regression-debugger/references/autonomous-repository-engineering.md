@@ -21,6 +21,10 @@ Use this for implementation, repair, refactor, migration, or review tasks where 
 - Close the authoritative online repository loop
 - Prefer completion over commentary
 
+### Evidence-driven engineering Worker choice
+
+When `workerPolicy.adaptiveSelection.enabled` is explicitly set and a task has the default Worker, use `src/worker-performance.mjs` to rank operator-configured, capability-ready executors from actual WorkerAdapter-confirmed, evidence-backed task integrations and failures. Dispatches retain `workerKey`, `workerSelection`, and durable `evidenceId`; `mission_status.workerPerformance` is a read-only summary. Default cold starts use the configured baseline. Failed attempts can move low/medium-risk default work to a different authorized Worker on an **explicit** retry. Do not punish cancellations, supervisor-only/unconfirmed launches, provider/host timeouts, integration conflicts or missing evidence; integration success is not final quality verification. Never change an explicit task Worker, high/critical-risk routing, operator authorizations, model subscription or repository write scope. Historical outcomes inform but never outrank fresh repository truth, required capabilities or the lead's final judgment.
+
 ### Resource-aware subordinate Agent team
 
 Mission remains the sole product owner. Ordinary small fixes should stay
