@@ -52,5 +52,5 @@ def test_transport_and_semantics_do_not_replace_engineering_owner():
 
 def test_studio_version_and_keywords_follow_skill_change():
     plugin = json.loads((ROOT.parent.parent / "plugin.json").read_text(encoding="utf-8"))
-    assert plugin["version"] == "1.14.28"
+    assert plugin["version"] == "1.14.29"
     assert {"command-transport", "semantic-code-navigation"}.issubset(set(plugin["keywords"]))
