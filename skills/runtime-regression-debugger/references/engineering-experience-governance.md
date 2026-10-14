@@ -7,6 +7,7 @@ Use this when prior attempts, repeated project failures, or a plugin-backed dura
 - Define learning as evidence reuse, not autonomous self-rewriting
 - Use three memory scopes
 - Store negative knowledge as first-class evidence
+- Discover repeated proven workflows without silently changing Skills
 - Normalize an experience record
 - Promote lessons conservatively
 - Decay and revalidate stale lessons
@@ -81,6 +82,31 @@ Examples:
 Do not store "never use retries" or similarly broad prohibitions when only one scoped retry design failed.
 
 Use `scripts/experience_compactor.py` to turn one or more journals into candidate records. The output is candidate memory only; it does not auto-promote anything.
+
+## Discover repeated proven workflows without silently changing Skills
+
+When a genuine multi-step process has succeeded and carries stable proof, reuse the **existing engineering journal** rather than constructing another runtime/memory subsystem. Record at most the decision-relevant steps as short, lowercase action slugs with exact evidence pointers. Omit customer text, proprietary source, shell payloads, credentials, and volatile implementation trivia. This is opt-in instrumentation for useful repeated work, not a requirement to log every command.
+
+For each actual step during a long mission:
+
+~~~bash
+python3 scripts/engineering_journal.py /tmp/run1.json workflow-step \
+  --workflow repo-validation --step inspect-head --outcome passed --evidence-id commit:abc123
+python3 scripts/engineering_journal.py /tmp/run1.json workflow-step \
+  --workflow repo-validation --step run-focused-tests --outcome passed --evidence-id test:unit-green
+python3 scripts/engineering_journal.py /tmp/run1.json close --evidence-level focused-validated
+~~~
+
+When three **independent task journals** record the same verified sequence, analyze them without altering the Skill or the journals:
+
+~~~bash
+python3 scripts/experience_compactor.py /tmp/run1.json /tmp/run2.json /tmp/run3.json \
+  --scope-id repo:owner/name --include-workflows --min-workflow-runs 3
+~~~
+
+The compactor groups by workflow and **ordered steps**, ignores copied/replayed task identities, and emits project-scoped `repeated-workflow` candidates with proof references and a counterexample count. A failed, incomplete, open, or materially different run blocks promotion until reconciled. Multiple records from one task never satisfy independence; the threshold is a heuristic for useful candidates, not evidence of generality or benefit. Without journal capture or an exposed executor, the Skill can only identify a pattern from explicitly supplied evidence; it cannot secretly observe all conversations, run a background learner, or modify loaded instructions.
+
+A candidate becomes a genuine Skill improvement only after confirming the current repository, source/package identity, scope and false positives; checking prior rules for duplicates; comparing old-versus-new behavior on representative and held-out tasks; and shipping a reviewable, regression-covered repository PR. For automatic reuse **before** general promotion, a human-reviewed, scope-bound project playbook may be recorded in the project's existing authorized memory store; freshness is checked each run. Do not turn a candidate into a global rule solely because its steps repeat.
 
 ## Normalize an experience record
 

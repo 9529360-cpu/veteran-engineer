@@ -23,6 +23,7 @@ Examples:
   engineering_journal.py /tmp/work.json tool-event --class github --outcome success --decision-impact changed --note "resolved exact PR head"
   engineering_journal.py /tmp/work.json mutation-receipt --surface github --action merge-pr --target acme/repo#42 --evidence-kind tool-return --result-id commit:abc123 --expected-descendant workflow:package
   engineering_journal.py /tmp/work.json host-event --kind tool-call-ceiling --note "reduce fan-out for this session"
+  engineering_journal.py /tmp/work.json workflow-step --workflow repo-validation --step inspect-head --outcome passed --evidence-id commit:abc123
   engineering_journal.py /tmp/work.json stats
   engineering_journal.py /tmp/work.json summary
 """
@@ -66,6 +67,7 @@ def fresh() -> dict:
             "tool_events": [],
             "mutation_receipts": [],
             "host_events": [],
+            "workflow_steps": [],
         },
         "closed": False,
     }
@@ -97,6 +99,7 @@ def load(path: pathlib.Path) -> dict:
     telemetry.setdefault("tool_events", [])
     telemetry.setdefault("mutation_receipts", [])
     telemetry.setdefault("host_events", [])
+    telemetry.setdefault("workflow_steps", [])
     for item in data.setdefault("attempts", []):
         item.setdefault("equivalence_class", None)
         item.setdefault("forbidden_equivalent_class", None)
@@ -116,6 +119,8 @@ def require_open(data: dict) -> None:
 
 
 IDENTITY_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{0,31}:.+$")
+WORKFLOW_LABEL = re.compile(r"^[a-z][a-z0-9-]{1,47}$")
+WORKFLOW_PROOF = re.compile(r"^(?:test|ci|commit|artifact|runtime|review|check):[A-Za-z0-9][A-Za-z0-9._:/#@-]{0,125}$")
 
 
 def require_namespaced_identity(value: str, field: str) -> str:
@@ -356,6 +361,12 @@ def main() -> int:
     p = sub.add_parser("host-event")
     p.add_argument("--kind", required=True)
     p.add_argument("--note", default="")
+
+    p = sub.add_parser("workflow-step")
+    p.add_argument("--workflow", required=True, help="Stable lowercase workflow slug, not a project name")
+    p.add_argument("--step", required=True, help="Stable ordered action slug, not source content")
+    p.add_argument("--outcome", choices=["passed", "failed"], required=True)
+    p.add_argument("--evidence-id", action="append", default=[], help="Short test:/ci:/commit:/artifact:/runtime:/review:/check: evidence reference")
 
     sub.add_parser("assess")
     p = sub.add_parser("resume")
@@ -794,6 +805,24 @@ def main() -> int:
         data["telemetry"]["host_events"].append(event)
         data["updated_at"] = event["at"]
         save(path, data)
+    elif args.command == "workflow-step":
+        require_open(data)
+        workflow, step = args.workflow.strip(), args.step.strip()
+        if not WORKFLOW_LABEL.fullmatch(workflow) or not WORKFLOW_LABEL.fullmatch(step):
+            raise RuntimeError("workflow and step require lowercase stable slugs (2-48 chars)")
+        proof_ids = list(dict.fromkeys(args.evidence_id))
+        if (args.outcome == "passed" and not proof_ids) or any(not WORKFLOW_PROOF.fullmatch(value) for value in proof_ids):
+            raise RuntimeError("passed steps require valid short evidence IDs; never log secrets or raw payloads")
+        event = {"workflow": workflow, "step": step, "outcome": args.outcome, "evidence_ids": proof_ids}
+        previous = [row for row in data["telemetry"]["workflow_steps"] if row.get("workflow") == workflow and row.get("step") == step]
+        if previous:
+            if len(previous) == 1 and all(previous[0].get(key) == value for key, value in event.items()):
+                return 0
+            raise RuntimeError("workflow step already recorded with different evidence; use a new journal for a new attempt")
+        event["at"] = now()
+        data["telemetry"]["workflow_steps"].append(event)
+        data["updated_at"] = event["at"]
+        save(path, data)
     elif args.command == "assess":
         failed = [item for item in data["attempts"] if item.get("outcome") == "failed"]
         blockers = data.get("blockers", [])
@@ -919,6 +948,7 @@ def main() -> int:
                 "journaled_tool_events": len(data.get("telemetry", {}).get("tool_events", [])),
                 "mutation_receipts": len(data.get("telemetry", {}).get("mutation_receipts", [])),
                 "journaled_host_events": len(data.get("telemetry", {}).get("host_events", [])),
+                "journaled_workflow_steps": len(data.get("telemetry", {}).get("workflow_steps", [])),
             },
             "closed": bool(data.get("closed")),
             "evidence_level": data.get("evidence_level"),
@@ -989,6 +1019,7 @@ def main() -> int:
                 "journaled_tool_events": len(tool_events),
                 "mutation_receipts": len(mutation_receipts),
                 "journaled_host_events": len(host_events),
+                "journaled_workflow_steps": len(telemetry.get("workflow_steps", [])),
             },
             "frontier_states": frontier_states,
             "route": {

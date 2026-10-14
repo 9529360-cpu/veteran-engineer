@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "veteran-engineering-studio",
-  "version": "1.14.28",
+  "version": "1.14.29",
   "description": "Repository-first primary full-stack engineering owner for online repositories: architecture, frontend/backend/data/runtime implementation, CI/PR/release closure, and evidence-bound delivery with UI work delegated only as a bounded specialist phase.",
   "keywords": [
     "full-stack",
@@ -78,7 +78,9 @@
     "repository-closure",
     "foreground-continuation",
     "command-transport",
-    "semantic-code-navigation"
+    "semantic-code-navigation",
+    "self-improving-skills",
+    "repeated-workflow-learning"
   ],
   "extensions": {
     "com.openai": {
